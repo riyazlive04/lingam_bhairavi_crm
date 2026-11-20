@@ -1,8 +1,8 @@
 /** Builds BOQ grid lines (server side) from template lines and saved quotation lines. */
 import "server-only";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { DB } from "@/db";
-import { boqTemplateLines, quotationLines } from "@/db/schema";
+import { boqTemplateLines, extinguisherAssets, items, quotationLines } from "@/db/schema";
 import { round2 } from "@/lib/format";
 import { suggestRates } from "@/lib/pricing";
 import { itemPricing } from "./data";
@@ -22,6 +22,46 @@ export async function templateGridLines(db: DB, templateId: number, markupPct: n
       key: `t${l.id}`, lineId: null, section: l.section ?? "", boqRef: l.boqRef ?? "", itemId: it ? l.itemId : null,
       description: l.description, uom: l.uom, qty: Number(l.defaultQty) || 0,
       costRate: showCost ? r.costRate : null, supplyRate: r.supplyRate, erectionRate: r.erectionRate, remarks: "", manual: !it,
+    };
+  });
+}
+
+/**
+ * Refill quotation from the Refill Tracker: selected extinguisher assets of one customer → one line per
+ * (type, make), priced from the matching "Refilling <type> <size> — <make>" item in the master (rule 2).
+ */
+export async function refillGridLines(db: DB, customerId: number, assetIds: number[], markupPct: number, showCost: boolean): Promise<GridLine[]> {
+  if (!assetIds.length) return [];
+  const assets = await db.select().from(extinguisherAssets)
+    .where(and(eq(extinguisherAssets.customerId, customerId), inArray(extinguisherAssets.id, assetIds.slice(0, 500))));
+  if (!assets.length) return [];
+  const refillItems = await db.select({ id: items.id, name: items.name, size: items.size, make: items.make, groupName: items.groupName, uom: items.uom })
+    .from(items).where(and(eq(items.system, "extinguisher_refill"), eq(items.active, true)));
+  const groups = new Map<string, { extType: string; make: string; qty: number; locations: Set<string> }>();
+  for (const a of assets) {
+    const k = `${norm(a.extType)}|${norm(a.make)}`;
+    const g = groups.get(k) ?? { extType: a.extType, make: a.make ?? "", qty: 0, locations: new Set<string>() };
+    g.qty += a.qty;
+    if (a.location) g.locations.add(a.location);
+    groups.set(k, g);
+  }
+  const match = (extType: string, make: string) => {
+    // "ABC 6 Kg" → kind "abc", size "6 kg"; "Clean Agent 2 Kg" → "clean agent", "2 kg"
+    const m = extType.match(/^(.*?)\s*([\d.]+\s*(kg|l))$/i);
+    const kind = norm(m ? m[1] : extType), size = norm(m ? m[2] : "").replace(/\s+/g, " ");
+    const cands = refillItems.filter((i) => norm(i.groupName).startsWith(kind) && norm(i.size).replace(/\s+/g, " ") === size);
+    return cands.find((i) => norm(i.make) === norm(make)) ?? cands[0];
+  };
+  const priced = await itemPricing(db, refillItems.map((i) => i.id));
+  return [...groups.values()].map((g, idx) => {
+    const it = match(g.extType, g.make);
+    const p = it ? priced.get(it.id) : undefined;
+    const r = p ? suggestRates(p, markupPct) : { costRate: 0, supplyRate: 0, erectionRate: 0 };
+    const where = g.locations.size ? ` (${[...g.locations].slice(0, 4).join(", ")}${g.locations.size > 4 ? "…" : ""})` : "";
+    return {
+      key: `rf${idx}`, lineId: null, section: "Extinguisher Refilling", boqRef: String(idx + 1), itemId: it && p ? it.id : null,
+      description: `Refilling of ${g.extType} fire extinguisher${g.make ? ` — ${g.make}` : ""}${where}`, uom: it?.uom ?? "Nos", qty: g.qty,
+      costRate: showCost ? r.costRate : null, supplyRate: r.supplyRate, erectionRate: r.erectionRate, remarks: "", manual: !(it && p),
     };
   });
 }

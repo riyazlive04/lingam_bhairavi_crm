@@ -1,4 +1,5 @@
 "use server";
+import { publicError } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
@@ -15,7 +16,7 @@ class StockError extends Error {}
 const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date");
 const optId = z.union([z.literal(""), z.coerce.number().int().positive()]).optional().transform((v) => (v === "" || v === undefined ? null : v));
 const optText = (max: number) => z.string().trim().max(max).optional().transform((v) => (v ? v : null));
-const errMsg = (e: unknown, f: string) => (e instanceof z.ZodError ? e.issues[0]?.message ?? f : e instanceof Error ? e.message : f);
+const errMsg = (e: unknown, f: string) => publicError(e, f, [StockError]);
 const get = (fd: FormData, k: string) => fd.get(k) ?? "";
 
 async function finish(itemId: number, ok: string | null, err: string | null) {

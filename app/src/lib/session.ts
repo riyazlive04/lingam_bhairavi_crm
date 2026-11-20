@@ -10,7 +10,10 @@ export type SessionUser = { id: number; name: string; email: string; role: Role 
 function secret() {
   const s = process.env.AUTH_SECRET;
   if (!s || s.length < 32) {
-    if (process.env.VERCEL_ENV === "production") throw new Error("AUTH_SECRET (>=32 chars) must be set in production");
+    // Fail closed on every internet-reachable deployment (production AND preview): the fallback below is public in source.
+    if (process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview") {
+      throw new Error("AUTH_SECRET (>=32 chars) must be set for this deployment");
+    }
     return new TextEncoder().encode("dev-only-insecure-secret-change-me-0123456789");
   }
   return new TextEncoder().encode(s);

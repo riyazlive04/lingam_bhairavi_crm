@@ -56,7 +56,7 @@ Derived: delivered = Σ delivery_lines.qty; status Delivered/Partial/In transit 
 - Folder per agent with a pure function: `run(ctx: { db, settings, today: Date }): Promise<AlertUpsert[]>`.
 - Alert key: `${agent}:${entity}:${id}:${rule}`; upsert open alert; auto-resolve open alerts whose key was not produced this run.
 - Runner: `POST /api/agents/run` (cron, header `Authorization: Bearer ${CRON_SECRET}`) and admin "Run now" (session + admin role). Records `agent_runs`.
-- "Today" is computed in **Asia/Kolkata**; cron 01:30 UTC = 07:00 IST.
+- "Today" is computed in **Asia/Kolkata**; cron 02:30 UTC = 08:00 IST.
 - Keep each run within serverless time limits: query with SQL filters (only open records), batch e-mails (e.g. ≤ 30 per run, continue next run).
 - Rules and thresholds exactly as [AUTOMATION_AGENTS.md](../AUTOMATION_AGENTS.md). No AI/LLM calls.
 

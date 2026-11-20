@@ -1,4 +1,5 @@
 "use server";
+import { publicError } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, asc, eq, inArray, like, or } from "drizzle-orm";
@@ -32,7 +33,7 @@ function errMsg(e: unknown) {
     return i ? `${i.path.length ? i.path.join(".") + ": " : ""}${i.message}` : "Invalid input";
   }
   if (e instanceof SyntaxError) return "Invalid line data";
-  return e instanceof Error ? e.message : "Something went wrong";
+  return publicError(e, "Something went wrong");
 }
 /** Only same-app relative paths are allowed as redirect targets. */
 function safeBack(v: FormDataEntryValue | null, fallback: string) {
@@ -324,7 +325,7 @@ export async function markWon(form: FormData) {
         const budget = typeof p.budget === "number" ? p.budget : round2(t.cost + t.erection * factor);
         const [pr] = await tx.insert(projects).values({
           code: projectCode,
-          name: p.projectName || q.projectName || `${cust?.name ?? "Customer"} — ${q.number}`,
+          name: (p.projectName || q.projectName || `${cust?.name ?? "Customer"} — ${q.number}`).slice(0, 200),
           customerId: q.customerId, quotationId: id, status: "planning", siteAddress: q.siteLocation,
           contractValue: t.taxable, budget, notes: `Created from quotation ${q.number}`,
         }).returning({ id: projects.id });

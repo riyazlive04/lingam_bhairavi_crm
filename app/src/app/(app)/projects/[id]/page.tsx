@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Download, Pencil, Receipt } from "lucide-react";
 import { getDb } from "@/db";
 import { requireUser } from "@/lib/auth";
+import { canApproveExpenses, canRead } from "@/lib/rbac";
 import { EXPENSE_CATEGORIES, PROJECT_STATUSES } from "@/lib/constants";
 import { fmtDate, money, money0, pct, qty } from "@/lib/format";
 import { Badge, Card, DL, EmptyState, Flash, LinkButton, PageHeader, Select, Stat, StatusBadge, Table, Td, Th, Textarea, cx } from "@/components/ui";
@@ -25,6 +26,9 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
   if (!s) notFound();
   const { project: p, cost: c } = s;
   const acc = projectAccess(user, p);
+  // only render links the viewer can open (avoid landing on /forbidden)
+  const canPurchases = canRead(user.role, "purchases"), canBilling = canRead(user.role, "billing"), canQuotes = canRead(user.role, "quotations");
+  const canOpenExpense = (ownerId: number | null) => canApproveExpenses(user.role) || ownerId === user.id;
   const standing = round(c.invoiced - c.received);
   const remainingBudget = round(c.budget - c.actualCost);
 
@@ -130,7 +134,7 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
                 <p className="border-t border-line px-4 py-2 text-xs text-ink-soft">Invoice totals here exclude GST; outstanding on the Billing page includes GST.</p>
               </Card>
             ) : (
-              <Card title="Project details"><ProjectInfo s={s} /></Card>
+              <Card title="Project details"><ProjectInfo s={s} canQuotes={canQuotes} /></Card>
             )}
           </div>
 
@@ -183,7 +187,7 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
                   <tbody>
                     {s.purchases.map((pi) => (
                       <tr key={pi.id}>
-                        <Td><Link className="text-brand-700 hover:underline dark:text-brand-300" href={`/purchases/${pi.id}`}>{pi.invoiceNo}</Link></Td>
+                        <Td>{canPurchases ? <Link className="text-brand-700 hover:underline dark:text-brand-300" href={`/purchases/${pi.id}`}>{pi.invoiceNo}</Link> : pi.invoiceNo}</Td>
                         <Td>{pi.vendorName}</Td>
                         <Td className="whitespace-nowrap">{fmtDate(pi.invoiceDate)}</Td>
                         <Td><StatusBadge status={pi.status} /></Td>
@@ -205,7 +209,7 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
                   {s.expenses.map((e) => (
                     <tr key={e.allocationId}>
                       <Td>
-                        <Link className="font-medium text-brand-700 hover:underline dark:text-brand-300" href={`/expenses/${e.expenseId}`}>{e.voucherNo}</Link>
+                        {canOpenExpense(e.userId) ? <Link className="font-medium text-brand-700 hover:underline dark:text-brand-300" href={`/expenses/${e.expenseId}`}>{e.voucherNo}</Link> : <span className="font-medium">{e.voucherNo}</span>}
                         {e.description && <div className="max-w-64 truncate text-xs text-ink-soft">{e.description}</div>}
                       </Td>
                       <Td className="whitespace-nowrap">{fmtDate(e.date)}</Td>
@@ -232,7 +236,7 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
                     <tbody>
                       {s.invoices.map((i) => (
                         <tr key={i.id}>
-                          <Td><Link className="text-brand-700 hover:underline dark:text-brand-300" href={`/billing/invoices/${i.id}`}>{i.number}</Link></Td>
+                          <Td>{canBilling ? <Link className="text-brand-700 hover:underline dark:text-brand-300" href={`/billing/invoices/${i.id}`}>{i.number}</Link> : i.number}</Td>
                           <Td className="whitespace-nowrap">{fmtDate(i.invoiceDate)}</Td>
                           <Td><StatusBadge status={i.status} /></Td>
                           <Td className="text-right tabular-nums">{money(i.subtotal)}</Td>
@@ -265,7 +269,7 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
         </>
       ) : (
         <Card title="Project details">
-          <ProjectInfo s={s} />
+          <ProjectInfo s={s} canQuotes={canQuotes} />
           <p className="mt-4 text-sm text-ink-soft">Costing details are visible to the assigned engineer and management.</p>
         </Card>
       )}
@@ -291,7 +295,7 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
       </Section>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {acc.full && <Card title="Project details"><ProjectInfo s={s} /></Card>}
+        {acc.full && <Card title="Project details"><ProjectInfo s={s} canQuotes={canQuotes} /></Card>}
         <Card title="Status & notes">
           {acc.edit && (
             <form action={setProjectStatus} className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end">
@@ -358,7 +362,7 @@ function Section({ title, hint, empty, children }: { title: string; hint?: strin
   );
 }
 
-function ProjectInfo({ s }: { s: NonNullable<Awaited<ReturnType<typeof loadCostingSheet>>> }) {
+function ProjectInfo({ s, canQuotes }: { s: NonNullable<Awaited<ReturnType<typeof loadCostingSheet>>>; canQuotes: boolean }) {
   const p = s.project;
   return (
     <DL
@@ -366,7 +370,7 @@ function ProjectInfo({ s }: { s: NonNullable<Awaited<ReturnType<typeof loadCosti
         ["Code", p.code],
         ["Customer", s.customerName],
         ["Site engineer", s.engineerName ?? "Unassigned"],
-        ["Quotation", s.quotationNumber && p.quotationId ? <Link className="text-brand-700 hover:underline dark:text-brand-300" href={`/quotations/${p.quotationId}`}>{s.quotationNumber}</Link> : "—"],
+        ["Quotation", s.quotationNumber && p.quotationId ? (canQuotes ? <Link className="text-brand-700 hover:underline dark:text-brand-300" href={`/quotations/${p.quotationId}`}>{s.quotationNumber}</Link> : s.quotationNumber) : "—"],
         ["Start", fmtDate(p.startDate)],
         ["End", fmtDate(p.endDate)],
         ["Site address", p.siteAddress || "—"],

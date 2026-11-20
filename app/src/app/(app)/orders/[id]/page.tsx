@@ -149,7 +149,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
             ["Order date", fmtDate(o.orderDate)],
             ["Expected delivery", fmtDate(o.expectedDelivery)],
             ["Project", order.projectName ? `${order.projectCode} · ${order.projectName}` : "—"],
-            ["Quotation", order.quotationNumber && o.quotationId ? <Link className="text-brand-700 hover:underline dark:text-brand-300" href={`/quotations/${o.quotationId}`}>{order.quotationNumber}</Link> : "—"],
+            ["Quotation", order.quotationNumber && o.quotationId ? (canRead(user.role, "quotations") ? <Link className="text-brand-700 hover:underline dark:text-brand-300" href={`/quotations/${o.quotationId}`}>{order.quotationNumber}</Link> : order.quotationNumber) : "—"],
             ["Order value (ex-GST)", money(o.total)],
             ["Notes", o.notes || "—"],
           ]} />

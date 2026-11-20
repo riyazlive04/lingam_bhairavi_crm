@@ -1,4 +1,5 @@
 "use server";
+import { publicError } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { asc, count, eq, inArray } from "drizzle-orm";
@@ -34,7 +35,7 @@ const templateSchema = z.object({
 
 function errMsg(e: unknown) {
   if (e instanceof z.ZodError) return e.issues[0]?.message ?? "Invalid input";
-  return e instanceof Error ? e.message : "Something went wrong";
+  return publicError(e, "Something went wrong");
 }
 
 export async function saveTemplate(form: FormData) {

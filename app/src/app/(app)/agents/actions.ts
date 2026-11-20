@@ -1,4 +1,5 @@
 "use server";
+import { publicError } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -10,7 +11,7 @@ import { AGENTS, getAgent, loadAgentRules, runAgents } from "@/lib/agents";
 
 const AgentKey = z.string().refine((k) => !!getAgent(k), "Unknown agent");
 const back = (kind: "ok" | "err", msg: string) => `/agents?${kind}=${encodeURIComponent(msg)}`;
-const errMsg = (e: unknown) => (e instanceof z.ZodError ? e.issues.map((i) => i.message).join("; ") : e instanceof Error ? e.message : "Something went wrong");
+const errMsg = (e: unknown) => (e instanceof z.ZodError ? e.issues.map((i) => i.message).join("; ") : publicError(e));
 
 function refresh() {
   revalidatePath("/agents");

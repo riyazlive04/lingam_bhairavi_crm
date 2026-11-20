@@ -1,4 +1,5 @@
 "use server";
+import { publicError } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq, inArray } from "drizzle-orm";
@@ -48,7 +49,7 @@ export async function markAlertDoneAction(form: FormData) {
     await audit(db, user.id, "update", "alert", id, { status: "done" });
     target = backTo(form, "ok", "Marked done");
   } catch (e) {
-    target = backTo(form, "err", e instanceof Error && !(e instanceof z.ZodError) ? e.message : "Invalid request");
+    target = backTo(form, "err", e instanceof z.ZodError ? "Invalid request" : publicError(e, "Invalid request"));
   }
   done();
   redirect(target);
@@ -69,7 +70,7 @@ export async function snoozeAlertAction(form: FormData) {
     await audit(db, user.id, "update", "alert", id, { status: "snoozed", until });
     target = backTo(form, "ok", `Snoozed for ${days} day${days === 1 ? "" : "s"}`);
   } catch (e) {
-    target = backTo(form, "err", e instanceof z.ZodError ? e.issues[0]?.message ?? "Invalid request" : e instanceof Error ? e.message : "Invalid request");
+    target = backTo(form, "err", publicError(e, "Invalid request"));
   }
   done();
   redirect(target);
@@ -87,7 +88,7 @@ export async function reopenAlertAction(form: FormData) {
     await audit(db, user.id, "update", "alert", id, { status: "open" });
     target = backTo(form, "ok", "Re-opened");
   } catch (e) {
-    target = backTo(form, "err", e instanceof Error && !(e instanceof z.ZodError) ? e.message : "Invalid request");
+    target = backTo(form, "err", e instanceof z.ZodError ? "Invalid request" : publicError(e, "Invalid request"));
   }
   done();
   redirect(target);

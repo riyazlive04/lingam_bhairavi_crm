@@ -44,3 +44,6 @@ next-env.d.ts
 .env*
 
 .data/
+
+# local embedded database (PGlite) — contains demo/customer data
+/.data/

@@ -42,12 +42,12 @@ Keep an up-to-date `app/.env.example` with names only (no values).
 ```json
 {
   "crons": [
-    { "path": "/api/agents/run", "schedule": "30 1 * * *" }
+    { "path": "/api/agents/run", "schedule": "30 2 * * *" }
   ]
 }
 ```
 
-- `30 1 * * *` UTC = **07:00 IST** daily.
+- `30 2 * * *` UTC = **08:00 IST** daily.
 - On the Vercel Hobby plan cron jobs are limited (daily frequency, timing not exact to the minute) — daily is all we need. Confirm current plan limits before go-live.
 - Endpoint rejects requests without the correct `CRON_SECRET`.
 - Monitor: Admin → Agents shows the last run; if no run in 26 h, show a red banner to admin.

@@ -4,7 +4,7 @@ import { Plus } from "lucide-react";
 import { getDb } from "@/db";
 import { projects, purchaseInvoices, vendors } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { canWrite } from "@/lib/rbac";
+import { canRead, canWrite } from "@/lib/rbac";
 import { fmtDate, money, todayIST } from "@/lib/format";
 import { purchaseOutstanding } from "@/lib/purchasing";
 import { Badge, Button, EmptyState, Flash, Input, LinkButton, PageHeader, Select, Stat, StatusBadge, Table, Td, Th, cx } from "@/components/ui";
@@ -113,7 +113,7 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
                 return (
                   <tr key={inv.id} className="hover:bg-muted/50">
                     <Td><Link href={`/purchases/${inv.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{inv.invoiceNo}</Link></Td>
-                    <Td className="max-w-56 truncate">{vendorName ? <Link href={`/vendors/${inv.vendorId}`} className="hover:underline">{vendorName}</Link> : "—"}</Td>
+                    <Td className="max-w-56 truncate">{vendorName ? (canRead(user.role, "vendors") ? <Link href={`/vendors/${inv.vendorId}`} className="hover:underline">{vendorName}</Link> : vendorName) : "—"}</Td>
                     <Td>{fmtDate(inv.invoiceDate)}</Td>
                     <Td className={cx(od && "font-medium text-red-600")}>{fmtDate(inv.dueDate)}{od && <div className="text-xs">overdue</div>}</Td>
                     <Td>{projectCode ? <span title={projectName ?? undefined}><Badge tone="violet">{projectCode}</Badge></span> : <span className="text-ink-faint">Stock</span>}</Td>

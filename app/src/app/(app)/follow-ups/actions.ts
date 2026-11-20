@@ -1,4 +1,5 @@
 "use server";
+import { publicError } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
@@ -62,7 +63,7 @@ export async function logFollowUp(form: FormData) {
     revalidatePath(`/quotations/${p.quotationId}`);
     target = withMsg(back, "ok", `Follow-up logged for ${q.number}${p.nextDate && open ? ` — next on ${p.nextDate}` : ""}`);
   } catch (e) {
-    const msg = e instanceof z.ZodError ? e.issues[0]?.message ?? "Invalid input" : e instanceof Error ? e.message : "Could not log follow-up";
+    const msg = publicError(e, "Could not log follow-up");
     target = withMsg(back, "err", msg);
   }
   redirect(target);

@@ -1,4 +1,5 @@
 "use server";
+import { publicError } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { eq, sql } from "drizzle-orm";
@@ -29,7 +30,7 @@ export async function createCustomer(fd: FormData) {
     await audit(db, user.id, "create", "customer", c.id, { name: p.data.name });
     target = `/customers/${c.id}?ok=` + encodeURIComponent("Customer created");
   } catch (e) {
-    target = "/customers/new?err=" + encodeURIComponent(e instanceof Error ? e.message : "Could not create customer");
+    target = "/customers/new?err=" + encodeURIComponent(publicError(e, "Could not create customer"));
   }
   revalidatePath("/customers");
   redirect(target);
@@ -49,7 +50,7 @@ export async function updateCustomer(id: number, fd: FormData) {
     await audit(db, user.id, "update", "customer", id, p.data);
     target = `/customers/${id}?ok=` + encodeURIComponent("Customer updated");
   } catch (e) {
-    target = `/customers/${id}/edit?err=` + encodeURIComponent(e instanceof Error ? e.message : "Could not update customer");
+    target = `/customers/${id}/edit?err=` + encodeURIComponent(publicError(e, "Could not update customer"));
   }
   revalidatePath("/customers");
   redirect(target);

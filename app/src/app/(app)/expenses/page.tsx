@@ -4,7 +4,7 @@ import { Check, Plus, X } from "lucide-react";
 import { getDb } from "@/db";
 import { expenseAllocations, expenses, projects, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { canApproveExpenses } from "@/lib/rbac";
+import { canApproveExpenses, canRead } from "@/lib/rbac";
 import { EXPENSE_CATEGORIES } from "@/lib/constants";
 import { fmtDate, money, money0, todayIST } from "@/lib/format";
 import { Card, EmptyState, Flash, Input, LinkButton, PageHeader, Select, Stat, StatusBadge, Table, Td, Th, Button, cx } from "@/components/ui";
@@ -176,9 +176,15 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
                       {allocs.length ? (
                         <div className="flex flex-wrap gap-1">
                           {allocs.map((a) => (
+                            canRead(user.role, "projects") ? (
                             <Link key={a.projectId} href={`/projects/${a.projectId}`} className="rounded bg-muted px-1.5 py-0.5 text-xs text-ink hover:text-brand-700" title={money(a.amount)}>
                               {a.code}{allocs.length > 1 ? ` · ${money0(a.amount)}` : ""}
                             </Link>
+                          ) : (
+                            <span key={a.projectId} className="rounded bg-muted px-1.5 py-0.5 text-xs text-ink" title={money(a.amount)}>
+                              {a.code}{allocs.length > 1 ? ` · ${money0(a.amount)}` : ""}
+                            </span>
+                          )
                           ))}
                         </div>
                       ) : <span className="text-xs text-ink-faint">Overhead</span>}

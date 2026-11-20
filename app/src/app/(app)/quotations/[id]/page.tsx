@@ -5,7 +5,7 @@ import { Copy, FileSpreadsheet, GitBranch, MessageCircle, Pencil, Phone, Printer
 import { getDb } from "@/db";
 import { boqTemplates, customers, followUps, projects, quotationLines, quotations, salesOrders, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { canSeeCost, canWrite } from "@/lib/rbac";
+import { canRead, canSeeCost, canWrite } from "@/lib/rbac";
 import { SYSTEMS, type SystemKey } from "@/lib/constants";
 import { addDays, daysBetween, fmtDate, fmtDateTime, money, pct, todayIST } from "@/lib/format";
 import { computeQuoteTotals, getPricingSettings, linePriceWarning } from "@/lib/pricing";
@@ -99,7 +99,7 @@ export default async function QuotationDetailPage({ params, searchParams }: { pa
             ["Project", q.projectName || "—"],
             ["Site location", q.siteLocation || "—"],
             ["System", q.system ? SYSTEMS[q.system as SystemKey] ?? q.system : "Mixed"],
-            ["BOQ template", tmpl ? <Link href={`/boq-templates/${tmpl.id}`} className="text-brand-700 hover:underline">{tmpl.name}</Link> : "Blank"],
+            ["BOQ template", tmpl ? (canRead(user.role, "boq") ? <Link href={`/boq-templates/${tmpl.id}`} className="text-brand-700 hover:underline">{tmpl.name}</Link> : tmpl.name) : "Blank"],
             ["Quotation date", fmtDate(q.quoteDate)],
             ["Valid until", fmtDate(q.validUntil)],
             ["Prepared by", preparer?.name ?? "—"],
@@ -108,7 +108,7 @@ export default async function QuotationDetailPage({ params, searchParams }: { pa
             ...(q.closedAt ? [["Closed", fmtDateTime(q.closedAt)] as [string, React.ReactNode]] : []),
             ...(q.lostReason ? [["Lost reason", q.lostReason] as [string, React.ReactNode]] : []),
             ...(orders.length ? [["Sales order", <span key="so" className="flex flex-wrap gap-2">{orders.map((o) => <Link key={o.id} href={`/orders/${o.id}`} className="text-brand-700 hover:underline">{o.number}</Link>)}</span>] as [string, React.ReactNode]] : []),
-            ...(projs.length ? [["Project", <span key="pr" className="flex flex-wrap gap-2">{projs.map((p) => <Link key={p.id} href={`/projects/${p.id}`} className="text-brand-700 hover:underline">{p.code} — {p.name}</Link>)}</span>] as [string, React.ReactNode]] : []),
+            ...(projs.length ? [["Project", <span key="pr" className="flex flex-wrap gap-2">{projs.map((p) => canRead(user.role, "projects") ? <Link key={p.id} href={`/projects/${p.id}`} className="text-brand-700 hover:underline">{p.code} — {p.name}</Link> : <span key={p.id}>{p.code} — {p.name}</span>)}</span>] as [string, React.ReactNode]] : []),
             ...(family.length ? [["Other revisions", <span key="rv" className="flex flex-wrap gap-2">{family.map((f) => <Link key={f.id} href={`/quotations/${f.id}`} className="text-brand-700 hover:underline">{f.number} <span className="text-ink-soft">({f.status})</span></Link>)}</span>] as [string, React.ReactNode]] : []),
           ]} />
           {q.notes && <p className="mt-4 whitespace-pre-line rounded-lg bg-muted p-3 text-sm text-ink-soft"><span className="font-medium text-ink">Internal notes: </span>{q.notes}</p>}

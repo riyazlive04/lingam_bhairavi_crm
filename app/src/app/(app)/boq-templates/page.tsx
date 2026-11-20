@@ -88,7 +88,7 @@ export default async function BoqTemplatesPage({ searchParams }: { searchParams:
                       <Td>{t.active ? <Badge tone="green">Active</Badge> : <Badge>Inactive</Badge>}</Td>
                       <Td className="text-right">
                         <div className="flex justify-end gap-2">
-                          <LinkButton href={`/quotations/new?templateId=${t.id}`} variant="secondary" size="sm">Quote with this</LinkButton>
+                          {canWrite(user.role, "quotations") && <LinkButton href={`/quotations/new?templateId=${t.id}`} variant="secondary" size="sm">Quote with this</LinkButton>}
                           {writable && <LinkButton href={`/boq-templates/${t.id}/edit`} variant="ghost" size="sm">Edit</LinkButton>}
                         </div>
                       </Td>

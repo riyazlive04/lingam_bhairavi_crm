@@ -1,4 +1,5 @@
 "use server";
+import { publicError } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq, ne, sql } from "drizzle-orm";
@@ -53,7 +54,7 @@ export async function createItem(fd: FormData) {
     await audit(db, user.id, "create", "item", row.id, { code: p.data.code, name: p.data.name });
     target = `/items/${row.id}?ok=` + encodeURIComponent("Item created");
   } catch (e) {
-    target = "/items/new?err=" + encodeURIComponent(e instanceof Error ? e.message : "Could not create item");
+    target = "/items/new?err=" + encodeURIComponent(publicError(e, "Could not create item"));
   }
   revalidatePath("/items");
   redirect(target);
@@ -74,7 +75,7 @@ export async function updateItem(id: number, fd: FormData) {
     await audit(db, user.id, "update", "item", id, p.data);
     target = `/items/${id}?ok=` + encodeURIComponent("Item updated");
   } catch (e) {
-    target = `/items/${id}/edit?err=` + encodeURIComponent(e instanceof Error ? e.message : "Could not update item");
+    target = `/items/${id}/edit?err=` + encodeURIComponent(publicError(e, "Could not update item"));
   }
   revalidatePath("/items");
   redirect(target);
@@ -104,7 +105,7 @@ export async function updateListPrice(id: number, fd: FormData) {
     await audit(db, user.id, "update", "item", id, { listPrice: { from: it.listPrice, to: rate } });
     target = `/items/${id}?ok=` + encodeURIComponent("List price updated");
   } catch (e) {
-    target = `/items/${id}?err=` + encodeURIComponent(e instanceof Error ? e.message : "Could not update list price");
+    target = `/items/${id}?err=` + encodeURIComponent(publicError(e, "Could not update list price"));
   }
   revalidatePath(`/items/${id}`);
   revalidatePath("/items");

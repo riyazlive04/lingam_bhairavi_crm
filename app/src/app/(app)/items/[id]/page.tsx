@@ -5,7 +5,7 @@ import { Pencil, Warehouse } from "lucide-react";
 import { getDb } from "@/db";
 import { customers, items, priceHistory, purchaseInvoices, quotationLines, quotations, vendorItems, vendors } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { canSeeCost, canWrite } from "@/lib/rbac";
+import { canRead, canSeeCost, canWrite } from "@/lib/rbac";
 import { SYSTEMS } from "@/lib/constants";
 import { fmtDate, marginPct, money, money0, pct, qty, todayIST } from "@/lib/format";
 import {
@@ -31,6 +31,11 @@ export default async function ItemDetailPage({ params, searchParams }: { params:
   const it = row.it;
   const seeCost = canSeeCost(user.role);
   const write = canWrite(user.role, "items");
+  // only render links the viewer can open (avoid landing on /forbidden)
+  const can = {
+    stock: canRead(user.role, "stock"), vendors: canRead(user.role, "vendors"), purchases: canRead(user.role, "purchases"),
+    customers: canRead(user.role, "customers"), quotations: canRead(user.role, "quotations"), billing: canRead(user.role, "billing"),
+  };
   const today = todayIST();
   const cost = latestCostOf(it);
   const sell = suggestedSupplyRate(cost.rate, it.markupPct);
@@ -69,8 +74,8 @@ export default async function ItemDetailPage({ params, searchParams }: { params:
 
   // Combined sales-side points (quote + sale), newest first
   const salesPoints = [
-    ...sales.map((s) => ({ key: `s${s.id}`, kind: "sale" as const, date: s.date, customerId: s.customerId, customerName: s.customerName, rate: Number(s.rate), qty: s.qty, href: s.refType === "sales_invoice" && s.refId ? `/billing/invoices/${s.refId}` : null, doc: s.refType === "sales_invoice" ? "Invoice" : (s.refType ?? "—"), status: null as string | null })),
-    ...quotes.map((q, i) => ({ key: `q${q.qid}-${i}`, kind: "quote" as const, date: q.date, customerId: q.customerId, customerName: q.customerName, rate: Number(q.rate), qty: q.qty, href: `/quotations/${q.qid}`, doc: q.number, status: q.status })),
+    ...sales.map((s) => ({ key: `s${s.id}`, kind: "sale" as const, date: s.date, customerId: s.customerId, customerName: s.customerName, rate: Number(s.rate), qty: s.qty, href: can.billing && s.refType === "sales_invoice" && s.refId ? `/billing/invoices/${s.refId}` : null, doc: s.refType === "sales_invoice" ? "Invoice" : (s.refType ?? "—"), status: null as string | null })),
+    ...quotes.map((q, i) => ({ key: `q${q.qid}-${i}`, kind: "quote" as const, date: q.date, customerId: q.customerId, customerName: q.customerName, rate: Number(q.rate), qty: q.qty, href: can.quotations ? `/quotations/${q.qid}` : null, doc: q.number, status: q.status })),
   ].filter((p) => p.rate > 0).sort((a, b) => b.date.localeCompare(a.date));
 
   // Last price per customer
@@ -92,7 +97,7 @@ export default async function ItemDetailPage({ params, searchParams }: { params:
         </>}
         back={{ href: "/items", label: "Item & Price Master" }}
         actions={<>
-          <LinkButton href={`/stock/${it.id}`} variant="secondary"><Warehouse size={16} aria-hidden /> Stock ledger</LinkButton>
+          {can.stock && <LinkButton href={`/stock/${it.id}`} variant="secondary"><Warehouse size={16} aria-hidden /> Stock ledger</LinkButton>}
           {write && <LinkButton href={`/items/${it.id}/edit`}><Pencil size={16} aria-hidden /> Edit</LinkButton>}
         </>}
       />
@@ -108,7 +113,7 @@ export default async function ItemDetailPage({ params, searchParams }: { params:
         <Stat label="Suggested sell" value={money(sell)} hint={seeCost ? `Cost + ${pct(it.markupPct, 0)} markup` : `Per ${it.uom}`} />
         <Stat label="Last sale rate" value={money(it.lastSaleRate)}
           hint={it.lastSaleRate != null ? <>{fmtDate(it.lastSaleDate)}{seeCost && cost.rate ? ` · margin ${pct(marginPct(it.lastSaleRate, cost.rate))}` : ""}</> : "Not sold yet"} />
-        <Stat label="Stock available" value={`${qty(stock.available)} ${it.uom}`} href={`/stock/${it.id}`}
+        <Stat label="Stock available" value={`${qty(stock.available)} ${it.uom}`} href={can.stock ? `/stock/${it.id}` : undefined}
           tone={it.reorderLevel > 0 && stock.available <= it.reorderLevel ? "bad" : "default"}
           hint={`On hand ${qty(stock.onHand)} · reserved ${qty(stock.reserved)}${it.reorderLevel > 0 ? ` · reorder at ${qty(it.reorderLevel)}` : ""}`} />
       </div>
@@ -186,7 +191,7 @@ export default async function ItemDetailPage({ params, searchParams }: { params:
                     const diff = cheapest ? ((v.lastRate - cheapest) / cheapest) * 100 : 0;
                     return (
                       <tr key={String(v.vendorId)}>
-                        <Td>{v.vendorId ? <Link href={`/vendors/${v.vendorId}`} className="hover:underline">{v.vendorName}</Link> : v.vendorName}{i === 0 && vendorsCmp.length > 1 && <> <Badge tone="green">cheapest</Badge></>}</Td>
+                        <Td>{v.vendorId && can.vendors ? <Link href={`/vendors/${v.vendorId}`} className="hover:underline">{v.vendorName}</Link> : v.vendorName}{i === 0 && vendorsCmp.length > 1 && <> <Badge tone="green">cheapest</Badge></>}</Td>
                         <Td className="text-right tabular-nums">{money(v.lastRate)}</Td><Td>{fmtDate(v.lastDate)}</Td><Td className="text-right">{v.count}</Td>
                         <Td className="text-right tabular-nums">{money(v.avg)}</Td><Td className="text-right tabular-nums">{i === 0 ? "—" : `+${pct(diff)}`}</Td>
                       </tr>
@@ -194,7 +199,7 @@ export default async function ItemDetailPage({ params, searchParams }: { params:
                   })}
                   {linkedOnly.map((v) => (
                     <tr key={`l${v.vendorId}`}>
-                      <Td><Link href={`/vendors/${v.vendorId}`} className="hover:underline">{v.name}</Link> <Badge>linked</Badge></Td>
+                      <Td>{can.vendors ? <Link href={`/vendors/${v.vendorId}`} className="hover:underline">{v.name}</Link> : v.name} <Badge>linked</Badge></Td>
                       <Td className="text-right tabular-nums">{money(v.lastRate)}</Td><Td>{fmtDate(v.lastDate)}</Td><Td className="text-right">0</Td><Td className="text-right">—</Td><Td className="text-right">—</Td>
                     </tr>
                   ))}
@@ -213,8 +218,8 @@ export default async function ItemDetailPage({ params, searchParams }: { params:
                     return (
                       <tr key={p.id}>
                         <Td>{fmtDate(p.date)}</Td>
-                        <Td>{p.vendorId ? <Link href={`/vendors/${p.vendorId}`} className="hover:underline">{p.vendorName}</Link> : "—"}</Td>
-                        <Td>{p.refType === "purchase_invoice" && p.refId ? <Link href={`/purchases/${p.refId}`} className="text-brand-700 hover:underline dark:text-brand-300">{invNos.get(p.refId) ?? `#${p.refId}`}</Link> : "—"}</Td>
+                        <Td>{p.vendorId ? (can.vendors ? <Link href={`/vendors/${p.vendorId}`} className="hover:underline">{p.vendorName}</Link> : p.vendorName) : "—"}</Td>
+                        <Td>{p.refType === "purchase_invoice" && p.refId ? (can.purchases ? <Link href={`/purchases/${p.refId}`} className="text-brand-700 hover:underline dark:text-brand-300">{invNos.get(p.refId) ?? `#${p.refId}`}</Link> : (invNos.get(p.refId) ?? `#${p.refId}`)) : "—"}</Td>
                         <Td className="text-right tabular-nums">{qty(p.qty)}</Td>
                         <Td className="text-right tabular-nums">{money(p.rate)}</Td>
                         <Td className={cx("text-right tabular-nums text-xs", ch != null && Math.abs(ch) >= 5 && (ch > 0 ? "font-semibold text-red-600" : "font-semibold text-emerald-600"))}>
@@ -241,7 +246,7 @@ export default async function ItemDetailPage({ params, searchParams }: { params:
                 <thead><tr><Th>Customer</Th><Th className="text-right">Last quoted</Th><Th className="text-right">Last sold</Th>{seeCost && <Th className="text-right">Margin (sold)</Th>}</tr></thead>
                 <tbody>{[...byCustomer.values()].map((c) => (
                   <tr key={String(c.customerId)}>
-                    <Td>{c.customerId ? <Link href={`/customers/${c.customerId}`} className="hover:underline">{c.name}</Link> : c.name}</Td>
+                    <Td>{c.customerId && can.customers ? <Link href={`/customers/${c.customerId}`} className="hover:underline">{c.name}</Link> : c.name}</Td>
                     <Td className="text-right tabular-nums">{c.lastQuote ? <>{money(c.lastQuote.rate)}<div className="text-xs text-ink-faint">{fmtDate(c.lastQuote.date)}</div></> : "—"}</Td>
                     <Td className="text-right tabular-nums">{c.lastSale ? <>{money(c.lastSale.rate)}<div className="text-xs text-ink-faint">{fmtDate(c.lastSale.date)}</div></> : "—"}</Td>
                     {seeCost && <Td className="text-right tabular-nums">{c.lastSale && cost.rate ? pct(marginPct(c.lastSale.rate, cost.rate)) : "—"}</Td>}
@@ -258,7 +263,7 @@ export default async function ItemDetailPage({ params, searchParams }: { params:
                     <tr key={p.key}>
                       <Td>{fmtDate(p.date)}</Td>
                       <Td><Badge tone={p.kind === "sale" ? "green" : "blue"}>{p.kind}</Badge>{p.status && <> <StatusBadge status={p.status} /></>}</Td>
-                      <Td>{p.customerId ? <Link href={`/customers/${p.customerId}`} className="hover:underline">{p.customerName}</Link> : (p.customerName ?? "—")}</Td>
+                      <Td>{p.customerId && can.customers ? <Link href={`/customers/${p.customerId}`} className="hover:underline">{p.customerName}</Link> : (p.customerName ?? "—")}</Td>
                       <Td>{p.href ? <Link href={p.href} className="text-brand-700 hover:underline dark:text-brand-300">{p.doc}</Link> : p.doc}</Td>
                       <Td className="text-right tabular-nums">{qty(p.qty)}</Td>
                       <Td className="text-right tabular-nums">{money(p.rate)}</Td>

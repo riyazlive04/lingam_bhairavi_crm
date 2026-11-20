@@ -8,7 +8,7 @@ They answer the pain points of the kickoff meeting ([notes](meetings/2026-11-20-
 
 | Aspect | Design |
 |---|---|
-| Schedule | One **Vercel Cron** job calls the agents endpoint **daily at 07:00 IST** (01:30 UTC) before office hours. The endpoint is protected by `CRON_SECRET`. |
+| Schedule | One **Vercel Cron** job calls the agents endpoint **daily at 08:00 IST** (02:30 UTC) before office hours. The endpoint is protected by `CRON_SECRET`. |
 | Manual run | Admin → *Automation Agents* → **Run now** (per agent or all). Useful after bulk data entry or for demos. |
 | Idempotent | Re-running on the same day does not duplicate alerts: each alert has a key (agent + record + rule), and an open alert with the same key is updated, not re-created. |
 | Alert lifecycle | `Open` → `Acknowledged` → `Resolved`. Agents auto-resolve an alert when the underlying condition disappears (e.g. the line is delivered). |

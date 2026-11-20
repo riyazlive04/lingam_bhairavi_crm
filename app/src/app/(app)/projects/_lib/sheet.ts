@@ -48,7 +48,7 @@ export async function loadCostingSheet(db: DB, projectId: number) {
       .select({
         allocationId: expenseAllocations.id, amount: expenseAllocations.amount,
         expenseId: expenses.id, voucherNo: expenses.voucherNo, date: expenses.date, category: expenses.category, status: expenses.status,
-        description: expenses.description, paidTo: expenses.paidTo, voucherTotal: expenses.amount, userName: submitter.name,
+        description: expenses.description, paidTo: expenses.paidTo, voucherTotal: expenses.amount, userName: submitter.name, userId: expenses.userId,
       })
       .from(expenseAllocations)
       .innerJoin(expenses, eq(expenses.id, expenseAllocations.expenseId))

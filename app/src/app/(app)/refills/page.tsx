@@ -11,7 +11,7 @@ import { Button, Card, EmptyState, Flash, Input, LinkButton, PageHeader, Select,
 import { AssetTable, type AssetRow } from "./_components/asset-table";
 import { recordRefill } from "./actions";
 
-type SP = { bucket?: string; customerId?: string; type?: string; make?: string; q?: string; status?: string; ok?: string; err?: string };
+type SP = { bucket?: string; customerId?: string; customer?: string; type?: string; make?: string; q?: string; status?: string; ok?: string; err?: string };
 const BUCKETS: RefillBucket[] = ["overdue", "due10", "due30", "later"];
 const BUCKET_STYLE: Record<RefillBucket, string> = {
   overdue: "border-red-300 dark:border-red-900",
@@ -25,7 +25,9 @@ const BUCKET_TEXT: Record<RefillBucket, string> = {
 
 export default async function RefillsPage({ searchParams }: { searchParams: Promise<SP> }) {
   const user = await requireUser("refills");
-  const sp = await searchParams;
+  const raw = await searchParams;
+  // `?customer=` is an alias used by dashboard / agent alert / startup-digest links
+  const sp: SP = { ...raw, customerId: raw.customerId ?? raw.customer };
   const db = await getDb();
   const today = todayIST();
   const d10 = addDays(today, 10);

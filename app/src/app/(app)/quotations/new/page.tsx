@@ -13,13 +13,13 @@ import { SubmitButton } from "@/components/submit-button";
 import { startQuotation, saveQuotation } from "../actions";
 import { QuoteEditor } from "../_components/quote-editor";
 import { loadCatalog } from "../_lib/data";
-import { templateGridLines } from "../_lib/grid";
+import { refillGridLines, templateGridLines } from "../_lib/grid";
 
 export const metadata = { title: "New quotation" };
 
 type SP = {
   step?: string; customerId?: string; templateId?: string; markup?: string; validity?: string;
-  projectName?: string; site?: string; err?: string; ok?: string;
+  projectName?: string; site?: string; err?: string; ok?: string; source?: string; assetIds?: string;
 };
 
 const posInt = (v: string | undefined) => {
@@ -42,17 +42,24 @@ export default async function NewQuotationPage({ searchParams }: { searchParams:
   const markup = numIn(sp.markup, pricing.defaultMarkupPct, 0, 500);
   const validity = Math.round(numIn(sp.validity, pricing.quoteValidityDays, 1, 365));
 
+  // Coming from the Refill Tracker (?source=refill&assetIds=1,2,3) → skip step 1 and pre-fill refill lines.
+  const refillAssetIds = sp.source === "refill"
+    ? (sp.assetIds ?? "").split(",").map((s) => posInt(s.trim())).filter((x): x is number => x != null)
+    : [];
+
   // ------------------------------------------------------------ step 2: BOQ grid
-  if (sp.step === "2" && customerId) {
+  if ((sp.step === "2" || refillAssetIds.length > 0) && customerId) {
     const [cust] = await db.select({ id: customers.id, name: customers.name, city: customers.city }).from(customers).where(eq(customers.id, customerId));
     if (!cust) redirect(`/quotations/new?err=${encodeURIComponent("Customer not found")}`);
     const [tmpl] = templateId ? await db.select().from(boqTemplates).where(eq(boqTemplates.id, templateId)) : [];
     const showCost = canSeeCost(user.role);
-    const [catalog, lines, company] = await Promise.all([
+    const [catalog, tmplLines, refillLines, company] = await Promise.all([
       loadCatalog(db, { withCost: showCost, markupPct: markup }),
       tmpl ? templateGridLines(db, tmpl.id, markup, showCost) : Promise.resolve([]),
+      refillGridLines(db, cust.id, refillAssetIds, markup, showCost),
       getCompanySettings(db),
     ]);
+    const lines = [...refillLines, ...tmplLines];
     const today = todayIST();
     const back = `/quotations/new?${new URLSearchParams(Object.entries(sp).filter(([k, v]) => k !== "err" && k !== "ok" && typeof v === "string") as [string, string][]).toString()}`;
     return (

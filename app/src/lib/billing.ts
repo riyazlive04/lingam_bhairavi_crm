@@ -397,7 +397,7 @@ export function buildReminderEmail(opts: {
     + `<p>For any clarification regarding these invoices, please feel free to reply to this e-mail${company.phone ? ` or call us on ${escapeHtml(company.phone)}` : ""}.</p>`
     + signature(company),
   );
-  return { subject, html };
+  return { subject: subject.slice(0, 250), html }; // email_outbox.subject is varchar(250)
 }
 
 /** Full customer ledger statement e-mail (used by "Email statement"). */

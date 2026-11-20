@@ -41,7 +41,7 @@ export default async function TemplateDetailPage({ params, searchParams }: { par
         subtitle={SYSTEMS[t.system as SystemKey] ?? t.system}
         back={{ href: "/boq-templates", label: "BOQ templates" }}
         actions={<>
-          <LinkButton href={`/quotations/new?templateId=${t.id}`}><FileText className="h-4 w-4" aria-hidden /> New quotation</LinkButton>
+          {canWrite(user.role, "quotations") && <LinkButton href={`/quotations/new?templateId=${t.id}`}><FileText className="h-4 w-4" aria-hidden /> New quotation</LinkButton>}
           {writable && <LinkButton href={`/boq-templates/${t.id}/edit`} variant="secondary"><Pencil className="h-4 w-4" aria-hidden /> Edit</LinkButton>}
           {writable && (
             <form action={duplicateTemplate}>

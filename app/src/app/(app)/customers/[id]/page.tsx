@@ -112,7 +112,7 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
         subtitle={<><Badge tone="blue">{CUSTOMER_TYPES[c.type as keyof typeof CUSTOMER_TYPES] ?? c.type}</Badge> {c.city ?? ""}{!c.active && <> · <Badge>inactive</Badge></>}</>}
         back={{ href: "/customers", label: "Customers" }}
         actions={<>
-          {canWrite(r, "quotations") && <LinkButton href={`/quotations/new?customer=${c.id}`} variant="secondary"><Plus size={16} aria-hidden /> Quotation</LinkButton>}
+          {canWrite(r, "quotations") && <LinkButton href={`/quotations/new?customerId=${c.id}`} variant="secondary"><Plus size={16} aria-hidden /> Quotation</LinkButton>}
           {canWrite(r, "customers") && <LinkButton href={`/customers/${c.id}/edit`}><Pencil size={16} aria-hidden /> Edit</LinkButton>}
         </>}
       />
@@ -176,7 +176,7 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
         </div>
       )}
       {tab === "assets" && (assets.length === 0 ? (
-        <EmptyState title="No extinguishers tracked" action={canWrite(r, "refills") && <LinkButton href={`/refills?customer=${c.id}`}>Open refill tracker</LinkButton>}>
+        <EmptyState title="No extinguishers tracked" action={canWrite(r, "refills") && <LinkButton href={`/refills?customerId=${c.id}`}>Open refill tracker</LinkButton>}>
           Add this customer&apos;s extinguishers in the refill tracker to get due-date reminders.
         </EmptyState>
       ) : (

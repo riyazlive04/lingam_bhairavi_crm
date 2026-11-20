@@ -1,4 +1,5 @@
 "use server";
+import { publicError } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq, sql } from "drizzle-orm";
@@ -33,7 +34,7 @@ export async function createVendor(fd: FormData) {
     await audit(db, user.id, "create", "vendor", v.id, { name: p.data.name });
     target = `/vendors/${v.id}?ok=` + encodeURIComponent("Vendor created");
   } catch (e) {
-    target = "/vendors/new?err=" + encodeURIComponent(e instanceof Error ? e.message : "Could not create vendor");
+    target = "/vendors/new?err=" + encodeURIComponent(publicError(e, "Could not create vendor"));
   }
   revalidatePath("/vendors");
   redirect(target);
@@ -51,7 +52,7 @@ export async function updateVendor(id: number, fd: FormData) {
     await audit(db, user.id, "update", "vendor", id, { ...p.data, systems });
     target = `/vendors/${id}?ok=` + encodeURIComponent("Vendor updated");
   } catch (e) {
-    target = `/vendors/${id}/edit?err=` + encodeURIComponent(e instanceof Error ? e.message : "Could not update vendor");
+    target = `/vendors/${id}/edit?err=` + encodeURIComponent(publicError(e, "Could not update vendor"));
   }
   revalidatePath("/vendors");
   redirect(target);
@@ -82,7 +83,7 @@ export async function linkVendorItem(vendorId: number, fd: FormData) {
     await audit(db, user.id, "update", "vendor_item", vendorId, { itemId: it.id, ...set });
     target = `/vendors/${vendorId}?ok=` + encodeURIComponent(`${it.code} linked to vendor`);
   } catch (e) {
-    target = `/vendors/${vendorId}?err=` + encodeURIComponent(e instanceof Error ? e.message : "Could not link item");
+    target = `/vendors/${vendorId}?err=` + encodeURIComponent(publicError(e, "Could not link item"));
   }
   revalidatePath(`/vendors/${vendorId}`);
   redirect(target);

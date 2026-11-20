@@ -6,7 +6,7 @@ import { Check, Trash2, X } from "lucide-react";
 import { getDb } from "@/db";
 import { expenseAllocations, expenses, projects, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { canApproveExpenses } from "@/lib/rbac";
+import { canApproveExpenses, canRead } from "@/lib/rbac";
 import { EXPENSE_CATEGORIES } from "@/lib/constants";
 import { addDays, fmtDate, fmtDateTime, money, todayIST } from "@/lib/format";
 import { Card, DL, Flash, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui";
@@ -80,7 +80,7 @@ export default async function ExpenseDetailPage({ params, searchParams }: { para
             <tbody>
               {allocs.map((a) => (
                 <tr key={a.id}>
-                  <Td><Link href={`/projects/${a.projectId}`} className="text-brand-700 hover:underline dark:text-brand-300">{a.code}</Link> · {a.name}</Td>
+                  <Td>{canRead(user.role, "projects") ? <Link href={`/projects/${a.projectId}`} className="text-brand-700 hover:underline dark:text-brand-300">{a.code}</Link> : a.code} · {a.name}</Td>
                   <Td className="text-right tabular-nums">{money(a.amount)}</Td>
                 </tr>
               ))}

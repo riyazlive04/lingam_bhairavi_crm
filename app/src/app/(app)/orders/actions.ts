@@ -25,6 +25,11 @@ function errMsg(e: unknown): string {
 }
 class UserError extends Error {}
 
+/** Store has orders:write for deliveries/line status only — creating, closing, cancelling or reopening orders is commercial (admin/sales). */
+function assertCommercial(role: string) {
+  if (role !== "admin" && role !== "sales") throw new UserError("Only Sales or the Owner can create, close, cancel or reopen orders");
+}
+
 const withMsg = (path: string, key: "ok" | "err", msg: string) => `${path}${path.includes("?") ? "&" : "?"}${key}=${encodeURIComponent(msg)}`;
 
 // ---------------------------------------------------------------- create order
@@ -51,6 +56,7 @@ export async function createOrder(form: FormData) {
   const user = await requireWrite("orders");
   let target: string;
   try {
+    assertCommercial(user.role);
     const h = orderSchema.parse(Object.fromEntries(form));
     const lines = z.array(lineSchema).min(1, "Add at least one line with quantity").parse(JSON.parse(String(form.get("lines") ?? "[]")));
     const db = await getDb();
@@ -198,6 +204,7 @@ export async function changeOrderStatus(form: FormData) {
   const orderId = Number(form.get("orderId"));
   let target: string;
   try {
+    assertCommercial(user.role);
     const d = statusSchema.parse(Object.fromEntries(form));
     const db = await getDb();
     const res = await db.transaction(async (tx) => {

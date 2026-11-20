@@ -143,7 +143,7 @@ export async function changeUserRole(form: FormData) {
       await db.update(users).set({ role }).where(eq(users.id, id));
       await audit(db, user.id, "update", "user", id, { role: [u.role, role] });
     }
-    target = flashUrl("/settings/users", "ok", `${u.name} is now ${ROLES[role]} (applies from their next sign-in)`);
+    target = flashUrl("/settings/users", "ok", `${u.name} is now ${ROLES[role]} (applies immediately)`);
   } catch (e) {
     target = flashUrl("/settings/users", "err", errMsg(e));
   }

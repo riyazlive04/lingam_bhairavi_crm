@@ -1,4 +1,5 @@
 "use server";
+import { publicError } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq, inArray } from "drizzle-orm";
@@ -29,7 +30,7 @@ const headerSchema = z.object({
   intent: z.enum(["draft", "post"]).default("draft"),
 });
 
-const msg = (e: unknown, fallback: string) => (e instanceof PurchaseError || e instanceof z.ZodError || e instanceof Error) ? (e instanceof z.ZodError ? e.issues[0]?.message ?? fallback : e.message) : fallback;
+const msg = (e: unknown, fallback: string) => publicError(e, fallback, [PurchaseError]);
 
 type Parsed = { header: z.infer<typeof headerSchema>; lines: z.infer<typeof lineSchema>[] };
 
