@@ -36,7 +36,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   // ---- Summary
   const ws = wb.addWorksheet("Costing sheet", { views: [{ state: "frozen", ySplit: 0 }] });
   ws.columns = [{ width: 42 }, { width: 22 }];
-  ws.addRow([`Project costing sheet — ${p.name}`]).font = { bold: true, size: 14 };
+  ws.addRow([`Project costing sheet: ${p.name}`]).font = { bold: true, size: 14 };
   ws.addRow([`${p.code} · ${s.customerName}`]);
   ws.addRow([`Generated ${todayIST()} by ${user.name}`]).font = { italic: true, color: { argb: "FF6B7280" } };
   ws.addRow([]);
@@ -48,16 +48,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   };
   kv("Status", p.status);
   kv("Site engineer", s.engineerName ?? "Unassigned");
-  kv("Quotation", s.quotationNumber ?? "—");
-  kv("Start date", p.startDate ?? "—");
-  kv("End date", p.endDate ?? "—");
+  kv("Quotation", s.quotationNumber ?? "-");
+  kv("Start date", p.startDate ?? "-");
+  kv("End date", p.endDate ?? "-");
   ws.addRow([]);
   kv("Contract value (excl. GST)", c.contractValue, true);
   kv("Budget", c.budget);
   ws.addRow([]);
   kv("Materials issued", c.materials);
   kv("Less: materials returned", -c.returns);
-  for (const [k, v] of Object.entries(c.expensesByCategory)) kv(`Expense — ${catLabel(k)}`, v);
+  for (const [k, v] of Object.entries(c.expensesByCategory)) kv(`Expense: ${catLabel(k)}`, v);
   kv("Actual cost", c.actualCost, true);
   kv("Expenses awaiting approval (not counted)", c.pendingExpenses);
   ws.addRow([]);

@@ -1,4 +1,4 @@
-/** Role-based access control matrix. OWNED BY: Architect + Security. Edge-safe (no server imports). */
+/** Role-based access control matrix. Maintainer: Sirah Digital. Edge-safe (no server imports). */
 import type { Role } from "./constants";
 
 export type Module =

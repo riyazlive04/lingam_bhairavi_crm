@@ -25,11 +25,11 @@ export function AgeingTable({ rows, hrefFor, emptyTitle, limit }: { rows: PartyO
               <div className="text-xs text-ink-soft">{r.invoiceCount} invoice{r.invoiceCount === 1 ? "" : "s"}{r.autoReminders === false ? " · reminders off" : ""}</div>
             </Td>
             <Td className="text-right font-medium tabular-nums">{money0(r.outstanding)}</Td>
-            <Td className={cx("text-right tabular-nums", r.overdue > 0 && "font-medium text-red-600")}>{r.overdue ? money0(r.overdue) : "—"}</Td>
+            <Td className={cx("text-right tabular-nums", r.overdue > 0 && "font-medium text-red-600")}>{r.overdue ? money0(r.overdue) : "-"}</Td>
             {AGEING_LABELS.map(([k]) => (
-              <Td key={k} className={cx("text-right tabular-nums", k === "d90p" && r.ageing[k] > 0 && "text-red-600")}>{r.ageing[k] ? money0(r.ageing[k]) : "—"}</Td>
+              <Td key={k} className={cx("text-right tabular-nums", k === "d90p" && r.ageing[k] > 0 && "text-red-600")}>{r.ageing[k] ? money0(r.ageing[k]) : "-"}</Td>
             ))}
-            <Td className="text-right">{r.maxDaysOverdue > 0 ? <Badge tone={r.maxDaysOverdue > 60 ? "red" : "amber"}>{r.maxDaysOverdue}d</Badge> : <span className="text-ink-faint">—</span>}</Td>
+            <Td className="text-right">{r.maxDaysOverdue > 0 ? <Badge tone={r.maxDaysOverdue > 60 ? "red" : "amber"}>{r.maxDaysOverdue}d</Badge> : <span className="text-ink-faint">-</span>}</Td>
           </tr>
         ))}
       </tbody>

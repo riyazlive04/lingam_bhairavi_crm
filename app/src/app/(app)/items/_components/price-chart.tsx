@@ -7,7 +7,7 @@ type Pt = { date: string; rate: number; label?: string };
  * Points are plotted on a true time axis; each point has a native tooltip.
  */
 export function PriceChart({ points, title = "Purchase rate over time" }: { points: Pt[]; title?: string }) {
-  if (points.length === 0) return <p className="text-sm text-ink-soft">No purchase price points yet — post a purchase invoice to start the history.</p>;
+  if (points.length === 0) return <p className="text-sm text-ink-soft">No purchase prices yet. Post a purchase invoice to start the history.</p>;
   const W = 640, H = 220, L = 64, R = 16, T = 16, B = 32;
   const ts = points.map((p) => new Date(p.date + "T00:00:00Z").getTime());
   const rates = points.map((p) => p.rate);

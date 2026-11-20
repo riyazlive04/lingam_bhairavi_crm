@@ -50,13 +50,13 @@ export default async function EmailPage({ params, searchParams }: { params: Prom
       <Card className="mb-4">
         <DL items={[
           ["To", <span key="to" className="break-all">{m.to}</span>],
-          ["Cc", m.cc || "—"],
+          ["Cc", m.cc || "-"],
           ["Status", <StatusBadge key="st" status={m.status} />],
-          ["Source", m.agent ?? "—"],
+          ["Source", m.agent ?? "-"],
           ["Created", fmtDateTime(m.createdAt)],
-          ["Sent", m.sentAt ? fmtDateTime(m.sentAt) : m.status === "logged" ? "Not sent (demo mode)" : "—"],
-          ["Related", linkOk && link ? <Link key="rel" href={link} className="text-brand-700 hover:underline dark:text-brand-300">{m.entityType?.replace("_", " ")} #{m.entityId}</Link> : m.entityType ? `${m.entityType} #${m.entityId ?? ""}` : "—"],
-          ["Error", m.error ? <span key="err" className="text-red-600">{m.error}</span> : "—"],
+          ["Sent", m.sentAt ? fmtDateTime(m.sentAt) : m.status === "logged" ? "Not sent (demo mode)" : "-"],
+          ["Related", linkOk && link ? <Link key="rel" href={link} className="text-brand-700 hover:underline dark:text-brand-300">{m.entityType?.replace("_", " ")} #{m.entityId}</Link> : m.entityType ? `${m.entityType} #${m.entityId ?? ""}` : "-"],
+          ["Error", m.error ? <span key="err" className="text-red-600">{m.error}</span> : "-"],
         ]} />
       </Card>
       <Card title="Message preview" bodyClassName="p-0">

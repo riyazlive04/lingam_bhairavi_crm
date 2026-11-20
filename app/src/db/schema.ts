@@ -1,6 +1,6 @@
 /**
- * Linga Bhairavi Enterprise CRM — database schema (Postgres via Drizzle).
- * OWNED BY: Architect. Feature teams must NOT edit this file; request changes via the manager.
+ * Linga Bhairavi Enterprise CRM: database schema (Postgres via Drizzle).
+ * Maintainer: Sirah Digital.
  * Money is stored as double precision (INR, rounded to 2dp in app code via lib/format.round2).
  */
 import {
@@ -97,11 +97,11 @@ export const items = pgTable("items", {
   hsn: varchar("hsn", { length: 20 }),
   gstRate: doublePrecision("gst_rate").default(18).notNull(),
   description: text("description"),
-  /** latest procured (purchase) rate — maintained automatically from purchase invoices */
+  /** latest procured (purchase) rate, maintained automatically from purchase invoices */
   lastPurchaseRate: doublePrecision("last_purchase_rate"),
   lastPurchaseDate: date("last_purchase_date"),
   lastPurchaseVendorId: integer("last_purchase_vendor_id"),
-  /** last selling rate (quoted/invoiced) — maintained automatically */
+  /** last selling rate (quoted/invoiced), maintained automatically */
   lastSaleRate: doublePrecision("last_sale_rate"),
   lastSaleDate: date("last_sale_date"),
   /** master list price (from the client's price list) used when no purchase history */
@@ -111,7 +111,7 @@ export const items = pgTable("items", {
   /** erection / installation labour rate per unit */
   erectionRate: doublePrecision("erection_rate").default(0).notNull(),
   reorderLevel: doublePrecision("reorder_level").default(0).notNull(),
-  /** items whose prices change fast (e.g. pipes) — Stale Price Agent uses a shorter window */
+  /** items whose prices change fast (e.g. pipes); the Stale Price Agent uses a shorter window */
   volatilePrice: boolean("volatile_price").default(false).notNull(),
   active: boolean("active").default(true).notNull(),
   createdAt: ts(),
@@ -506,7 +506,7 @@ export const emailOutbox = pgTable("email_outbox", {
   cc: varchar("cc", { length: 200 }),
   subject: varchar("subject", { length: 250 }).notNull(),
   body: text("body").notNull(), // HTML
-  /** queued | sent | failed | logged (SMTP not configured — demo) */
+  /** queued | sent | failed | logged (SMTP not configured, demo) */
   status: varchar("status", { length: 10 }).default("queued").notNull(),
   agent: varchar("agent", { length: 40 }),
   entityType: varchar("entity_type", { length: 40 }),

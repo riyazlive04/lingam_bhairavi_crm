@@ -120,7 +120,7 @@ export async function createUser(form: FormData) {
       throw e;
     }
     await audit(db, user.id, "create", "user", row.id, { email: d.email, role: d.role });
-    target = flashUrl("/settings/users", "ok", `User ${d.name} added — share the temporary password securely`);
+    target = flashUrl("/settings/users", "ok", `User ${d.name} added. Share the temporary password securely`);
   } catch (e) {
     target = flashUrl("/settings/users", "err", errMsg(e));
   }
@@ -164,7 +164,7 @@ export async function setUserActive(form: FormData) {
     if (!active && u.role === "admin" && (await activeAdminCount(db, id)) === 0) throw new UserError("At least one active admin is required");
     await db.update(users).set({ active }).where(eq(users.id, id));
     await audit(db, user.id, "update", "user", id, { active });
-    target = flashUrl("/settings/users", "ok", `${u.name} ${active ? "activated" : "deactivated — they can no longer sign in"}`);
+    target = flashUrl("/settings/users", "ok", `${u.name} ${active ? "activated" : "deactivated. They can no longer sign in"}`);
   } catch (e) {
     target = flashUrl("/settings/users", "err", errMsg(e));
   }

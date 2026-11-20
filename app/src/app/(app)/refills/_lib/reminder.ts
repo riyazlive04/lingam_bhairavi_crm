@@ -7,7 +7,7 @@ const fmt = (d: string) => {
 };
 
 export function reminderText(customerName: string, rows: ReminderRow[]) {
-  const lines = rows.map((r) => `• ${r.qty} × ${r.extType}${r.make ? ` (${r.make})` : ""}${r.location ? ` — ${r.location}` : ""} — due ${fmt(r.nextDueDate)}`);
+  const lines = rows.map((r) => `• ${r.qty} × ${r.extType}${r.make ? ` (${r.make})` : ""}${r.location ? `, ${r.location}` : ""}: due ${fmt(r.nextDueDate)}`);
   const units = rows.reduce((s, r) => s + r.qty, 0);
   return [
     `Dear ${customerName},`,

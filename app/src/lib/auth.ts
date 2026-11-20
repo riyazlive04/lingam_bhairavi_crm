@@ -1,4 +1,4 @@
-/** Server-side auth helpers. OWNED BY: Architect + Security. */
+/** Server-side auth helpers. Maintainer: Sirah Digital. */
 import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
@@ -14,7 +14,7 @@ import { canRead, canWrite, type Module } from "./rbac";
  * Re-validates the JWT subject against the database once per request (React `cache()` dedupes calls).
  * A deactivated or deleted user loses access immediately (not after the 12 h JWT expiry), and a role
  * change applies on the next request because the role/name are taken from the DB row, not the token.
- * The edge middleware still only checks the signature (edge-safe, no DB) — pages/actions/routes are authoritative.
+ * The edge middleware still only checks the signature (edge-safe, no DB); pages/actions/routes are authoritative.
  */
 const loadActiveUser = cache(async (id: number): Promise<SessionUser | null> => {
   if (!Number.isInteger(id) || id <= 0) return null;
@@ -41,7 +41,7 @@ export async function requireUser(module?: Module): Promise<SessionUser> {
   return u;
 }
 
-/** Call at the top of every server action that mutates data. Throws — never trust the client. */
+/** Call at the top of every server action that mutates data. Throws; never trust the client. */
 export async function requireWrite(module: Module): Promise<SessionUser> {
   const u = await getSession();
   if (!u) throw new Error("Not signed in");

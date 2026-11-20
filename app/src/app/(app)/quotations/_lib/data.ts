@@ -1,4 +1,4 @@
-/** Server-side data helpers for quotations / BOQ templates / follow-ups. OWNED BY: Team B. */
+/** Server-side data helpers for quotations / BOQ templates / follow-ups. Maintainer: Sirah Digital. */
 import "server-only";
 import { asc, eq, inArray } from "drizzle-orm";
 import type { DB } from "@/db";
@@ -7,7 +7,7 @@ import { computeQuoteTotals, suggestRates } from "@/lib/pricing";
 import type { PickerItem } from "../_components/item-picker";
 
 export type CatalogItem = PickerItem & {
-  /** latest cost (rule 1) — null when the viewer may not see cost */
+  /** latest cost (rule 1); null when the viewer may not see cost */
   cost: number | null;
   /** item default markup % (only used when the viewer can see cost) */
   markupPct: number;

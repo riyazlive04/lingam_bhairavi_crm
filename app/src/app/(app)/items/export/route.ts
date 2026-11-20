@@ -10,7 +10,7 @@ import { NB_SIZES, isPriceStale, latestCostOf, normaliseNB, priceAgeDays, sugges
 
 export const dynamic = "force-dynamic";
 
-/** GET /items/export — Excel workbook: price matrix (group × NB size) + full item price list. */
+/** GET /items/export: Excel workbook: price matrix (group × NB size) + full item price list. */
 export async function GET(req: Request) {
   const user = await getSession();
   if (!user) return new Response("Not signed in", { status: 401 });
@@ -45,7 +45,7 @@ export async function GET(req: Request) {
     ws.views = [{ state: "frozen", ySplit: 1, xSplit: 1 }];
   };
 
-  // Sheet 1 — size matrix
+  // Sheet 1: size matrix
   const basisLabel = seeCost ? "Latest cost" : "Suggested selling rate";
   const matrix = new Map<string, { group: string; make: string | null; system: string; cells: Map<string, number | null> }>();
   const used = new Set<string>();
@@ -73,7 +73,7 @@ export async function GET(req: Request) {
   }
   header(ws1);
 
-  // Sheet 2 — item list
+  // Sheet 2: item list
   const ws2 = wb.addWorksheet("Item Price List");
   ws2.columns = [
     { header: "Code", key: "code", width: 16 },

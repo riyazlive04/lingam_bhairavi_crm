@@ -100,8 +100,8 @@ export function PurchaseForm({ action, vendors, projects, items, vendorRates, in
           </Field>
           <Field label="Project (cost center)" hint="Leave empty to receive into stock. With a project, material is issued straight to site.">
             <Select name="projectId" defaultValue={initial.projectId ? String(initial.projectId) : ""}>
-              <option value="">— Into stock —</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}
+              <option value="">Into stock</option>
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
             </Select>
           </Field>
           <Field label="Notes" className="sm:col-span-2 lg:col-span-3">
@@ -142,7 +142,7 @@ export function PurchaseForm({ action, vendors, projects, items, vendorRates, in
         </div>
 
         {lines.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-line p-6 text-center text-sm text-ink-soft">No lines yet — search above to add items from the item master.</p>
+          <p className="rounded-lg border border-dashed border-line p-6 text-center text-sm text-ink-soft">No lines yet. Search above to add items from the item master.</p>
         ) : (
           <div className="space-y-3">
             {lines.map((l, idx) => {
@@ -178,7 +178,7 @@ export function PurchaseForm({ action, vendors, projects, items, vendorRates, in
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-ink-soft">
                       <span>This vendor: {vr?.rate != null ? <>{money(vr.rate)} ({fmtDate(vr.date)}){vsVendor != null && Math.abs(vsVendor) >= 0.5 && <b className={vsVendor > 0 ? "text-red-600" : "text-emerald-600"}> {vsVendor > 0 ? "+" : ""}{vsVendor.toFixed(1)}%</b>}</> : "first purchase"}</span>
-                      <span>Latest (any vendor): {it.latestRate != null ? <>{money(it.latestRate)}{it.latestVendor ? ` · ${it.latestVendor}` : ""}{it.latestDate ? ` (${fmtDate(it.latestDate)})` : " (list)"}</> : "—"}</span>
+                      <span>Latest (any vendor): {it.latestRate != null ? <>{money(it.latestRate)}{it.latestVendor ? ` · ${it.latestVendor}` : ""}{it.latestDate ? ` (${fmtDate(it.latestDate)})` : " (list)"}</> : "-"}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       {jump && <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300"><TriangleAlert size={12} aria-hidden /> {vsLatest! > 0 ? "+" : ""}{vsLatest!.toFixed(1)}% vs latest</span>}
@@ -196,7 +196,7 @@ export function PurchaseForm({ action, vendors, projects, items, vendorRates, in
           <dt className="font-semibold text-ink">Total</dt><dd className="text-right font-semibold tabular-nums">{money(totals.total)}</dd>
           <dt className="text-ink-soft">Lines / qty</dt><dd className="text-right text-ink-soft">{validLines.length} / {fmtQty(validLines.reduce((s, l) => s + l.qty, 0))}</dd>
         </dl>
-        {jumps > 0 && <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">{jumps} line{jumps === 1 ? "" : "s"} differ ≥{JUMP_PCT}% from the current latest price — please double-check before posting.</p>}
+        {jumps > 0 && <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">{jumps} line{jumps === 1 ? "" : "s"} differ ≥{JUMP_PCT}% from the current latest price. Please double-check before posting.</p>}
       </Card>
 
       <div className="sticky bottom-0 z-10 -mx-4 flex flex-wrap gap-2 border-t border-line bg-surface/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">

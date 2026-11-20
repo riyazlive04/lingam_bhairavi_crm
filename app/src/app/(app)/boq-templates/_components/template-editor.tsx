@@ -73,7 +73,7 @@ export function TemplateEditor({
       <Card title="Template details">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Template name" required>
-            <Input name="name" defaultValue={template.name} required maxLength={160} placeholder="e.g. Hydrant System — 100NB to 150NB" />
+            <Input name="name" defaultValue={template.name} required maxLength={160} placeholder="e.g. Hydrant System, 100NB to 150NB" />
           </Field>
           <Field label="System" required>
             <Select name="system" value={system} onChange={(e) => setSystem(e.target.value)} required>
@@ -89,7 +89,7 @@ export function TemplateEditor({
         </div>
       </Card>
 
-      <Card title={`Bill of quantities — ${lines.length} line${lines.length === 1 ? "" : "s"}`} bodyClassName="p-0">
+      <Card title={`Bill of quantities (${lines.length} line${lines.length === 1 ? "" : "s"})`} bodyClassName="p-0">
         {lines.length === 0 ? (
           <p className="p-6 text-center text-sm text-ink-soft">No lines yet. Add items from the item master or free-text lines below.</p>
         ) : (
@@ -135,7 +135,7 @@ export function TemplateEditor({
                               </button>
                             </>
                           ) : (
-                            <span className="text-amber-700 dark:text-amber-400">Free text — priced manually in quotation</span>
+                            <span className="text-amber-700 dark:text-amber-400">Free text, priced manually in the quotation</span>
                           )}
                           <button type="button" className="text-brand-700 hover:underline" onClick={() => setLinkingKey(linkingKey === l.key ? null : l.key)}>
                             {l.itemId != null ? "Change item" : "Link item"}

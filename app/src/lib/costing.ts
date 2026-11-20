@@ -1,5 +1,5 @@
 /**
- * Project cost centre (business rule 5). OWNED BY: Team D (Projects & Costing).
+ * Project cost centre (business rule 5). Maintainer: Sirah Digital.
  *
  * actualCost = Σ |qty|×rate of stock_movements `issue_project`
  *            − Σ |qty|×rate of stock_movements `return`

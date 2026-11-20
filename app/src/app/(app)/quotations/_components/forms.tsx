@@ -23,7 +23,7 @@ export function FollowUpForm({ quotationId, back, idPrefix, compact }: { quotati
       </Field>
       <Field label="Outcome">
         <Select id={`${idPrefix}-outcome`} name="outcome" defaultValue="">
-          <option value="">—</option>
+          <option value="">-</option>
           {FOLLOWUP_OUTCOMES.map((o) => <option key={o} value={o}>{FOLLOWUP_OUTCOME_LABEL[o]}</option>)}
         </Select>
       </Field>

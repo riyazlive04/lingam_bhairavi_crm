@@ -150,7 +150,7 @@ export async function saveQuotation(form: FormData) {
     const all = z.array(lineSchema).max(2000).parse(JSON.parse(String(form.get("lines") ?? "[]")));
     // Rule 3: lines with qty 0 are never saved.
     const lines = all.filter((l) => l.qty > 0);
-    if (!lines.length) throw new Error("Enter a quantity for at least one line — zero-quantity lines are not saved");
+    if (!lines.length) throw new Error("Enter a quantity for at least one line. Lines with zero quantity are not saved");
     if (h.validUntil && h.validUntil < h.quoteDate) throw new Error("Valid-until date must be on or after the quotation date");
 
     const db = await getDb();
@@ -162,7 +162,7 @@ export async function saveQuotation(form: FormData) {
     if (id) {
       [existing] = await db.select().from(quotations).where(eq(quotations.id, id));
       if (!existing) throw new Error("Quotation not found");
-      if (!isEditableStatus(existing.status)) throw new Error(`A ${existing.status} quotation cannot be edited — use Revise`);
+      if (!isEditableStatus(existing.status)) throw new Error(`A ${existing.status} quotation can't be edited. Use Revise instead`);
       const pl = await db.select().from(quotationLines).where(eq(quotationLines.quotationId, id));
       for (const l of pl) prevLines.set(l.id, l);
     }
@@ -213,7 +213,7 @@ export async function saveQuotation(form: FormData) {
     }
     revalidateQuote(qid);
     const skipped = all.length - lines.length;
-    target = `/quotations/${qid}?ok=${encodeURIComponent(`Quotation saved — ${rows.length} line${rows.length === 1 ? "" : "s"}${skipped ? ` (${skipped} zero-qty lines left out)` : ""}`)}`;
+    target = `/quotations/${qid}?ok=${encodeURIComponent(`Quotation saved with ${rows.length} line${rows.length === 1 ? "" : "s"}${skipped ? ` (${skipped} zero-qty lines left out)` : ""}`)}`;
   } catch (e) {
     const back = rawId ? `/quotations/${rawId}/edit` : safeBack(form.get("back"), "/quotations/new");
     target = withMsg(back, "err", errMsg(e));
@@ -234,7 +234,7 @@ export async function markSent(form: FormData) {
     await db.update(quotations).set({ status: "sent", sentAt: new Date(), nextFollowUpDate: next }).where(eq(quotations.id, id));
     await audit(db, user.id, "update", "quotation", id, { status: "sent", nextFollowUpDate: next });
     revalidateQuote(id);
-    target = withMsg(back, "ok", `Marked as sent — follow-up scheduled for ${next}`);
+    target = withMsg(back, "ok", `Marked as sent. Follow-up scheduled for ${next}`);
   } catch (e) {
     target = withMsg(back, "err", errMsg(e));
   }
@@ -325,7 +325,7 @@ export async function markWon(form: FormData) {
         const budget = typeof p.budget === "number" ? p.budget : round2(t.cost + t.erection * factor);
         const [pr] = await tx.insert(projects).values({
           code: projectCode,
-          name: (p.projectName || q.projectName || `${cust?.name ?? "Customer"} — ${q.number}`).slice(0, 200),
+          name: (p.projectName || q.projectName || `${cust?.name ?? "Customer"}, ${q.number}`).slice(0, 200),
           customerId: q.customerId, quotationId: id, status: "planning", siteAddress: q.siteLocation,
           contractValue: t.taxable, budget, notes: `Created from quotation ${q.number}`,
         }).returning({ id: projects.id });
@@ -374,7 +374,7 @@ async function copyQuotation(userId: number, srcId: number, mode: "revise" | "du
   const today = todayIST();
   let number: string, revision: number;
   if (mode === "revise") {
-    if (q.status === "draft") throw new Error("A draft can be edited directly — no revision needed");
+    if (q.status === "draft") throw new Error("A draft can be edited directly, no revision needed");
     if (q.status === "won") throw new Error("A won quotation cannot be revised");
     const base = q.number.replace(/-R\d+$/, "");
     const fam = await db.select({ revision: quotations.revision }).from(quotations)
@@ -434,7 +434,7 @@ export async function duplicateQuotation(form: FormData) {
   try {
     const r = await copyQuotation(user.id, id, "duplicate");
     revalidatePath("/quotations");
-    target = `/quotations/${r.newId}/edit?ok=${encodeURIComponent(`Copied to new draft ${r.number} — use “Refresh prices” for today's costs`)}`;
+    target = `/quotations/${r.newId}/edit?ok=${encodeURIComponent(`Copied to new draft ${r.number}. Use “Refresh prices” for today's costs`)}`;
   } catch (e) {
     target = withMsg(`/quotations/${id}`, "err", errMsg(e));
   }
@@ -468,7 +468,7 @@ export async function refreshPrices(form: FormData) {
   let target: string;
   try {
     const { db, q } = await loadQuote(id);
-    if (q.status !== "draft") throw new Error("Prices can only be refreshed on a draft — use Revise for a sent quotation");
+    if (q.status !== "draft") throw new Error("Prices can only be refreshed on a draft. Use Revise for a sent quotation");
     const changed = await refreshLinePrices(db, id, q.markupPct);
     const t = await recalcQuotation(db, id);
     await audit(db, user.id, "update", "quotation", id, { refreshPrices: changed, grandTotal: t?.grand });
@@ -500,7 +500,7 @@ export async function emailQuotation(form: FormData) {
     const company = await getCompanySettings(db);
     const html = quotationEmailHtml({ q, customer: cust, lines, company, message: p.message, senderName: user.name });
     await queueEmail(db, {
-      to: p.to, cc: p.cc || undefined, subject: `Quotation ${q.number}${q.projectName ? ` — ${q.projectName}` : ""} | ${company.name}`.slice(0, 250),
+      to: p.to, cc: p.cc || undefined, subject: `Quotation ${q.number}${q.projectName ? `: ${q.projectName}` : ""} | ${company.name}`.slice(0, 250),
       html, entityType: "quotation", entityId: id,
     });
     let extra = "";

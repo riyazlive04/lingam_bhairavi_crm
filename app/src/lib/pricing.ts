@@ -1,5 +1,5 @@
 /**
- * Pricing rules for quotations (CONVENTIONS business rules 1–3). OWNED BY: Team B (Quotations).
+ * Pricing rules for quotations (CONVENTIONS business rules 1 to 3). Maintainer: Sirah Digital.
  *
  * Pure functions (no server-only imports) so they can be used in client components and unit tests.
  * `getPricingSettings` only needs a Drizzle db handle and uses the relational query API, so it adds
@@ -51,7 +51,7 @@ export type PriceableItem = {
   erectionRate?: number | null;
 };
 
-/** Rule 1 — latest cost = lastPurchaseRate ?? listPrice ?? 0. */
+/** Rule 1: latest cost = lastPurchaseRate ?? listPrice ?? 0. */
 export function latestCost(item: PriceableItem): number {
   const v = item.lastPurchaseRate ?? item.listPrice ?? 0;
   const n = Number(v);
@@ -59,7 +59,7 @@ export function latestCost(item: PriceableItem): number {
 }
 
 /**
- * Rule 2 — suggested rates. markupPct = quotation markup; when null/undefined falls back to the
+ * Rule 2: suggested rates. markupPct = quotation markup; when null/undefined falls back to the
  * item's own markupPct, then to the default 40%.
  */
 export function suggestRates(item: PriceableItem, markupPct?: number | null): { costRate: number; supplyRate: number; erectionRate: number } {
@@ -93,7 +93,7 @@ export type QuoteTotals = {
 };
 
 /**
- * Rule 3 — quotation totals. Lines with qty ≤ 0 (or non-finite) are ignored.
+ * Rule 3: quotation totals. Lines with qty ≤ 0 (or non-finite) are ignored.
  * supply = Σ qty×supplyRate; erection = Σ qty×erectionRate; discount = (supply+erection)×discountPct/100;
  * tax = (supply+erection−discount)×gstPct/100; grand = supply+erection−discount+tax; cost = Σ qty×costRate.
  */

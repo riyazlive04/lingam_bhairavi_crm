@@ -1,5 +1,5 @@
 /**
- * Quotation helpers shared by quotation pages, export, print and follow-ups. OWNED BY: Team B (Quotations).
+ * Quotation helpers shared by quotation pages, export, print and follow-ups. Maintainer: Sirah Digital.
  * Pure functions + settings readers (relational query API → no runtime schema imports), safe to unit-test.
  */
 import type { DB } from "@/db";
@@ -140,7 +140,7 @@ export type CompanySettings = {
 
 export const DEFAULT_COMPANY: CompanySettings = {
   name: "Linga Bhairavi Enterprise",
-  tagline: "Fire Protection Systems — Turnkey Solutions",
+  tagline: "Fire Protection Systems: Turnkey Solutions",
   address: "Hosur, Tamil Nadu",
   phone: "",
   email: "",
@@ -149,7 +149,7 @@ export const DEFAULT_COMPANY: CompanySettings = {
   quoteTerms: [
     "Prices are exclusive of GST, charged extra as applicable.",
     "Payment: 50% advance with PO, balance against delivery / completion.",
-    "Delivery: 2–4 weeks from the date of confirmed PO and advance.",
+    "Delivery: 2 to 4 weeks from the date of confirmed PO and advance.",
     "Civil work, power supply and scaffolding at site in client scope unless stated.",
     "Quantities are as per BOQ; actuals will be billed as per site measurement.",
   ].join("\n"),

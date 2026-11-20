@@ -1,4 +1,4 @@
-/** HTML email body for a quotation (inline styles — email clients ignore stylesheets). */
+/** HTML email body for a quotation (inline styles, because email clients ignore stylesheets). */
 import "server-only";
 import type { customers, quotationLines, quotations } from "@/db/schema";
 import { fmtDate, money, qty } from "@/lib/format";

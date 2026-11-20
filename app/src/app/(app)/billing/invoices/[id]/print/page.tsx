@@ -98,7 +98,7 @@ export default async function InvoicePrintPage({ params }: { params: Promise<{ i
                 <tr key={l.id}>
                   <td className={td}>{i + 1}</td>
                   <td className={`${td} whitespace-normal`}>{l.description}</td>
-                  <td className={td}>{hsn || "—"}</td>
+                  <td className={td}>{hsn || "-"}</td>
                   <td className={`${td} text-right tabular-nums`}>{qty(l.qty)} {uom ?? ""}</td>
                   <td className={`${td} text-right tabular-nums`}>{money(l.rate)}</td>
                   <td className={`${td} text-right tabular-nums`}>{money(l.amount)}</td>

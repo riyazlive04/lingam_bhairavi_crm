@@ -42,7 +42,7 @@ export async function ProjectForm({ db, values, showFinancials, canAssign }: { d
       <Card title="Project">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Project name" required className="sm:col-span-2">
-            <Input name="name" required maxLength={200} defaultValue={v.name ?? ""} placeholder="e.g. ABC Foods — Hydrant & Sprinkler, Unit 2" />
+            <Input name="name" required maxLength={200} defaultValue={v.name ?? ""} placeholder="e.g. ABC Foods, Hydrant & Sprinkler, Unit 2" />
           </Field>
           <Field label="Customer" required>
             <Select name="customerId" required defaultValue={v.customerId ?? ""}>
@@ -52,7 +52,7 @@ export async function ProjectForm({ db, values, showFinancials, canAssign }: { d
           </Field>
           <Field label="Linked quotation" hint="Optional. Must belong to the same customer. New projects copy contract value & budget from it when left blank.">
             <Select name="quotationId" defaultValue={v.quotationId ?? ""}>
-              <option value="">— none —</option>
+              <option value="">None</option>
               {quoteList.map((q) => (
                 <option key={q.id} value={q.id}>
                   {q.number} · {q.customerName}{q.projectName ? ` · ${q.projectName}` : ""} ({q.status}{showFinancials ? `, ${money0(q.grandTotal)}` : ""})
@@ -68,7 +68,7 @@ export async function ProjectForm({ db, values, showFinancials, canAssign }: { d
           <Field label="Site engineer" hint={canAssign ? undefined : "Only the owner can re-assign the engineer."}>
             {canAssign ? (
               <Select name="engineerId" defaultValue={v.engineerId ?? ""}>
-                <option value="">— unassigned —</option>
+                <option value="">Unassigned</option>
                 {engineerList.filter((e) => e.active || e.id === v.engineerId).map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
               </Select>
             ) : (

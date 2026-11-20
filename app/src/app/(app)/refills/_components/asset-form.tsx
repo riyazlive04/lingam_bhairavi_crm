@@ -39,7 +39,7 @@ export function AssetForm({ customers, values, today }: { customers: { id: numbe
           </Select>
         </Field>
         <Field label="Location" hint="Site / block / floor">
-          <Input name="location" maxLength={200} defaultValue={v.location ?? ""} placeholder="e.g. Unit 2 — Ground floor, Stores" />
+          <Input name="location" maxLength={200} defaultValue={v.location ?? ""} placeholder="e.g. Unit 2, Ground floor, Stores" />
         </Field>
         <Field label="Type" required>
           <Input name="extType" list="ext-types" required maxLength={60} defaultValue={v.extType ?? ""} placeholder="e.g. ABC 6 Kg" />

@@ -62,7 +62,7 @@ export default async function PrintQuotationPage({ params }: { params: Promise<{
         <div className="mb-4 grid gap-3 sm:grid-cols-2">
           <div className="rounded border border-[#ccc] p-2">
             <div className="text-[10px] font-semibold uppercase text-[#666]">To</div>
-            <div className="font-semibold">{cust?.name ?? "—"}</div>
+            <div className="font-semibold">{cust?.name ?? "-"}</div>
             {cust?.contactPerson && <div>Kind attn: {cust.contactPerson}</div>}
             {cust?.address && <div className="whitespace-pre-line">{cust.address}</div>}
             {(cust?.city || cust?.state) && <div>{[cust?.city, cust?.state].filter(Boolean).join(", ")}</div>}
@@ -75,9 +75,9 @@ export default async function PrintQuotationPage({ params }: { params: Promise<{
                 ["Quotation No.", q.number],
                 ["Date", fmtDate(q.quoteDate)],
                 ["Valid until", fmtDate(q.validUntil)],
-                ["Project", q.projectName || "—"],
-                ["Site", q.siteLocation || "—"],
-                ["System", q.system ? SYSTEMS[q.system as SystemKey] ?? q.system : "—"],
+                ["Project", q.projectName || "-"],
+                ["Site", q.siteLocation || "-"],
+                ["System", q.system ? SYSTEMS[q.system as SystemKey] ?? q.system : "-"],
               ] as const).map(([k, v]) => (
                 <tr key={k}>
                   <td className="w-28 border border-[#ccc] bg-[#f5f5f5] px-2 py-0.5 font-semibold">{k}</td>

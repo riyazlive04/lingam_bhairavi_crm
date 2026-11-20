@@ -29,7 +29,7 @@ export async function runAllAgentsAction() {
     const t = r.totals;
     target = back(t.errors ? "err" : "ok",
       `Ran ${r.outcomes.filter((o) => o.status !== "skipped").length} agents: ${t.alertsCreated} new alerts, ${t.alertsResolved} auto-resolved, ${t.emailsQueued} emails queued` +
-      (t.errors ? ` — ${t.errors} agent(s) failed, see run history` : ""));
+      (t.errors ? `. ${t.errors} agent(s) failed, see the run history` : ""));
   } catch (e) {
     target = back("err", errMsg(e));
   }

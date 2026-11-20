@@ -4,14 +4,14 @@ const inr0 = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR"
 const num = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
 
 export const round2 = (n: number) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-export const money = (n: number | null | undefined) => (n == null || Number.isNaN(Number(n)) ? "—" : inr.format(Number(n)));
-export const money0 = (n: number | null | undefined) => (n == null || Number.isNaN(Number(n)) ? "—" : inr0.format(Number(n)));
-export const qty = (n: number | null | undefined) => (n == null ? "—" : num.format(Number(n)));
-export const pct = (n: number | null | undefined, d = 1) => (n == null || !Number.isFinite(Number(n)) ? "—" : `${Number(n).toFixed(d)}%`);
+export const money = (n: number | null | undefined) => (n == null || Number.isNaN(Number(n)) ? "-" : inr.format(Number(n)));
+export const money0 = (n: number | null | undefined) => (n == null || Number.isNaN(Number(n)) ? "-" : inr0.format(Number(n)));
+export const qty = (n: number | null | undefined) => (n == null ? "-" : num.format(Number(n)));
+export const pct = (n: number | null | undefined, d = 1) => (n == null || !Number.isFinite(Number(n)) ? "-" : `${Number(n).toFixed(d)}%`);
 
 /** Compact INR: ₹1.25 L, ₹2.4 Cr */
 export function moneyShort(n: number | null | undefined) {
-  if (n == null) return "—";
+  if (n == null) return "-";
   const v = Number(n), a = Math.abs(v);
   if (a >= 1e7) return `₹${(v / 1e7).toFixed(2)} Cr`;
   if (a >= 1e5) return `₹${(v / 1e5).toFixed(2)} L`;
@@ -21,13 +21,13 @@ export function moneyShort(n: number | null | undefined) {
 
 /** Dates are stored as 'YYYY-MM-DD' strings (Postgres date). */
 export function fmtDate(d: string | Date | null | undefined) {
-  if (!d) return "—";
+  if (!d) return "-";
   const dt = typeof d === "string" ? new Date(d.length === 10 ? d + "T00:00:00" : d) : d;
-  if (Number.isNaN(dt.getTime())) return "—";
+  if (Number.isNaN(dt.getTime())) return "-";
   return dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 export function fmtDateTime(d: string | Date | null | undefined) {
-  if (!d) return "—";
+  if (!d) return "-";
   const dt = typeof d === "string" ? new Date(d) : d;
   return dt.toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" });
 }

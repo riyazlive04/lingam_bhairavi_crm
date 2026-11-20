@@ -121,7 +121,7 @@ export function QuoteEditor({
   function addItem(c: CatalogItem) {
     setLines((ls) => [...ls, {
       key: newKey(), lineId: null, section: targetSection, boqRef: "", itemId: c.id,
-      description: [c.name, c.make ? `— Make: ${c.make}` : ""].filter(Boolean).join(" "), uom: c.uom, qty: 1,
+      description: [c.name, c.make ? `(Make: ${c.make})` : ""].filter(Boolean).join(" "), uom: c.uom, qty: 1,
       costRate: c.cost, supplyRate: c.cost != null ? priceFor(c.cost, markup) : c.supply, erectionRate: c.erectionRate, remarks: "", manual: false,
     }]);
     setOnlyQty(false);
@@ -203,7 +203,7 @@ export function QuoteEditor({
       )}
 
       <Card
-        title={`Bill of quantities — ${withQty} of ${lines.length} line${lines.length === 1 ? "" : "s"} with quantity`}
+        title={`Bill of quantities: ${withQty} of ${lines.length} line${lines.length === 1 ? "" : "s"} with quantity`}
         bodyClassName="p-0"
       >
         <div className="flex flex-col gap-3 border-b border-line p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -222,7 +222,7 @@ export function QuoteEditor({
         </div>
 
         {lines.length === 0 ? (
-          <p className="p-6 text-center text-sm text-ink-soft">Blank quotation — add items from the item master or free-text lines below.</p>
+          <p className="p-6 text-center text-sm text-ink-soft">Blank quotation. Add items from the item master or free-text lines below.</p>
         ) : visible.length === 0 ? (
           <p className="p-6 text-center text-sm text-ink-soft">No lines match. {onlyQty && "Untick “Show only lines with qty” to see all template lines."}</p>
         ) : (
@@ -288,7 +288,7 @@ export function QuoteEditor({
                               <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-faint">
                                 {c ? (
                                   <span className="inline-flex items-center gap-1"><Link2 className="h-3 w-3" aria-hidden />{c.code}{c.make ? ` · ${c.make}` : ""}</span>
-                                ) : l.itemId != null ? <span>Item #{l.itemId}</span> : <span className="text-amber-700 dark:text-amber-400">Free text — enter rates</span>}
+                                ) : l.itemId != null ? <span>Item #{l.itemId}</span> : <span className="text-amber-700 dark:text-amber-400">Free text, enter rates</span>}
                                 {c?.lastSaleRate != null && <span>Last quoted/sold {money(c.lastSaleRate)}</span>}
                                 {c && l.manual && (
                                   <button type="button" className="text-brand-700 hover:underline" onClick={() => resetLinePrice(l)}>Use latest price</button>
@@ -310,12 +310,12 @@ export function QuoteEditor({
                               <input aria-label="Supply rate" type="number" min={0} step="0.01" inputMode="decimal" className={inputClass + " px-2 text-right tabular-nums"}
                                 value={l.supplyRate} onChange={(e) => update(l.key, { supplyRate: n(e.target.value), manual: true })} />
                             </td>
-                            <td className="px-2 py-2 pt-4 text-right tabular-nums">{active ? money(l.qty * l.supplyRate) : "—"}</td>
+                            <td className="px-2 py-2 pt-4 text-right tabular-nums">{active ? money(l.qty * l.supplyRate) : "-"}</td>
                             <td className="border-l border-line px-2 py-2">
                               <input aria-label="Erection rate" type="number" min={0} step="0.01" inputMode="decimal" className={inputClass + " px-2 text-right tabular-nums"}
                                 value={l.erectionRate} onChange={(e) => update(l.key, { erectionRate: n(e.target.value) })} />
                             </td>
-                            <td className="px-2 py-2 pt-4 text-right tabular-nums">{active ? money(l.qty * l.erectionRate) : "—"}</td>
+                            <td className="px-2 py-2 pt-4 text-right tabular-nums">{active ? money(l.qty * l.erectionRate) : "-"}</td>
                             {showCost && (
                               <td className="border-l border-line px-2 py-2 text-right tabular-nums">
                                 {l.itemId == null ? (
@@ -326,7 +326,7 @@ export function QuoteEditor({
                             )}
                             {showCost && (
                               <td className={cx("px-2 py-2 pt-4 text-right tabular-nums", warn === "below_cost" && "text-red-700 dark:text-red-400", warn === "low_margin" && "text-amber-700 dark:text-amber-400")}>
-                                {l.costRate ? pct(lineMarginPct({ supplyRate: l.supplyRate, costRate: l.costRate })) : "—"}
+                                {l.costRate ? pct(lineMarginPct({ supplyRate: l.supplyRate, costRate: l.costRate })) : "-"}
                               </td>
                             )}
                             <td className="border-l border-line px-2 py-2">

@@ -1,5 +1,5 @@
 /**
- * Rule-based automation agents — shared types. OWNED BY: Team E (Automation Agents).
+ * Rule-based automation agents: shared types. Maintainer: Sirah Digital.
  * Agents are deterministic SQL/TypeScript rules. They never call an LLM / AI service.
  */
 import type { z } from "zod";

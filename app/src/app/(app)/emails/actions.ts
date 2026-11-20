@@ -10,7 +10,7 @@ import { audit } from "@/lib/audit";
 import { flushOutbox, smtpConfigured } from "@/lib/email";
 
 const msg = (path: string, key: "ok" | "err", m: string) => `${path}${path.includes("?") ? "&" : "?"}${key}=${encodeURIComponent(m)}`;
-const NOT_CONFIGURED = "SMTP is not configured — e-mails are only logged (demo mode). Set the SMTP_* environment variables to send.";
+const NOT_CONFIGURED = "SMTP isn't configured, so e-mails are only logged (demo mode). Set the SMTP_* environment variables to send.";
 
 /** Send everything currently queued. */
 export async function sendQueuedNow() {

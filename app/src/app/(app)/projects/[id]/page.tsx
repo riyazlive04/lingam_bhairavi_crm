@@ -73,7 +73,7 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
                 tone={c.margin < 0 ? "bad" : c.contractValue && c.marginPct < 10 ? "warn" : "good"}
               />
             ) : (
-              <Stat label="Budget used" value={c.budget ? pct(c.budgetUsedPct, 0) : "—"} tone={c.budgetUsedPct > 100 ? "bad" : c.budgetUsedPct >= 80 ? "warn" : "default"} />
+              <Stat label="Budget used" value={c.budget ? pct(c.budgetUsedPct, 0) : "-"} tone={c.budgetUsedPct > 100 ? "bad" : c.budgetUsedPct >= 80 ? "warn" : "default"} />
             )}
           </div>
 
@@ -82,7 +82,7 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
             {c.budget > 0 && (
               <p className="mt-2 text-sm text-ink-soft">
                 {money0(c.actualCost)} of {money0(c.budget)} spent
-                {c.budgetUsedPct > 100 && <span className="font-semibold text-red-600"> — over budget by {money0(-remainingBudget)}</span>}
+                {c.budgetUsedPct > 100 && <span className="font-semibold text-red-600">, over budget by {money0(-remainingBudget)}</span>}
               </p>
             )}
           </Card>
@@ -94,7 +94,7 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
                   <BreakRow label="Materials issued to site" value={c.materials} />
                   <BreakRow label="Less: materials returned" value={-c.returns} />
                   {Object.entries(c.expensesByCategory).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
-                    <BreakRow key={k} label={`Expense — ${catLabel(k)}`} value={v} />
+                    <BreakRow key={k} label={`Expense: ${catLabel(k)}`} value={v} />
                   ))}
                   {Object.keys(c.expensesByCategory).length === 0 && <BreakRow label="Approved expenses" value={0} />}
                   <tr className="bg-muted font-semibold">
@@ -214,7 +214,7 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
                       </Td>
                       <Td className="whitespace-nowrap">{fmtDate(e.date)}</Td>
                       <Td>{catLabel(e.category)}</Td>
-                      <Td>{e.userName ?? "—"}</Td>
+                      <Td>{e.userName ?? "-"}</Td>
                       <Td><StatusBadge status={e.status} /></Td>
                       <Td className="text-right tabular-nums">
                         {money(e.amount)}
@@ -282,7 +282,7 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
               {s.orders.map((o) => (
                 <tr key={o.id}>
                   <Td><Link className="text-brand-700 hover:underline dark:text-brand-300" href={`/orders/${o.id}`}>{o.number}</Link></Td>
-                  <Td>{o.customerPoNumber ?? "—"}</Td>
+                  <Td>{o.customerPoNumber ?? "-"}</Td>
                   <Td className="whitespace-nowrap">{fmtDate(o.orderDate)}</Td>
                   <Td><StatusBadge status={o.status} /></Td>
                   <Td><BudgetBarNeutral value={o.deliveredPct} /></Td>
@@ -370,10 +370,10 @@ function ProjectInfo({ s, canQuotes }: { s: NonNullable<Awaited<ReturnType<typeo
         ["Code", p.code],
         ["Customer", s.customerName],
         ["Site engineer", s.engineerName ?? "Unassigned"],
-        ["Quotation", s.quotationNumber && p.quotationId ? (canQuotes ? <Link className="text-brand-700 hover:underline dark:text-brand-300" href={`/quotations/${p.quotationId}`}>{s.quotationNumber}</Link> : s.quotationNumber) : "—"],
+        ["Quotation", s.quotationNumber && p.quotationId ? (canQuotes ? <Link className="text-brand-700 hover:underline dark:text-brand-300" href={`/quotations/${p.quotationId}`}>{s.quotationNumber}</Link> : s.quotationNumber) : "-"],
         ["Start", fmtDate(p.startDate)],
         ["End", fmtDate(p.endDate)],
-        ["Site address", p.siteAddress || "—"],
+        ["Site address", p.siteAddress || "-"],
       ]}
     />
   );

@@ -1,5 +1,5 @@
 "use client";
-/** Searchable item picker (combobox) — search by code / name / size / make / group. Shared by BOQ templates & quotations. */
+/** Searchable item picker (combobox): search by code / name / size / make / group. Shared by BOQ templates & quotations. */
 import { useId, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { inputClass } from "@/components/ui";

@@ -9,7 +9,7 @@ export const ActionItemSchema = z.object({
   done: z.boolean().default(false),
 });
 
-/** Shape stored in meeting_note_revisions.snapshot — the full note as it was before an edit. */
+/** Shape stored in meeting_note_revisions.snapshot: the full note as it was before an edit. */
 export type NoteSnapshot = {
   title: string;
   meetingDate: string;

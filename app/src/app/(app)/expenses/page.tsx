@@ -138,14 +138,14 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
 
       {rows.length === 0 ? (
         <EmptyState title="No vouchers for this selection" action={<LinkButton href="/expenses/new">Enter a voucher</LinkButton>}>
-          Petrol, lodging, food, labour — enter every site expense so the project cost is complete.
+          Petrol, lodging, food, labour: enter every site expense so the project cost stays complete.
         </EmptyState>
       ) : (
         <form action={reviewExpenses}>
           <input type="hidden" name="back" value={`/expenses${qs ? `?${qs}` : ""}`} />
           {approver && reviewable > 0 && (
             <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface p-3">
-              <span className="text-sm text-ink-soft">{reviewable} awaiting your review — tick vouchers, then</span>
+              <span className="text-sm text-ink-soft">{reviewable} awaiting your review. Tick the vouchers, then</span>
               <SubmitButton name="decision" value="approve" variant="success" size="sm" pendingText="Approving…"><Check className="h-4 w-4" aria-hidden /> Approve selected</SubmitButton>
               <SubmitButton name="decision" value="reject" variant="danger" size="sm" pendingText="Rejecting…" confirm="Reject the selected vouchers?"><X className="h-4 w-4" aria-hidden /> Reject selected</SubmitButton>
             </div>
@@ -171,7 +171,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
                     </Td>
                     <Td className="whitespace-nowrap">{fmtDate(r.date)}</Td>
                     <Td>{categoryLabel(r.category)}</Td>
-                    {approver && <Td>{r.userName ?? "—"}</Td>}
+                    {approver && <Td>{r.userName ?? "-"}</Td>}
                     <Td>
                       {allocs.length ? (
                         <div className="flex flex-wrap gap-1">
@@ -196,7 +196,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
               })}
             </tbody>
           </Table>
-          {rows.length >= 500 && <p className="mt-2 text-xs text-ink-soft">Showing the latest 500 vouchers — narrow the filters to see older ones.</p>}
+          {rows.length >= 500 && <p className="mt-2 text-xs text-ink-soft">Showing the latest 500 vouchers. Narrow the filters to see older ones.</p>}
         </form>
       )}
 

@@ -1,9 +1,9 @@
-# Security Review — LBE Fire Safety CRM
+# Security Review: LBE Fire Safety CRM
 
 | | |
 |---|---|
 | **Date** | 2026-11-21 |
-| **Reviewer** | Security Engineer (Sirah Digital AI team) |
+| **Reviewer** | Security Engineer, Sirah Digital (https://sirahdigital.in/) |
 | **Build reviewed** | `app/` source as of this date (Next.js 15.5.29, React 19.1, Drizzle 0.45, jose 6, zod 4) |
 | **Status** | All High/Medium findings fixed in code. The server on :3100 runs the **previous build**: fixes marked *verify after rebuild* must be re-checked once the Manager rebuilds. |
 
@@ -43,7 +43,7 @@ Severity: **H** high, **M** medium, **L** low, **I** informational.
 | S-04 | M | Headers | There was no Content-Security-Policy. `X-Frame-Options` was set only by the middleware, so `/login` and `/forbidden` could be framed (clickjacking). **Fix:** CSP and `X-Frame-Options: DENY` are now set in `next.config.ts` for every path (policy in §6). | `next.config.ts:9-35` | **Fixed** (verify after rebuild) |
 | S-05 | M | AuthZ (over-privilege) | `orders:write` includes `store`, which is needed for deliveries and line status. As a side effect, Store could also **create, close, cancel and reopen** sales orders, which the RBAC design reserves for Sales and the Owner. **Fix:** `createOrder` and `changeOrderStatus` now also require the `admin` or `sales` role. | `src/app/(app)/orders/actions.ts:29,59,207` | **Fixed** |
 | S-06 | M | Info disclosure | Many actions put `e.message` for **any** error into the `?err=` flash. With Drizzle that message is `Failed query: <SQL> params: …`, and Postgres messages name tables and constraints. Triggers included: invalid calendar dates, ids above int4, duplicate-key races, and JSON syntax errors. **Fix:** new `publicError()` helper. It shows zod messages, deliberate `new Error("…")` messages and the module's own error classes. Everything else is logged on the server, and the user sees a generic message. Applied to agents, alerts, boq-templates, customers, follow-ups, items, purchases, quotations, stock and vendors. | `src/lib/errors.ts`; the listed `actions.ts` files | **Fixed** |
-| S-07 | L | Robustness | Two values built on the server could exceed their varchar column length and break the action: the reminder e-mail subject (company name up to 200 + text > `varchar(250)`), and the fallback project name on "mark won" (customer name + quote number > `varchar(200)`). **Fix:** both are now truncated (`.slice`). | `src/lib/billing.ts:400`; `src/app/(app)/quotations/actions.ts:328` | **Fixed** |
+| S-07 | L | Reliability | Two values built on the server could exceed their varchar column length and break the action: the reminder e-mail subject (company name up to 200 + text > `varchar(250)`), and the fallback project name on "mark won" (customer name + quote number > `varchar(200)`). **Fix:** both are now truncated (`.slice`). | `src/lib/billing.ts:400`; `src/app/(app)/quotations/actions.ts:328` | **Fixed** |
 | S-08 | L | Logging (A09) | Failed logins were not audited. **Fix:** an `audit(…, "login_failed", …)` entry records the IP, the e-mail entered and the reason. | `src/app/api/auth/login/route.ts:73` | **Fixed** |
 | S-09 | L | CSRF (login) | A cross-site form could POST to `/api/auth/login` (login CSRF, which signs the victim in to the attacker's account). **Fix:** if an `Origin` header is present, its host must match the request host. | `src/app/api/auth/login/route.ts:38-48` | **Fixed** (verify after rebuild) |
 | S-10 | L | DoS | The login throttle map grew without limit, one entry per IP + e-mail. **Fix:** expired entries are pruned once the map reaches 5,000 keys. | `src/app/api/auth/login/route.ts:50-53` | **Fixed** |
@@ -67,23 +67,23 @@ R = read, W = write (create/update). Record-level rules are listed under the tab
 | Module | admin | sales | purchase | accounts | engineer | store |
 |---|---|---|---|---|---|---|
 | Dashboard | RW | R | R | R | R | R |
-| Quotations | RW | RW | R | R | — | — |
-| Follow-ups | RW | RW | — | — | — | — |
-| BOQ templates | RW | RW | R | — | — | — |
+| Quotations | RW | RW | R | R | - | - |
+| Follow-ups | RW | RW | - | - | - | - |
+| BOQ templates | RW | RW | R | - | - | - |
 | Sales orders | RW | RW | R | R | R | RW¹ |
-| Projects | RW | R | R | R | RW² | — |
+| Projects | RW | R | R | R | RW² | - |
 | Expenses | RW + approve | RW own³ | RW own³ | RW own + approve³ | RW own³ | RW own³ |
-| Purchases | RW | — | RW | RW | — | R |
+| Purchases | RW | - | RW | RW | - | R |
 | Items | RW | R | RW | R | R⁴ | R⁴ |
-| Vendors | RW | — | RW | R | — | — |
-| Customers | RW | RW | — | RW | R | — |
-| Stock | RW | R | R | — | R⁴ | RW |
-| Refills | RW | RW | — | R | RW | — |
-| Billing (invoices, payments, outstanding) | RW | — | — | RW | — | — |
+| Vendors | RW | - | RW | R | - | - |
+| Customers | RW | RW | - | RW | R | - |
+| Stock | RW | R | R | - | R⁴ | RW |
+| Refills | RW | RW | - | R | RW | - |
+| Billing (invoices, payments, outstanding) | RW | - | - | RW | - | - |
 | Agents / alerts | RW | R⁵ | R⁵ | R⁵ | R⁵ | R⁵ |
-| E-mail outbox | RW | — | — | RW | — | — |
-| Meeting notes | RW | R | — | — | — | — |
-| Settings, users, audit log | RW | — | — | — | — | — |
+| E-mail outbox | RW | - | - | RW | - | - |
+| Meeting notes | RW | R | - | - | - | - |
+| Settings, users, audit log | RW | - | - | - | - | - |
 
 1. Store has write access only for deliveries and line status. Creating, closing, cancelling and reopening orders is limited to admin and sales (S-05).
 2. Engineers edit only projects assigned to them. They cannot re-assign a project or change contract value or budget. Contract value and margin are hidden, and the costing export returns 403 (verified).
@@ -175,7 +175,7 @@ No secret is logged:
 
 The password reset flash message does not echo the new password.
 
-## 8. Data protection — India DPDP Act 2023
+## 8. Data protection: India DPDP Act 2023
 
 **Personal data stored:**
 - Customer and vendor contact persons: name, phone, e-mail, address, GSTIN (GSTIN identifies the business, but for a sole proprietor it can identify a person).

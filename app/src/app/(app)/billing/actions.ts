@@ -168,7 +168,7 @@ export async function recordPayment(form: FormData) {
     });
     await audit(db, user.id, "create", "payment", res.paymentId, { direction: "in", invoiceId: d.invoiceId, amount: d.amount, mode: d.mode, status: res.status });
     revalidatePath("/billing", "layout");
-    target = withMsg(`/billing/invoices/${d.invoiceId}`, "ok", `Payment recorded${res.status === "paid" ? " — invoice fully paid" : ""}`);
+    target = withMsg(`/billing/invoices/${d.invoiceId}`, "ok", `Payment recorded${res.status === "paid" ? ". The invoice is now fully paid" : ""}`);
   } catch (e) {
     target = withMsg(invoiceId ? `/billing/invoices/${invoiceId}` : "/billing/invoices", "err", errMsg(e));
   }
@@ -185,7 +185,7 @@ export async function sendReminderNow(form: FormData) {
     const db = await getDb();
     const [inv] = await db.select().from(salesInvoices).where(eq(salesInvoices.id, invoiceId));
     if (!inv) throw new UserError("Invoice not found");
-    if (inv.status !== "issued" && inv.status !== "partially_paid") throw new UserError(`Invoice is ${inv.status.replace("_", " ")} — no reminder needed`);
+    if (inv.status !== "issued" && inv.status !== "partially_paid") throw new UserError(`This invoice is ${inv.status.replace("_", " ")}, so no reminder is needed`);
     const [cust] = await db.select().from(customers).where(eq(customers.id, inv.customerId));
     if (!cust?.email) throw new UserError("Customer has no e-mail address. Add it in the customer master first.");
     const open = await openSalesInvoices(db, { customerId: inv.customerId });
@@ -200,10 +200,10 @@ export async function sendReminderNow(form: FormData) {
     });
     const emailId = await queueEmail(db, { to: cust.email, subject, html, agent: "manual", entityType: "sales_invoice", entityId: inv.id });
     await db.update(salesInvoices).set({ reminderCount: sql`${salesInvoices.reminderCount} + 1`, lastReminderAt: new Date() }).where(eq(salesInvoices.id, inv.id));
-    let delivery = "logged to the outbox (demo mode — SMTP not configured)";
+    let delivery = "logged to the outbox (demo mode, SMTP is not configured)";
     if (smtpConfigured()) {
       const r = await flushOutbox(db, 5);
-      delivery = r.failed ? "queued — sending failed, see Email outbox" : "sent";
+      delivery = r.failed ? "queued, but sending failed. Check the Email outbox" : "sent";
     }
     await audit(db, user.id, "email", "sales_invoice", inv.id, { kind: "reminder", to: cust.email, emailId });
     revalidatePath(`/billing/invoices/${inv.id}`);
@@ -228,7 +228,7 @@ export async function cancelInvoice(form: FormData) {
       if (!inv) throw new UserError("Invoice not found");
       if (inv.status === "cancelled") throw new UserError("Invoice is already cancelled");
       const [{ n }] = await tx.select({ n: sql<number>`count(*)`.mapWith(Number) }).from(payments).where(eq(payments.salesInvoiceId, invoiceId));
-      if (n > 0 || Number(inv.paidAmount) > 0) throw new UserError("Payments are recorded against this invoice — it cannot be cancelled");
+      if (n > 0 || Number(inv.paidAmount) > 0) throw new UserError("This invoice has payments recorded against it, so it cannot be cancelled");
       const lines = await tx.select().from(salesInvoiceLines).where(eq(salesInvoiceLines.invoiceId, invoiceId));
       for (const l of lines) {
         if (l.orderLineId) {
@@ -279,7 +279,7 @@ export async function emailStatement(form: FormData) {
     let delivery = "logged to the outbox (demo mode)";
     if (smtpConfigured()) {
       const r = await flushOutbox(db, 5);
-      delivery = r.failed ? "queued — sending failed, see Email outbox" : "sent";
+      delivery = r.failed ? "queued, but sending failed. Check the Email outbox" : "sent";
     }
     await audit(db, user.id, "email", "customer", customerId, { kind: "statement", to: cust.email, emailId, closing: ledger.closing });
     revalidatePath("/emails");
@@ -311,7 +311,7 @@ export async function recordVendorPayment(form: FormData) {
     const res = await db.transaction(async (tx) => {
       const [pi] = await tx.select().from(purchaseInvoices).where(eq(purchaseInvoices.id, d.purchaseInvoiceId));
       if (!pi) throw new UserError("Purchase invoice not found");
-      if (pi.status !== "posted") throw new UserError(`Purchase invoice is ${pi.status} — only posted invoices can be paid`);
+      if (pi.status !== "posted") throw new UserError(`This purchase invoice is ${pi.status}. Only posted invoices can be paid`);
       const due = outstandingOf(pi.total, pi.paidAmount);
       if (d.amount > due + PAID_TOLERANCE) throw new UserError(`Amount exceeds the balance payable (${due.toFixed(2)})`);
       const [p] = await tx.insert(payments).values({

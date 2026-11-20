@@ -96,7 +96,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
     <>
       <PageHeader
         title={<span className="flex flex-wrap items-center gap-2">{o.number} <StatusBadge status={o.status} /></span>}
-        subtitle={<>{order.customerName ?? "—"}{o.customerPoNumber ? ` · PO ${o.customerPoNumber}` : ""}{order.projectName ? ` · ${order.projectName}` : ""}</>}
+        subtitle={<>{order.customerName ?? "-"}{o.customerPoNumber ? ` · PO ${o.customerPoNumber}` : ""}{order.projectName ? ` · ${order.projectName}` : ""}</>}
         back={{ href: "/orders", label: "Orders" }}
         actions={
           <>
@@ -137,21 +137,21 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
       {isOpen && overdue.length > 0 && (
         <div role="alert" className="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-          <span><strong>{overdue.length} line{overdue.length === 1 ? " is" : "s are"} overdue</strong> — expected date has passed and the item is not yet delivered. Update the status / expected date or record the delivery.</span>
+          <span><strong>{overdue.length} line{overdue.length === 1 ? " is" : "s are"} overdue</strong>: the expected date has passed and the item has not been delivered yet. Update the status / expected date or record the delivery.</span>
         </div>
       )}
 
       <div className="mb-4 grid gap-4 lg:grid-cols-3">
         <Card title="Order details" className="lg:col-span-2">
           <DL items={[
-            ["Customer", order.customerName ?? "—"],
-            ["Customer PO", o.customerPoNumber ? `${o.customerPoNumber}${o.customerPoDate ? ` dated ${fmtDate(o.customerPoDate)}` : ""}` : "—"],
+            ["Customer", order.customerName ?? "-"],
+            ["Customer PO", o.customerPoNumber ? `${o.customerPoNumber}${o.customerPoDate ? ` dated ${fmtDate(o.customerPoDate)}` : ""}` : "-"],
             ["Order date", fmtDate(o.orderDate)],
             ["Expected delivery", fmtDate(o.expectedDelivery)],
-            ["Project", order.projectName ? `${order.projectCode} · ${order.projectName}` : "—"],
-            ["Quotation", order.quotationNumber && o.quotationId ? (canRead(user.role, "quotations") ? <Link className="text-brand-700 hover:underline dark:text-brand-300" href={`/quotations/${o.quotationId}`}>{order.quotationNumber}</Link> : order.quotationNumber) : "—"],
+            ["Project", order.projectName ? `${order.projectCode} · ${order.projectName}` : "-"],
+            ["Quotation", order.quotationNumber && o.quotationId ? (canRead(user.role, "quotations") ? <Link className="text-brand-700 hover:underline dark:text-brand-300" href={`/quotations/${o.quotationId}`}>{order.quotationNumber}</Link> : order.quotationNumber) : "-"],
             ["Order value (ex-GST)", money(o.total)],
-            ["Notes", o.notes || "—"],
+            ["Notes", o.notes || "-"],
           ]} />
         </Card>
         <Card title="Delivery progress">
@@ -185,11 +185,11 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
                   <Td className="text-right tabular-nums">{qty(l.qty)} <span className="text-xs text-ink-soft">{l.uom}</span></Td>
                   <Td className="text-right tabular-nums">{qty(l.deliveredQty)}</Td>
                   <Td className="text-right tabular-nums">{qty(l.invoicedQty)}</Td>
-                  <Td className={cx("text-right font-medium tabular-nums", pend > 0 && l.deliveryStatus !== "cancelled" && "text-amber-700 dark:text-amber-300")}>{l.deliveryStatus === "cancelled" ? "—" : qty(pend)}</Td>
+                  <Td className={cx("text-right font-medium tabular-nums", pend > 0 && l.deliveryStatus !== "cancelled" && "text-amber-700 dark:text-amber-300")}>{l.deliveryStatus === "cancelled" ? "-" : qty(pend)}</Td>
                   <Td className="text-right tabular-nums">{money(l.rate)}</Td>
                   <Td><StatusBadge status={l.deliveryStatus} label={LINE_STATUS_LABEL[l.deliveryStatus]} /></Td>
                   <Td className="whitespace-nowrap">{fmtDate(exp)}{late && <div><Badge tone="red">late</Badge></div>}{!l.expectedDate && exp && <div className="text-xs text-ink-faint">order default</div>}</Td>
-                  <Td className="max-w-56 whitespace-normal text-ink-soft">{l.remarks || "—"}</Td>
+                  <Td className="max-w-56 whitespace-normal text-ink-soft">{l.remarks || "-"}</Td>
                   {write && isOpen && <Td>{l.deliveryStatus !== "delivered" && <LineUpdateForm orderId={o.id} line={l} />}</Td>}
                 </tr>
               );
@@ -209,7 +209,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
               <Field label="Notes"><Input name="notes" maxLength={2000} /></Field>
             </div>
             <fieldset>
-              <legend className="mb-2 text-sm font-medium text-ink">Quantity delivered now <span className="font-normal text-ink-soft">(defaults to the full pending qty — set 0 to skip a line)</span></legend>
+              <legend className="mb-2 text-sm font-medium text-ink">Quantity delivered now <span className="font-normal text-ink-soft">(defaults to the full pending qty; set 0 to skip a line)</span></legend>
               <ul className="divide-y divide-line rounded-lg border border-line">
                 {pendingLines.map((l) => {
                   const pend = round2(Number(l.qty) - Number(l.deliveredQty));
@@ -247,8 +247,8 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
                   <tr key={d.id}>
                     <Td><Link href={`/orders/${o.id}/challan/${d.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{d.number}</Link></Td>
                     <Td className="whitespace-nowrap">{fmtDate(d.date)}</Td>
-                    <Td>{d.vehicleNo || "—"}</Td>
-                    <Td>{d.receivedBy || "—"}</Td>
+                    <Td>{d.vehicleNo || "-"}</Td>
+                    <Td>{d.receivedBy || "-"}</Td>
                     <Td className="text-right tabular-nums">{delivTotalQty.get(d.id)?.n ?? 0}</Td>
                   </tr>
                 ))}

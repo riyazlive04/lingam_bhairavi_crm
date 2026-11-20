@@ -1,4 +1,4 @@
-/** Operations agents: pending deliveries, refills, low stock, stale prices. Deterministic rules — no AI. */
+/** Operations agents: pending deliveries, refills, low stock, stale prices. Deterministic rules, no AI. */
 import "server-only";
 import { and, eq, inArray, notInArray, or, sql } from "drizzle-orm";
 import {
@@ -54,7 +54,7 @@ export const pendingDeliveryAgent = defineAgent({
       const expected = r.lineExpected ?? r.orderExpected;
       const pending = Number(r.qty) - Number(r.deliveredQty);
       const po = r.poNumber ? `PO ${r.poNumber}` : r.orderNumber;
-      const what = `${truncate(r.description, 60)} — ${qty(pending)}${Number(r.deliveredQty) > 0 ? ` of ${qty(r.qty)}` : ""} ${r.uom} pending`;
+      const what = `${truncate(r.description, 60)}: ${qty(pending)}${Number(r.deliveredQty) > 0 ? ` of ${qty(r.qty)}` : ""} ${r.uom} pending`;
       let severity: Severity, when: string;
       if (expected && expected < today) {
         severity = expected < graceCutoff ? "critical" : "warning";
@@ -70,7 +70,7 @@ export const pendingDeliveryAgent = defineAgent({
       out.push({
         dedupeKey: `pd:line:${r.lineId}`,
         severity,
-        title: `${po} · ${r.customer} — ${what}, ${when}`,
+        title: `${po} · ${r.customer}: ${what}, ${when}`,
         message: `Order ${r.orderNumber} dated ${fmtDate(r.orderDate)}. Line status: ${r.lineStatus.replace(/_/g, " ")}.` +
           `${expected ? ` Expected ${fmtDate(expected)}.` : " Set an expected date so the customer can be given a commitment."}` +
           ` Record the delivery (DC) to clear this alert.`,
@@ -124,7 +124,7 @@ export const refillDueAgent = defineAgent({
       out.push({
         dedupeKey: `${kind === "refill" ? "rf" : "hpt"}:${first.customerId}:${due}`,
         severity: late > 0 ? "critical" : late >= -3 ? "warning" : "info",
-        title: `${label} ${describeDue(due, today)} · ${first.customer} — ${plural(units, "extinguisher")}`,
+        title: `${label} ${describeDue(due, today)} · ${first.customer}: ${plural(units, "extinguisher")}`,
         message: `${listPreview(list.map((r) => `${r.qty > 1 ? r.qty + "× " : ""}${r.extType}${r.location ? " @ " + r.location : ""}`), 6)}. ` +
           `Due ${fmtDate(due)}.${first.phone ? ` Call ${first.phone} to schedule the visit.` : ""}`,
         entityType: "customer",
@@ -186,7 +186,7 @@ export const lowStockAgent = defineAgent({
         // key includes the last receipt so a fresh shortage after restocking raises a new alert
         dedupeKey: `ls:${r.id}:${Number(r.lastIn ?? 0)}`,
         severity: available <= 0 ? "critical" : "warning",
-        title: `Low stock · ${r.name}${r.size ? " " + r.size : ""} — ${qty(available)} ${r.uom} available (re-order at ${qty(r.reorderLevel)})`,
+        title: `Low stock · ${r.name}${r.size ? " " + r.size : ""}: ${qty(available)} ${r.uom} available (re-order at ${qty(r.reorderLevel)})`,
         message: `On hand ${qty(r.onHand ?? 0)}, reserved ${qty(r.reserved ?? 0)}. Raise a purchase for item ${r.code}.`,
         entityType: "item",
         entityId: r.id,
@@ -207,7 +207,7 @@ const staleMeta = {
 export const stalePriceAgent = defineAgent({
   key: "stale_price",
   name: "Stale Price Agent",
-  description: "Finds items whose latest purchase price is too old to quote safely — volatile items (pipes etc.) on a short window, items used in open quotes or BOQ templates on a longer one. One alert per item group listing the sizes to re-confirm with vendors.",
+  description: "Finds items whose latest purchase price is too old to quote safely: volatile items (pipes etc.) on a short window, items used in open quotes or BOQ templates on a longer one. One alert per item group listing the sizes to re-confirm with vendors.",
   ownerRole: "purchase",
   defaultParams: { volatileDays: 7, normalDays: 90 },
   paramSchema: numericParams(staleMeta),
@@ -258,9 +258,9 @@ export const stalePriceAgent = defineAgent({
         // key changes when the group's oldest price changes, so a re-stale after a refresh raises a new alert
         dedupeKey: `sp:${shortHash(group)}:${minDate}`,
         severity: anyVolatileQuoted ? "warning" : "info",
-        title: `${group}${list.length === 1 ? ` ${list[0].size ?? ""}`.trimEnd() : ` (${plural(list.length, "size")})`} — ${ageText} — confirm with vendor`,
+        title: `${group}${list.length === 1 ? ` ${list[0].size ?? ""}`.trimEnd() : ` (${plural(list.length, "size")})`}: ${ageText}, confirm with vendor`,
         message: `Sizes: ${sizes}.${never ? ` ${plural(never, "item")} never purchased (quoting from list price).` : ""}` +
-          `${list.some((r) => r.inQuote) ? " Used in open quotations — re-confirm before the quote goes out." : ""}` +
+          `${list.some((r) => r.inQuote) ? " Used in open quotations, so re-confirm before the quote goes out." : ""}` +
           ` Update the rate from the latest vendor quote / purchase invoice to clear this alert.`,
         entityType: "item",
         entityId: list[0].id,

@@ -77,7 +77,7 @@ export default async function PurchaseDetailPage({ params, searchParams }: { par
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Invoice total" value={money(inv.total)} hint={`${money(inv.subtotal)} + GST ${money(inv.taxAmount)}`} />
         <Stat label="Paid" value={money(inv.paidAmount)} hint={`${pays.length} payment${pays.length === 1 ? "" : "s"}`} />
-        <Stat label="Outstanding" value={inv.status === "posted" ? money(out) : "—"} tone={overdue ? "bad" : out > 0.5 ? "warn" : "good"}
+        <Stat label="Outstanding" value={inv.status === "posted" ? money(out) : "-"} tone={overdue ? "bad" : out > 0.5 ? "warn" : "good"}
           hint={inv.dueDate ? `${overdue ? "Overdue since" : "Due"} ${fmtDate(inv.dueDate)}` : undefined} />
         <Stat label="Cost center" value={row.projectCode ?? "Stock"} hint={row.projectName ?? "Received into store"}
           href={inv.projectId && canRead(user.role, "projects") ? `/projects/${inv.projectId}` : undefined} />
@@ -98,7 +98,7 @@ export default async function PurchaseDetailPage({ params, searchParams }: { par
                   <Td className="text-right tabular-nums">{money(l.rate)}</Td>
                   <Td className="text-right tabular-nums text-ink-soft">{p ? <>{money(p.rate)}<div className="text-xs text-ink-faint">{fmtDate(p.date)}{p.vendorName ? ` · ${p.vendorName}` : ""}</div></> : <span className="text-xs">first purchase</span>}</Td>
                   <Td className={cx("text-right tabular-nums", ch != null && Math.abs(ch) >= PRICE_JUMP_PCT && (ch > 0 ? "font-semibold text-red-600" : "font-semibold text-emerald-600"))}>
-                    {ch == null ? "—" : `${ch > 0 ? "+" : ""}${pct(ch)}`}</Td>
+                    {ch == null ? "-" : `${ch > 0 ? "+" : ""}${pct(ch)}`}</Td>
                   <Td className="text-right">{pct(l.gstRate, 0)}</Td>
                   <Td className="text-right tabular-nums">{money(l.amount)}</Td>
                 </tr>
@@ -129,7 +129,7 @@ export default async function PurchaseDetailPage({ params, searchParams }: { par
             <Table>
               <thead><tr><Th>Date</Th><Th>Mode</Th><Th>Reference</Th><Th>By</Th><Th className="text-right">Amount</Th></tr></thead>
               <tbody>{pays.map(({ p, by }) => (
-                <tr key={p.id}><Td>{fmtDate(p.date)}</Td><Td className="uppercase">{p.mode}</Td><Td>{p.reference ?? "—"}{p.notes && <div className="text-xs text-ink-faint">{p.notes}</div>}</Td><Td>{by ?? "—"}</Td><Td className="text-right tabular-nums">{money(p.amount)}</Td></tr>
+                <tr key={p.id}><Td>{fmtDate(p.date)}</Td><Td className="uppercase">{p.mode}</Td><Td>{p.reference ?? "-"}{p.notes && <div className="text-xs text-ink-faint">{p.notes}</div>}</Td><Td>{by ?? "-"}</Td><Td className="text-right tabular-nums">{money(p.amount)}</Td></tr>
               ))}</tbody>
             </Table>
           ) : <p className="text-sm text-ink-soft">No payments recorded.</p>}

@@ -169,7 +169,7 @@ export async function postPurchase(invoiceId: number) {
   redirect(target);
 }
 
-/** Cancel a draft invoice (posted invoices cannot be cancelled here — raise a debit note instead). */
+/** Cancel a draft invoice (posted invoices cannot be cancelled here; raise a debit note instead). */
 export async function cancelPurchase(invoiceId: number) {
   const user = await requireWrite("purchases");
   const db = await getDb();
@@ -198,7 +198,7 @@ export async function recordPayment(invoiceId: number, fd: FormData) {
     const db = await getDb();
     const r = await recordPurchasePayment(db, { invoiceId, ...p }, user.id);
     await audit(db, user.id, "create", "payment", r.paymentId, { direction: "out", purchaseInvoiceId: invoiceId, amount: p.amount, mode: p.mode });
-    target = `/purchases/${invoiceId}?ok=` + encodeURIComponent(r.outstanding <= 0.5 ? "Payment recorded — invoice fully paid" : `Payment recorded. Balance ₹${r.outstanding.toLocaleString("en-IN")}`);
+    target = `/purchases/${invoiceId}?ok=` + encodeURIComponent(r.outstanding <= 0.5 ? "Payment recorded. The invoice is now fully paid" : `Payment recorded. Balance ₹${r.outstanding.toLocaleString("en-IN")}`);
   } catch (e) {
     if (!(e instanceof PurchaseError) && !(e instanceof z.ZodError)) console.error("recordPayment", e);
     target = `/purchases/${invoiceId}?err=` + encodeURIComponent(msg(e, "Could not record payment"));

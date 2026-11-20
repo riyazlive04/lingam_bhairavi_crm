@@ -26,7 +26,7 @@ export function dunningEmail(opts: {
   const totalDue = invoices.reduce((s, i) => s + i.outstanding, 0);
   const oldest = Math.max(0, ...invoices.map((i) => i.daysOverdue));
   const firm = opts.reminderNo >= 3;
-  const subject = `${firm ? "Final reminder" : "Payment reminder"}: ${money(totalDue)} outstanding — ${company.name}`;
+  const subject = `${firm ? "Final reminder" : "Payment reminder"}: ${money(totalDue)} outstanding | ${company.name}`;
   const rows = invoices
     .map(
       (i) => `<tr>

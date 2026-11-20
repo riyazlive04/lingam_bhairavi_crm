@@ -92,7 +92,7 @@ export default async function StockItemPage({ params, searchParams }: { params: 
               <form action={issueToProject.bind(null, it.id)} className="grid gap-3 sm:grid-cols-2">
                 <Field label="Project" required className="sm:col-span-2">
                   <Select name="projectId" required defaultValue=""><option value="" disabled>Choose project…</option>
-                    {projList.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}</Select>
+                    {projList.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}</Select>
                 </Field>
                 <Field label={`Qty (${it.uom})`} required hint={`On hand ${qty(onHand)}`}><Input name="qty" type="number" step="any" min={0} max={Math.max(0, onHand)} required /></Field>
                 <Field label="Date" required><Input name="date" type="date" defaultValue={today} max={today} required /></Field>
@@ -106,7 +106,7 @@ export default async function StockItemPage({ params, searchParams }: { params: 
               <form action={returnFromProject.bind(null, it.id)} className="grid gap-3 sm:grid-cols-2">
                 <Field label="Project" required className="sm:col-span-2">
                   <Select name="projectId" required defaultValue=""><option value="" disabled>Choose project…</option>
-                    {returnable.map(([pid, v]) => <option key={pid} value={pid}>{v.code} — {qty(v.net)} {it.uom} issued</option>)}</Select>
+                    {returnable.map(([pid, v]) => <option key={pid} value={pid}>{v.code}: {qty(v.net)} {it.uom} issued</option>)}</Select>
                 </Field>
                 <Field label={`Qty (${it.uom})`} required><Input name="qty" type="number" step="any" min={0} required /></Field>
                 <Field label="Date" required><Input name="date" type="date" defaultValue={today} max={today} required /></Field>
@@ -129,9 +129,9 @@ export default async function StockItemPage({ params, searchParams }: { params: 
           <Card title="Allocate (reserve) stock">
             <form action={allocateStock.bind(null, it.id)} className="grid gap-3 sm:grid-cols-2">
               <Field label={`Qty (${it.uom})`} required hint={`Available ${qty(available)}`}><Input name="qty" type="number" step="any" min={0} max={Math.max(0, available)} required /></Field>
-              <Field label="Customer"><Select name="customerId" defaultValue=""><option value="">—</option>{custList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
-              <Field label="Sales order"><Select name="orderId" defaultValue=""><option value="">—</option>{orderList.map((o) => <option key={o.id} value={o.id}>{o.number}{o.customerName ? ` — ${o.customerName}` : ""}</option>)}</Select></Field>
-              <Field label="Project"><Select name="projectId" defaultValue=""><option value="">—</option>{projList.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}</Select></Field>
+              <Field label="Customer"><Select name="customerId" defaultValue=""><option value="">-</option>{custList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
+              <Field label="Sales order"><Select name="orderId" defaultValue=""><option value="">-</option>{orderList.map((o) => <option key={o.id} value={o.id}>{o.number}{o.customerName ? ` · ${o.customerName}` : ""}</option>)}</Select></Field>
+              <Field label="Project"><Select name="projectId" defaultValue=""><option value="">-</option>{projList.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}</Select></Field>
               <Field label="Notes" className="sm:col-span-2"><Input name="notes" maxLength={500} placeholder="Who asked, expected dispatch…" /></Field>
               <div className="sm:col-span-2"><SubmitButton size="sm" disabled={available <= 0} pendingText="Reserving…">Reserve</SubmitButton></div>
             </form>
@@ -153,7 +153,7 @@ export default async function StockItemPage({ params, searchParams }: { params: 
                   {projectCode && <div className="text-xs">Project {link("projects", `/projects/${a.projectId}`, projectCode)}</div>}
                 </Td>
                 <Td><StatusBadge status={a.status === "reserved" ? "pending" : a.status === "consumed" ? "done" : "closed"} label={a.status} /></Td>
-                <Td className="max-w-56 whitespace-normal text-xs">{a.notes ?? "—"}</Td>
+                <Td className="max-w-56 whitespace-normal text-xs">{a.notes ?? "-"}</Td>
                 {write && <Td>{a.status === "reserved" && (
                   <form action={releaseAllocation.bind(null, a.id, "item")}><SubmitButton size="sm" variant="secondary" pendingText="…" confirm="Release this reservation?">Release</SubmitButton></form>
                 )}</Td>}
@@ -180,7 +180,7 @@ export default async function StockItemPage({ params, searchParams }: { params: 
                   {m.refType === "purchase_invoice" && m.refId && <div>{link("purchases", `/purchases/${m.refId}`, `PI ${piNos.get(m.refId) ?? m.refId}`)}</div>}
                 </Td>
                 <Td className="max-w-56 whitespace-normal text-xs">{m.notes ?? ""}</Td>
-                <Td className="text-xs">{by ?? "—"}</Td>
+                <Td className="text-xs">{by ?? "-"}</Td>
               </tr>
             ))}</tbody>
           </Table>

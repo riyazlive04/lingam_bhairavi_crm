@@ -1,5 +1,5 @@
 /**
- * Daily agent run (Vercel Cron, 02:30 UTC = 08:00 IST — see vercel.json).
+ * Daily agent run (Vercel Cron, 02:30 UTC = 08:00 IST; see vercel.json).
  * Vercel sends `Authorization: Bearer ${CRON_SECRET}`. Anything else gets 401.
  */
 import { timingSafeEqual } from "node:crypto";

@@ -109,7 +109,7 @@ export function groupBy<T, K>(rows: T[], key: (r: T) => K): Map<K, T[]> {
   return m;
 }
 
-/** Short stable hash (FNV-1a, base36) — for dedupe keys built from free text. */
+/** Short stable hash (FNV-1a, base36) for dedupe keys built from free text. */
 export function shortHash(s: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {

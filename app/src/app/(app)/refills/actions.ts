@@ -68,7 +68,7 @@ export async function saveAsset(form: FormData) {
       const nextDueDate = d.nextDueDate ?? computeNextDue(base, d.refillIntervalMonths);
       const [row] = await db.insert(extinguisherAssets).values({ ...values, nextDueDate, status: "active" }).returning({ id: extinguisherAssets.id });
       await audit(db, user.id, "create", "extinguisher_asset", row.id, { ...values, nextDueDate });
-      target = flashUrl(`/refills/${row.id}`, "ok", `Asset added — next refill due ${nextDueDate}`);
+      target = flashUrl(`/refills/${row.id}`, "ok", `Asset added. Next refill due ${nextDueDate}`);
     }
   } catch (e) {
     target = flashUrl(rawId > 0 ? `/refills/${rawId}` : "/refills/new", "err", errMsg(e));
@@ -121,7 +121,7 @@ export async function bulkAddAssets(form: FormData) {
     const inserted = await db.transaction(async (tx) => tx.insert(extinguisherAssets).values(values).returning({ id: extinguisherAssets.id }));
     const units = rows.reduce((s, r) => s + r.qty, 0);
     await audit(db, user.id, "create", "extinguisher_asset", null, { bulk: true, customerId: d.customerId, ids: inserted.map((r) => r.id), units });
-    target = flashUrl(`/refills?customerId=${d.customerId}`, "ok", `${inserted.length} asset line${inserted.length === 1 ? "" : "s"} (${units} units) added — next refill due ${nextDueDate}`);
+    target = flashUrl(`/refills?customerId=${d.customerId}`, "ok", `${inserted.length} asset line${inserted.length === 1 ? "" : "s"} (${units} units) added. Next refill due ${nextDueDate}`);
   } catch (e) {
     target = flashUrl("/refills/new", "err", errMsg(e));
   }
@@ -140,7 +140,7 @@ export async function setAssetStatus(form: FormData) {
     if (!ex) throw new UserError("Asset not found");
     await db.update(extinguisherAssets).set({ status }).where(eq(extinguisherAssets.id, id));
     await audit(db, user.id, "update", "extinguisher_asset", id, { status: [ex.status, status] });
-    target = flashUrl(`/refills/${id}`, "ok", status === "retired" ? "Asset retired — it will no longer appear in due lists" : "Asset re-activated");
+    target = flashUrl(`/refills/${id}`, "ok", status === "retired" ? "Asset retired. It won't appear in due lists any more" : "Asset re-activated");
   } catch (e) {
     target = flashUrl(id > 0 ? `/refills/${id}` : "/refills", "err", errMsg(e));
   }

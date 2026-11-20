@@ -1,17 +1,20 @@
-/** Dashboard — role-aware KPIs, what needs attention, pending deliveries, refills, recent quotes, sales vs quotes. */
+/** Dashboard: role-aware KPIs, what needs attention, pending deliveries, refills, recent quotes, sales vs quotes. */
 import Link from "next/link";
 import { and, desc, eq, gte, inArray, ne, notInArray, sql } from "drizzle-orm";
-import { AlertTriangle, Info, OctagonAlert } from "lucide-react";
+import {
+  AlertTriangle, BarChart3, Bell, CalendarDays, CheckCircle2, Clock, FileText, FireExtinguisher, FolderKanban, Info, OctagonAlert,
+  PhoneCall, Plus, ShoppingCart, Tags, TrendingUp, Truck, Wallet, Warehouse,
+} from "lucide-react";
 import { getDb, type DB } from "@/db";
 import { agentRuns, alerts, customers, extinguisherAssets, projects, purchaseInvoices, quotations, salesInvoices, vendors } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { canRead, canSeeCost } from "@/lib/rbac";
+import { canRead, canSeeCost, canWrite } from "@/lib/rbac";
 import { ROLES, type Role } from "@/lib/constants";
-import { addDays, daysBetween, fmtDate, money0, moneyShort, pct, qty, todayIST } from "@/lib/format";
+import { addDays, addMonths, daysBetween, fmtDate, money0, moneyShort, pct, qty, todayIST } from "@/lib/format";
 import { lastMonths, istDayStart, monthStart, describeDue } from "@/lib/agents/rules";
 import { pendingDeliveryCounts, pendingDeliveryLines, refillsDueByCustomer, topAlerts } from "@/lib/agents/queries";
 import { projectCosts } from "@/lib/agents/hygiene";
-import { Card, EmptyState, PageHeader, Stat, StatusBadge, Table, Td, Th, cx } from "@/components/ui";
+import { Card, CardLink, EmptyState, Stat, StatusBadge, Table, Td, Th, cx } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +28,8 @@ async function quoteKpis(db: DB, today: string) {
       pipelineCount: sql<number>`count(*) filter (where ${quotations.status} in ('sent','negotiation'))`.mapWith(Number),
       thisMonth: sql<number>`count(*) filter (where ${quotations.quoteDate} >= ${monthStart(today)}::date)`.mapWith(Number),
       thisMonthValue: sql<number>`coalesce(sum(${quotations.grandTotal}) filter (where ${quotations.quoteDate} >= ${monthStart(today)}::date),0)`.mapWith(Number),
+      // same stretch of days last month, for the trend chip
+      prevMonthValue: sql<number>`coalesce(sum(${quotations.grandTotal}) filter (where ${quotations.quoteDate} >= ${monthStart(addMonths(today, -1))}::date and ${quotations.quoteDate} <= ${addMonths(today, -1)}::date),0)`.mapWith(Number),
       won: sql<number>`count(*) filter (where ${quotations.status} = 'won' and ${quotations.quoteDate} >= ${yearAgo}::date)`.mapWith(Number),
       decided: sql<number>`count(*) filter (where ${quotations.status} in ('won','lost','expired') and ${quotations.quoteDate} >= ${yearAgo}::date)`.mapWith(Number),
       fuOverdue: sql<number>`count(*) filter (where ${quotations.status} in ('sent','negotiation') and ${quotations.nextFollowUpDate} < ${today}::date)`.mapWith(Number),
@@ -139,61 +144,96 @@ export default async function Dashboard() {
     show.chart ? monthlySeries(db, today) : Promise.resolve([]),
   ]);
   const hoursSaved = n(saved[0]?.m) / 60;
+  const firstName = user.name.split(" ")[0];
+  const hourIST = Number(new Intl.DateTimeFormat("en-IN", { hour: "numeric", hour12: false, timeZone: "Asia/Kolkata" }).format(new Date()));
+  const greet = hourIST < 12 ? "Good morning" : hourIST < 17 ? "Good afternoon" : "Good evening";
+  const longDate = new Date(`${today}T00:00:00Z`).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+  const critical = attention.filter((a) => a.severity === "critical").length;
+  const quoteTrend = qk && qk.prevMonthValue > 0 ? ((qk.thisMonthValue - qk.prevMonthValue) / qk.prevMonthValue) * 100 : null;
 
   return (
     <>
-      <PageHeader title={`Welcome, ${user.name.split(" ")[0]}`} subtitle={`${ROLES[role]} · ${fmtDate(today)}`} />
+      {/* Hero */}
+      <section className="ui-fade-in relative mb-6 overflow-hidden rounded-3xl bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 px-5 py-6 text-white shadow-md sm:px-8 sm:py-8">
+        <div className="pointer-events-none absolute -right-16 -top-24 h-72 w-72 rounded-full bg-accent-400/25 blur-3xl" aria-hidden />
+        <div className="pointer-events-none absolute -bottom-28 left-1/3 h-64 w-64 rounded-full bg-brand-400/25 blur-3xl" aria-hidden />
+        <div className="relative flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-white/80"><CalendarDays className="h-4 w-4" aria-hidden />{longDate}</p>
+            <h1 className="mt-2 font-display text-2xl font-bold tracking-tight sm:text-3xl">{greet}, {firstName}</h1>
+            <p className="mt-1.5 max-w-xl text-sm text-white/90">
+              {ROLES[role]} workspace.{" "}
+              {attention.length === 0 ? "Nothing urgent today, nice and calm." : critical > 0
+                ? `${critical} critical item${critical === 1 ? "" : "s"} first, then the rest of your list below.`
+                : `${attention.length} item${attention.length === 1 ? "" : "s"} could use your attention today.`}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {canWrite(role, "quotations") && (
+              <Link href="/quotations/new" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-white px-4 text-sm font-semibold text-brand-700 shadow-sm hover:bg-brand-50">
+                <Plus className="h-4 w-4" aria-hidden /> New quotation
+              </Link>
+            )}
+            <Link href="/alerts" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-white/15 px-4 text-sm font-semibold text-white ring-1 ring-inset ring-white/25 hover:bg-white/25">
+              <Bell className="h-4 w-4" aria-hidden /> View alerts
+            </Link>
+          </div>
+        </div>
+      </section>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+      <h2 className="sr-only">Key numbers</h2>
+      <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
         {show.quotes && qk && (
           <>
-            <Stat label="Open pipeline" value={moneyShort(qk.pipeline)} hint={`${qk.pipelineCount} quotes sent / negotiating`} href="/quotations?status=sent" />
-            <Stat label="Quotes this month" value={qty(qk.thisMonth)} hint={`${moneyShort(qk.thisMonthValue)} · win rate ${qk.decided ? pct((qk.won / qk.decided) * 100, 0) : "—"} (12 mo)`} href="/quotations" />
+            <Stat icon={TrendingUp} label="Open pipeline" value={moneyShort(qk.pipeline)} hint={`${qk.pipelineCount} quotes sent or in negotiation`} href="/quotations?status=sent" />
+            <Stat icon={FileText} label="Quotes this month" value={qty(qk.thisMonth)}
+              trend={quoteTrend == null ? undefined : { direction: quoteTrend >= 0 ? "up" : "down", label: `${Math.abs(Math.round(quoteTrend))}% vs last month`, good: quoteTrend >= 0 }}
+              hint={`${moneyShort(qk.thisMonthValue)} quoted · win rate ${qk.decided ? pct((qk.won / qk.decided) * 100, 0) : "-"} (12 months)`} href="/quotations" />
           </>
         )}
         {show.followups && qk && (
-          <Stat label="Follow-ups due" value={qty(qk.fuOverdue + qk.fuToday)} hint={`${qk.fuToday} today · ${qk.fuOverdue} overdue`} tone={qk.fuOverdue ? "bad" : qk.fuToday ? "warn" : "good"} href="/follow-ups" />
+          <Stat icon={PhoneCall} label="Follow-ups due" value={qty(qk.fuOverdue + qk.fuToday)} hint={`${qk.fuToday} today, ${qk.fuOverdue} overdue`} tone={qk.fuOverdue ? "bad" : qk.fuToday ? "warn" : "good"} href="/follow-ups" />
         )}
         {show.deliveries && pd && (
-          <Stat label="Undelivered PO lines" value={qty(pd.total)} hint={`${pd.overdue} overdue · ${pd.orders} orders`} tone={pd.overdue ? "bad" : pd.total ? "warn" : "good"} href="/orders" />
+          <Stat icon={Truck} label="PO lines to deliver" value={qty(pd.total)} hint={`${pd.overdue} overdue across ${pd.orders} orders`} tone={pd.overdue ? "bad" : pd.total ? "warn" : "good"} href="/orders" />
         )}
         {show.receivables && rk && (
-          <Stat label="Receivables" value={moneyShort(rk.outstanding)} hint={`${moneyShort(rk.overdue)} overdue (${rk.overdueCount} invoices)`} tone={rk.overdue ? "bad" : "default"} href="/billing" />
+          <Stat icon={Wallet} label="Receivables" value={moneyShort(rk.outstanding)} hint={`${moneyShort(rk.overdue)} overdue (${rk.overdueCount} invoices)`} tone={rk.overdue ? "bad" : "default"} href="/billing" />
         )}
         {show.payables && pk && (
-          <Stat label="Payables due ≤ 7 days" value={moneyShort(pk.due)} hint={`${pk.count} vendor bills (incl. overdue)`} tone={pk.count ? "warn" : "good"} href="/purchases" />
+          <Stat icon={ShoppingCart} label="Payables due in 7 days" value={moneyShort(pk.due)} hint={`${pk.count} vendor bills, overdue included`} tone={pk.count ? "warn" : "good"} href="/purchases" />
         )}
         {show.refills && rf && (
-          <Stat label="Refills due ≤ 10 days" value={qty(rf.units)} hint={`${rf.customers} customers · ${rf.overdue} overdue`} tone={rf.overdue ? "bad" : rf.units ? "warn" : "good"} href="/refills" />
+          <Stat icon={FireExtinguisher} label="Refills due in 10 days" value={qty(rf.units)} hint={`${rf.customers} customers, ${rf.overdue} overdue`} tone={rf.overdue ? "bad" : rf.units ? "warn" : "good"} href="/refills" />
         )}
         {show.projects && pj && (
-          <Stat label="Active projects" value={qty(pj.active)} hint={money ? `Avg margin ${pj.avgMargin == null ? "—" : pct(pj.avgMargin, 0)}` : undefined}
+          <Stat icon={FolderKanban} label="Active projects" value={qty(pj.active)} hint={money ? `Average margin ${pj.avgMargin == null ? "-" : pct(pj.avgMargin, 0)}` : "Open the list for site details"}
             tone={money && pj.avgMargin != null && pj.avgMargin < 10 ? "warn" : "default"} href="/projects" />
         )}
         {show.stale && stale != null && (
-          <Stat label="Stale price alerts" value={qty(stale)} hint="Item groups to re-confirm" tone={stale ? "warn" : "good"} href="/alerts?agent=stale_price" />
+          <Stat icon={Tags} label="Prices to re-confirm" value={qty(stale)} hint="Item groups with stale prices" tone={stale ? "warn" : "good"} href="/alerts?agent=stale_price" />
         )}
         {show.lowStock && low != null && (
-          <Stat label="Low stock items" value={qty(low)} hint="Below re-order level" tone={low ? "warn" : "good"} href="/alerts?agent=low_stock" />
+          <Stat icon={Warehouse} label="Low stock items" value={qty(low)} hint="Below the re-order level" tone={low ? "warn" : "good"} href="/alerts?agent=low_stock" />
         )}
-        <Stat label="Hours saved by agents" value={`${qty(Math.round(hoursSaved * 10) / 10)} h`} hint="This month · zero AI credits" tone="good" href="/agents" />
+        <Stat icon={Clock} label="Time saved by agents" value={`${qty(Math.round(hoursSaved * 10) / 10)} h`} hint="This month, from automated checks" tone="good" href="/agents" />
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        <Card title="Needs attention" actions={<Link href="/alerts" className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-300">All alerts</Link>} bodyClassName="p-0">
+        <Card title="Needs your attention" icon={Bell} actions={<CardLink href="/alerts">All alerts</CardLink>} bodyClassName="p-0">
           {attention.length === 0 ? (
-            <p className="p-4 text-sm text-ink-soft">All clear — the agents found nothing for you.</p>
+            <div className="flex items-center gap-3 p-5 text-sm text-ink-soft"><CheckCircle2 className="h-5 w-5 text-emerald-600" aria-hidden /> All clear. The agents found nothing for you.</div>
           ) : (
             <ul className="divide-y divide-line">
               {attention.map((a) => (
                 <li key={a.id}>
-                  <Link href={a.link ?? "/alerts"} className="flex items-start gap-2.5 px-4 py-2.5 hover:bg-muted">
-                    {a.severity === "critical" ? <OctagonAlert className="mt-0.5 h-4 w-4 shrink-0 text-red-600" aria-label="Critical" />
-                      : a.severity === "warning" ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-label="Warning" />
-                        : <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" aria-label="Info" />}
+                  <Link href={a.link ?? "/alerts"} className="flex items-start gap-3 px-4 py-3 hover:bg-muted sm:px-5">
+                    {a.severity === "critical" ? <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-red-50 dark:bg-red-950/60"><OctagonAlert className="h-4 w-4 text-red-600 dark:text-red-400" aria-label="Critical" /></span>
+                      : a.severity === "warning" ? <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-amber-50 dark:bg-amber-950/60"><AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-label="Warning" /></span>
+                        : <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-blue-50 dark:bg-blue-950/60"><Info className="h-4 w-4 text-blue-600 dark:text-blue-400" aria-label="Info" /></span>}
                     <span className="min-w-0">
                       <span className="block text-sm text-ink">{a.title}</span>
-                      {a.dueDate && <span className={cx("text-xs", a.dueDate < today ? "text-red-600" : "text-ink-soft")}>Due {fmtDate(a.dueDate)}</span>}
+                      {a.dueDate && <span className={cx("text-xs", a.dueDate < today ? "font-medium text-red-700 dark:text-red-400" : "text-ink-soft")}>Due {fmtDate(a.dueDate)}</span>}
                     </span>
                   </Link>
                 </li>
@@ -203,24 +243,24 @@ export default async function Dashboard() {
         </Card>
 
         {show.deliveries && (
-          <Card title="Pending deliveries" actions={<Link href="/orders" className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-300">All orders</Link>} bodyClassName="p-0">
+          <Card title="Pending deliveries" icon={Truck} actions={<CardLink href="/orders">All orders</CardLink>} bodyClassName="p-0">
             {lines.length === 0 ? (
-              <p className="p-4 text-sm text-ink-soft">Every customer PO line is delivered.</p>
+              <div className="flex items-center gap-3 p-5 text-sm text-ink-soft"><CheckCircle2 className="h-5 w-5 text-emerald-600" aria-hidden /> Every customer PO line has been delivered.</div>
             ) : (
               <ul className="divide-y divide-line">
                 {lines.map((l) => {
                   const late = l.expected ? daysBetween(l.expected, today) : null;
                   return (
                     <li key={l.lineId}>
-                      <Link href={`/orders/${l.orderId}`} className="flex items-start justify-between gap-3 px-4 py-2.5 hover:bg-muted">
+                      <Link href={`/orders/${l.orderId}`} className="flex items-start justify-between gap-3 px-4 py-3 hover:bg-muted sm:px-5">
                         <span className="min-w-0">
                           <span className="block truncate text-sm text-ink">{l.description}</span>
                           <span className="block truncate text-xs text-ink-soft">{l.poNumber ? `PO ${l.poNumber}` : l.orderNumber} · {l.customer}</span>
                         </span>
                         <span className="shrink-0 text-right">
-                          <span className="block text-sm tabular-nums text-ink">{qty(n(l.qty) - n(l.deliveredQty))} {l.uom}</span>
-                          <span className={cx("block text-xs", late != null && late > 0 ? "font-medium text-red-600" : "text-ink-soft")}>
-                            {l.expected ? describeDue(l.expected, today) : "no date"}
+                          <span className="block text-sm font-medium tabular-nums text-ink">{qty(n(l.qty) - n(l.deliveredQty))} {l.uom}</span>
+                          <span className={cx("block text-xs", late != null && late > 0 ? "font-medium text-red-700 dark:text-red-400" : "text-ink-soft")}>
+                            {l.expected ? describeDue(l.expected, today) : "no date set"}
                           </span>
                         </span>
                       </Link>
@@ -233,19 +273,19 @@ export default async function Dashboard() {
         )}
 
         {show.refills && (
-          <Card title="Refills due (10 days)" actions={<Link href="/refills" className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-300">Refill tracker</Link>} bodyClassName="p-0">
+          <Card title="Refills due in the next 10 days" icon={FireExtinguisher} actions={<CardLink href="/refills">Refill tracker</CardLink>} bodyClassName="p-0">
             {refills.length === 0 ? (
-              <p className="p-4 text-sm text-ink-soft">No refills due in the next 10 days.</p>
+              <div className="flex items-center gap-3 p-5 text-sm text-ink-soft"><CheckCircle2 className="h-5 w-5 text-emerald-600" aria-hidden /> No refills due in the next 10 days.</div>
             ) : (
               <ul className="divide-y divide-line">
                 {refills.map((r) => (
                   <li key={r.customerId}>
-                    <Link href={`/refills?customer=${r.customerId}`} className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-muted">
+                    <Link href={`/refills?customer=${r.customerId}`} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-muted sm:px-5">
                       <span className="min-w-0">
                         <span className="block truncate text-sm text-ink">{r.customer}</span>
                         <span className="block text-xs text-ink-soft">{r.units} extinguisher{r.units === 1 ? "" : "s"}{r.phone ? ` · ${r.phone}` : ""}</span>
                       </span>
-                      <span className={cx("shrink-0 text-xs", r.due < today ? "font-medium text-red-600" : "text-ink-soft")}>{describeDue(r.due, today)}</span>
+                      <span className={cx("shrink-0 text-xs", r.due < today ? "font-medium text-red-700 dark:text-red-400" : "text-ink-soft")}>{describeDue(r.due, today)}</span>
                     </Link>
                   </li>
                 ))}
@@ -255,16 +295,16 @@ export default async function Dashboard() {
         )}
 
         {recent.length > 0 && (
-          <Card title="Recent quotations" actions={<Link href="/quotations" className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-300">All quotations</Link>} bodyClassName="p-0">
+          <Card title="Recent quotations" icon={FileText} actions={<CardLink href="/quotations">All quotations</CardLink>} bodyClassName="p-0">
             <Table className="rounded-none border-0 shadow-none">
               <thead><tr><Th>Quote</Th><Th>Customer</Th><Th>Status</Th>{money && <Th className="text-right">Value</Th>}</tr></thead>
               <tbody>
                 {recent.map((q) => (
                   <tr key={q.id}>
-                    <Td><Link href={`/quotations/${q.id}`} className="font-medium hover:text-brand-700 hover:underline">{q.number}</Link><div className="text-xs text-ink-soft">{fmtDate(q.quoteDate)}</div></Td>
+                    <Td><Link href={`/quotations/${q.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{q.number}</Link><div className="text-xs text-ink-soft">{fmtDate(q.quoteDate)}</div></Td>
                     <Td className="max-w-48 truncate">{q.customer}</Td>
                     <Td><StatusBadge status={q.status} /></Td>
-                    {money && <Td className="text-right tabular-nums">{money0(q.grandTotal)}</Td>}
+                    {money && <Td className="text-right font-medium tabular-nums">{money0(q.grandTotal)}</Td>}
                   </tr>
                 ))}
               </tbody>
@@ -274,7 +314,7 @@ export default async function Dashboard() {
       </div>
 
       {show.chart && series.length > 0 && (
-        <Card title="Monthly sales vs quotes (last 6 months)" className="mt-6">
+        <Card title="Sales vs quotes" subtitle="Last 6 months, by month" icon={BarChart3} className="mt-6">
           <SalesVsQuotesChart data={series} />
         </Card>
       )}
@@ -324,7 +364,7 @@ function SalesVsQuotesChart({ data }: { data: { month: string; quoted: number; s
               <path d={bar(gx + barW + 2, d.sales)} className="fill-brand-600"><title>{`${label(d.month)} sales: ${money0(d.sales)}`}</title></path>
               {/* larger invisible hit target for the native tooltip */}
               <rect x={padL + i * groupW} y={padT} width={groupW} height={H - padT - padB} fill="transparent">
-                <title>{`${label(d.month)} — quoted ${money0(d.quoted)}, sales ${money0(d.sales)}`}</title>
+                <title>{`${label(d.month)}: quoted ${money0(d.quoted)}, sales ${money0(d.sales)}`}</title>
               </rect>
               <text x={padL + i * groupW + groupW / 2} y={H - 8} textAnchor="middle" className="fill-ink-soft text-[11px]">{label(d.month)}</text>
             </g>

@@ -112,7 +112,7 @@ export function VoucherForm({
                 onChange={(e) => update(r.key, { projectId: e.target.value })}
                 className="col-span-2 sm:col-span-1"
               >
-                <option value="">— select project —</option>
+                <option value="">Select a project</option>
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
               </Select>
               <Input
@@ -144,7 +144,7 @@ export function VoucherForm({
             {dupes
               ? "The same project is selected twice."
               : mismatch
-                ? `Allocated ${inr(allocated)} of ${inr(total)} — ${diff > 0 ? `${inr(diff)} left to allocate` : `${inr(-diff)} too much`}.`
+                ? `Allocated ${inr(allocated)} of ${inr(total)}: ${diff > 0 ? `${inr(diff)} left to allocate` : `${inr(-diff)} too much`}.`
                 : `Allocated ${inr(allocated)} across ${active.length} project${active.length === 1 ? "" : "s"}.`}
           </div>
         )}

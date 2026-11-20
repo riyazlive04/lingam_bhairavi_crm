@@ -101,7 +101,7 @@ describe("postPurchaseInvoice (rule 4)", () => {
   });
 });
 
-describe("projectCostSummary (rule 5) — expense allocations", () => {
+describe("projectCostSummary (rule 5): expense allocations", () => {
   it("pending allocations are excluded; approval adds exactly the allocated amount", async () => {
     const [p1, p2] = await t.db.select().from(projects).limit(2);
     const b1 = (await projectCost(t.db, p1.id))!;

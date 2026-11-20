@@ -60,7 +60,7 @@ export default async function QuotationDetailPage({ params, searchParams }: { pa
   const below = showCost ? lines.filter((l) => linePriceWarning(l, pricing.minMarginPct) === "below_cost").length : 0;
   const lowMargin = showCost ? lines.filter((l) => linePriceWarning(l, pricing.minMarginPct) === "low_margin").length : 0;
   const tmpl = tmplRows[0];
-  const waText = `Dear ${cust?.contactPerson || cust?.name || "Sir/Madam"}, this is regarding our quotation ${q.number}${q.projectName ? ` for ${q.projectName}` : ""} (₹${Math.round(q.grandTotal).toLocaleString("en-IN")}). Please let us know if you need any clarification. — ${user.name}, Linga Bhairavi Enterprise`;
+  const waText = `Dear ${cust?.contactPerson || cust?.name || "Sir/Madam"}, this is regarding our quotation ${q.number}${q.projectName ? ` for ${q.projectName}` : ""} (₹${Math.round(q.grandTotal).toLocaleString("en-IN")}). Please let us know if you need any clarification. Regards, ${user.name}, Linga Bhairavi Enterprise`;
   const wa = whatsappLink(cust?.phone, waText);
   const tel = telLink(cust?.phone);
   const overdue = open && q.nextFollowUpDate && q.nextFollowUpDate < today;
@@ -81,34 +81,34 @@ export default async function QuotationDetailPage({ params, searchParams }: { pa
       <Flash ok={sp.ok} err={sp.err} />
       {expiredValidity && (
         <div role="status" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-          Validity ended on {fmtDate(q.validUntil)} — consider sending a revision with refreshed prices.
+          Validity ended on {fmtDate(q.validUntil)}. Consider sending a revision with refreshed prices.
         </div>
       )}
 
       <div className="mb-6 grid gap-6 lg:grid-cols-3">
         <Card title="Details" className="lg:col-span-2">
           <DL items={[
-            ["Customer", cust ? <span>{cust.name}{cust.contactPerson ? <span className="text-ink-soft"> · {cust.contactPerson}</span> : null}</span> : "—"],
+            ["Customer", cust ? <span>{cust.name}{cust.contactPerson ? <span className="text-ink-soft"> · {cust.contactPerson}</span> : null}</span> : "-"],
             ["Contact", cust?.phone || cust?.email ? (
               <span className="flex flex-wrap items-center gap-3">
                 {tel && <a href={tel} className="inline-flex items-center gap-1 text-brand-700 hover:underline"><Phone className="h-3.5 w-3.5" aria-hidden />{cust?.phone}</a>}
                 {wa && <a href={wa} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-emerald-700 hover:underline dark:text-emerald-400"><MessageCircle className="h-3.5 w-3.5" aria-hidden />WhatsApp</a>}
                 {cust?.email && <a href={`mailto:${cust.email}`} className="text-brand-700 hover:underline">{cust.email}</a>}
               </span>
-            ) : "—"],
-            ["Project", q.projectName || "—"],
-            ["Site location", q.siteLocation || "—"],
+            ) : "-"],
+            ["Project", q.projectName || "-"],
+            ["Site location", q.siteLocation || "-"],
             ["System", q.system ? SYSTEMS[q.system as SystemKey] ?? q.system : "Mixed"],
             ["BOQ template", tmpl ? (canRead(user.role, "boq") ? <Link href={`/boq-templates/${tmpl.id}`} className="text-brand-700 hover:underline">{tmpl.name}</Link> : tmpl.name) : "Blank"],
             ["Quotation date", fmtDate(q.quoteDate)],
             ["Valid until", fmtDate(q.validUntil)],
-            ["Prepared by", preparer?.name ?? "—"],
+            ["Prepared by", preparer?.name ?? "-"],
             ["Sent", q.sentAt ? `${fmtDateTime(q.sentAt)} (${daysBetween(istDate(q.sentAt), today)} days ago)` : "Not yet"],
             ...(open ? [["Next follow-up", q.nextFollowUpDate ? <span className={overdue ? "font-medium text-red-600" : ""}>{fmtDate(q.nextFollowUpDate)}{overdue ? " (overdue)" : ""}</span> : <span className="text-amber-700 dark:text-amber-400">Not scheduled</span>] as [string, React.ReactNode]] : []),
             ...(q.closedAt ? [["Closed", fmtDateTime(q.closedAt)] as [string, React.ReactNode]] : []),
             ...(q.lostReason ? [["Lost reason", q.lostReason] as [string, React.ReactNode]] : []),
             ...(orders.length ? [["Sales order", <span key="so" className="flex flex-wrap gap-2">{orders.map((o) => <Link key={o.id} href={`/orders/${o.id}`} className="text-brand-700 hover:underline">{o.number}</Link>)}</span>] as [string, React.ReactNode]] : []),
-            ...(projs.length ? [["Project", <span key="pr" className="flex flex-wrap gap-2">{projs.map((p) => canRead(user.role, "projects") ? <Link key={p.id} href={`/projects/${p.id}`} className="text-brand-700 hover:underline">{p.code} — {p.name}</Link> : <span key={p.id}>{p.code} — {p.name}</span>)}</span>] as [string, React.ReactNode]] : []),
+            ...(projs.length ? [["Project", <span key="pr" className="flex flex-wrap gap-2">{projs.map((p) => canRead(user.role, "projects") ? <Link key={p.id} href={`/projects/${p.id}`} className="text-brand-700 hover:underline">{p.code} · {p.name}</Link> : <span key={p.id}>{p.code} Â· {p.name}</span>)}</span>] as [string, React.ReactNode]] : []),
             ...(family.length ? [["Other revisions", <span key="rv" className="flex flex-wrap gap-2">{family.map((f) => <Link key={f.id} href={`/quotations/${f.id}`} className="text-brand-700 hover:underline">{f.number} <span className="text-ink-soft">({f.status})</span></Link>)}</span>] as [string, React.ReactNode]] : []),
           ]} />
           {q.notes && <p className="mt-4 whitespace-pre-line rounded-lg bg-muted p-3 text-sm text-ink-soft"><span className="font-medium text-ink">Internal notes: </span>{q.notes}</p>}
@@ -162,7 +162,7 @@ export default async function QuotationDetailPage({ params, searchParams }: { pa
                   <input type="hidden" name="id" value={id} />
                   <Field label="To" required><Input type="email" name="to" defaultValue={cust?.email ?? ""} required maxLength={200} /></Field>
                   <Field label="CC"><Input type="email" name="cc" maxLength={200} /></Field>
-                  <Field label="Message" hint="Optional — a standard covering note is used if empty"><Textarea name="message" rows={3} maxLength={2000} /></Field>
+                  <Field label="Message" hint="Optional. A standard covering note is used if you leave this empty"><Textarea name="message" rows={3} maxLength={2000} /></Field>
                   <SubmitButton variant="secondary" className="w-full" pendingText="Queuing…">Send email{q.status === "draft" ? " & mark sent" : ""}</SubmitButton>
                 </form>
               </details>
@@ -252,7 +252,7 @@ export default async function QuotationDetailPage({ params, searchParams }: { pa
                     <span className="font-medium text-ink">{fmtDate(f.date)}</span>
                     <Badge tone="blue">{FOLLOWUP_MODE_LABEL[f.mode] ?? f.mode}</Badge>
                     {f.outcome && <Badge tone={OUTCOME_TONE[f.outcome] ?? "gray"}>{FOLLOWUP_OUTCOME_LABEL[f.outcome] ?? f.outcome}</Badge>}
-                    <span className="text-xs text-ink-soft">by {userName ?? "—"}</span>
+                    <span className="text-xs text-ink-soft">by {userName ?? "-"}</span>
                   </div>
                   {f.notes && <p className="mt-1 whitespace-pre-line text-sm text-ink">{f.notes}</p>}
                   {f.nextDate && <p className="mt-0.5 text-xs text-ink-soft">Next follow-up: {fmtDate(f.nextDate)}</p>}

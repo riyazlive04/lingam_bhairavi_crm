@@ -1,4 +1,4 @@
-/** Finance agents: receivables (dunning emails) and payables. Deterministic rules — no AI. */
+/** Finance agents: receivables (dunning emails) and payables. Deterministic rules, no AI. */
 import "server-only";
 import { and, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { customers, emailOutbox, purchaseInvoices, salesInvoices, vendors } from "@/db/schema";
@@ -19,7 +19,7 @@ const rcvMeta = {
 export const receivablesAgent = defineAgent({
   key: "receivables",
   name: "Receivables & Dunning Agent",
-  description: "Emails each customer ONE consolidated statement of their overdue invoices on a fixed schedule (only customers with auto-reminders on and an email address), and escalates invoices over 60 days overdue — or out of reminders — to accounts.",
+  description: "Emails each customer ONE consolidated statement of their overdue invoices on a fixed schedule (only customers with auto-reminders on and an email address), and escalates invoices over 60 days overdue (or out of reminders) to accounts.",
   ownerRole: "accounts",
   defaultParams: { firstReminderDaysOverdue: 1, repeatEveryDays: 7, maxReminders: 3 },
   paramSchema: numericParams(rcvMeta),
@@ -70,7 +70,7 @@ export const receivablesAgent = defineAgent({
           }),
         );
         if (eligible.length) {
-          // atomic claim: only invoices still eligible get stamped — concurrent runs cannot both send
+          // atomic claim: only invoices still eligible get stamped, so concurrent runs cannot both send
           const claimed = await db
             .update(salesInvoices)
             .set({ lastReminderAt: new Date(), reminderCount: sql`${salesInvoices.reminderCount} + 1` })
@@ -106,7 +106,7 @@ export const receivablesAgent = defineAgent({
             ...base,
             dedupeKey: `rcv:60:${r.id}`,
             severity: "critical",
-            title: `${r.number} · ${c.customer} — ${moneyShort(r.outstanding)} unpaid, ${r.late} days overdue`,
+            title: `${r.number} · ${c.customer}: ${moneyShort(r.outstanding)} unpaid, ${r.late} days overdue`,
             message: `Invoice dated ${fmtDate(r.invoiceDate)}, due ${fmtDate(r.dueDate)}. ${plural(r.reminderCount, "reminder")} sent so far.` +
               `${c.phone ? ` Call ${c.contactPerson ?? "the customer"} on ${c.phone}.` : ""} Consider holding further supplies.`,
           });
@@ -115,7 +115,7 @@ export const receivablesAgent = defineAgent({
             ...base,
             dedupeKey: `rcv:max:${r.id}`,
             severity: "warning",
-            title: `${r.number} · ${c.customer} — ${plural(r.reminderCount, "reminder")} sent, still unpaid (${moneyShort(r.outstanding)})`,
+            title: `${r.number} · ${c.customer}: ${plural(r.reminderCount, "reminder")} sent, still unpaid (${moneyShort(r.outstanding)})`,
             message: `Automatic emails have stopped. ${r.late} days overdue.${c.phone ? ` Please call ${c.phone}.` : ""}`,
           });
         }
@@ -159,7 +159,7 @@ export const payablesAgent = defineAgent({
       return {
         dedupeKey: `pay:${r.id}:${r.due}`,
         severity: late > 30 ? "critical" : late > 0 ? "warning" : "info",
-        title: `Pay ${r.vendor} — bill ${r.invoiceNo}, ${moneyShort(outstanding)} ${describeDue(r.due, today)}`,
+        title: `Pay ${r.vendor}: bill ${r.invoiceNo}, ${moneyShort(outstanding)} ${describeDue(r.due, today)}`,
         message: `Bill dated ${fmtDate(r.invoiceDate)}, due ${fmtDate(r.due)}. Outstanding ${money(outstanding)}. Record the payment to clear this alert.`,
         entityType: "purchase_invoice",
         entityId: r.id,

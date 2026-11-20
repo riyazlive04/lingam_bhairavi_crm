@@ -1,5 +1,5 @@
 /**
- * Orders & delivery domain helpers (customer POs = sales_orders). OWNED BY: Team C (Orders, Delivery & Billing).
+ * Orders & delivery domain helpers (customer POs = sales_orders). Maintainer: Sirah Digital.
  * Implements shared business rule 7 (delivery → deliveredQty, line status, order status).
  */
 import { and, asc, eq, inArray, lt, notInArray, sql } from "drizzle-orm";
@@ -137,7 +137,7 @@ export async function pendingDeliveryLines(
     const qty = Number(r.qty), deliveredQty = Number(r.deliveredQty);
     return {
       lineId: r.lineId, orderId: r.orderId, orderNumber: r.orderNumber, customerPoNumber: r.customerPoNumber,
-      customerId: r.customerId, customerName: r.customerName ?? "—", projectId: r.projectId, projectName: r.projectName,
+      customerId: r.customerId, customerName: r.customerName ?? "-", projectId: r.projectId, projectName: r.projectName,
       description: r.description, uom: r.uom, qty, deliveredQty, pendingQty: round2(qty - deliveredQty), rate: Number(r.rate),
       deliveryStatus: r.deliveryStatus, expectedDate, remarks: r.remarks,
       daysOverdue: expectedDate ? Math.max(0, daysBetween(expectedDate, today)) : null,

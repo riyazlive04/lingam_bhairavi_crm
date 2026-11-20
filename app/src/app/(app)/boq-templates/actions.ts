@@ -57,7 +57,7 @@ export async function saveTemplate(form: FormData) {
       const found = await db.select({ id: items.id }).from(items).where(inArray(items.id, [...new Set(itemIds)]));
       const ok = new Set(found.map((f) => f.id));
       const missing = itemIds.find((i) => !ok.has(i));
-      if (missing) throw new Error("A linked item no longer exists — please re-select it");
+      if (missing) throw new Error("A linked item no longer exists. Please select it again");
     }
     const id = await db.transaction(async (tx) => {
       let tid = parsed.id;
@@ -114,7 +114,7 @@ export async function duplicateTemplate(form: FormData) {
     });
     await audit(db, user.id, "create", "boq_template", newId, { duplicatedFrom: id });
     revalidatePath("/boq-templates");
-    target = `/boq-templates/${newId}/edit?ok=${encodeURIComponent("Template duplicated — rename and adjust it")}`;
+    target = `/boq-templates/${newId}/edit?ok=${encodeURIComponent("Template duplicated. Rename and adjust it as needed")}`;
   } catch (e) {
     target = `/boq-templates/${id}?err=${encodeURIComponent(errMsg(e))}`;
   }

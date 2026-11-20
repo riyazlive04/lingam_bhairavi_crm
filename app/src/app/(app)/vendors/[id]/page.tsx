@@ -92,7 +92,7 @@ export default async function VendorDetailPage({ params, searchParams }: { param
         <Stat label="Outstanding payable" value={money(outstanding)} tone={overdue > 0 ? "bad" : outstanding > 0 ? "warn" : "default"} hint={overdue > 0 ? `${money(overdue)} overdue` : "Posted invoices − payments"} />
         <Stat label="Purchases this FY" value={money(fyPurchases)} hint={`${posted.length} posted invoice${posted.length === 1 ? "" : "s"} in total`} />
         <Stat label="Items supplied" value={supplied.length} hint={`${cheapestCount} where this vendor is cheapest`} />
-        <Stat label="Price competitiveness" value={avgDiff == null ? "—" : `${avgDiff > 0 ? "+" : ""}${pct(avgDiff)}`}
+        <Stat label="Price competitiveness" value={avgDiff == null ? "-" : `${avgDiff > 0 ? "+" : ""}${pct(avgDiff)}`}
           tone={avgDiff == null ? "default" : avgDiff <= 0 ? "good" : avgDiff > 5 ? "bad" : "warn"}
           hint={avgDiff == null ? "No other vendor supplies the same items" : `Avg vs other vendors on ${diffs.length} common item${diffs.length === 1 ? "" : "s"} (negative = cheaper)`} />
       </div>
@@ -115,7 +115,7 @@ export default async function VendorDetailPage({ params, searchParams }: { param
               <Field label="Item" required>
                 <Select name="itemId" required defaultValue="">
                   <option value="" disabled>Choose item…</option>
-                  {allItems.map((i) => <option key={i.id} value={i.id}>{i.code} — {i.name}</option>)}
+                  {allItems.map((i) => <option key={i.id} value={i.id}>{i.code} · {i.name}</option>)}
                 </Select>
               </Field>
               <div className="grid grid-cols-2 gap-3">
@@ -138,11 +138,11 @@ export default async function VendorDetailPage({ params, searchParams }: { param
                 <tr key={r.itemId} className="hover:bg-muted/50">
                   <Td className="max-w-72 whitespace-normal"><Link href={`/items/${r.itemId}`} className="hover:underline">{r.name}</Link>
                     <div className="font-mono text-xs text-ink-faint">{r.code} · {SYSTEMS[r.system as keyof typeof SYSTEMS] ?? r.system}</div></Td>
-                  <Td>{r.size ?? "—"}<div className="text-xs text-ink-faint">{r.make ?? ""}</div></Td>
+                  <Td>{r.size ?? "-"}<div className="text-xs text-ink-faint">{r.make ?? ""}</div></Td>
                   <Td className="text-right tabular-nums">{money(r.lastRate)} <span className="text-xs text-ink-faint">/{r.uom}</span>
                     {r.itemLatestVendor === v.id && <div><Badge tone="green">current latest</Badge></div>}</Td>
                   <Td>{fmtDate(r.lastDate)}</Td>
-                  <Td className="text-right">{r.leadTimeDays != null ? `${r.leadTimeDays} d` : "—"}</Td>
+                  <Td className="text-right">{r.leadTimeDays != null ? `${r.leadTimeDays} d` : "-"}</Td>
                   <Td className={cx("text-right tabular-nums", r.diff != null && (r.diff <= 0 ? "text-emerald-600" : "text-red-600"))}>
                     {r.diff == null ? <span className="text-ink-faint">only vendor</span> : <>{r.diff > 0 ? "+" : ""}{pct(r.diff)}
                       <div className="text-xs text-ink-faint">best {money(r.other!.min)} · {r.other!.minVendor}</div></>}
@@ -177,7 +177,7 @@ export default async function VendorDetailPage({ params, searchParams }: { param
                     <Td>{projectName ?? <span className="text-ink-faint">Stock</span>}</Td>
                     <Td><StatusBadge status={inv.status === "posted" && out <= 0.5 ? "paid" : inv.status} /></Td>
                     <Td className="text-right tabular-nums">{money(inv.total)}</Td>
-                    <Td className="text-right tabular-nums">{inv.status === "posted" ? money(out) : "—"}</Td>
+                    <Td className="text-right tabular-nums">{inv.status === "posted" ? money(out) : "-"}</Td>
                   </tr>
                 );
               })}

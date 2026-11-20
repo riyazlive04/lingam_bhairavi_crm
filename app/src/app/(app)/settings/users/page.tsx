@@ -99,12 +99,12 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
 
       <Card title="What each role can do">
         <ul className="grid gap-2 text-sm text-ink-soft sm:grid-cols-2">
-          <li><b className="text-ink">Owner / Admin</b> — everything, approves expenses, settings.</li>
-          <li><b className="text-ink">Sales</b> — quotations, follow-ups, customers, refills, orders.</li>
-          <li><b className="text-ink">Purchase</b> — purchase invoices, items & prices, vendors.</li>
-          <li><b className="text-ink">Accounts</b> — billing, outstanding, approves expenses.</li>
-          <li><b className="text-ink">Site Engineer</b> — own projects, expense vouchers, refills (no buying prices).</li>
-          <li><b className="text-ink">Store</b> — stock, deliveries (no buying prices).</li>
+          <li><b className="text-ink">Owner / Admin</b>: everything, approves expenses, settings.</li>
+          <li><b className="text-ink">Sales</b>: quotations, follow-ups, customers, refills, orders.</li>
+          <li><b className="text-ink">Purchase</b>: purchase invoices, items & prices, vendors.</li>
+          <li><b className="text-ink">Accounts</b>: billing, outstanding, approves expenses.</li>
+          <li><b className="text-ink">Site Engineer</b>: own projects, expense vouchers, refills (no buying prices).</li>
+          <li><b className="text-ink">Store</b>: stock, deliveries (no buying prices).</li>
         </ul>
       </Card>
     </div>

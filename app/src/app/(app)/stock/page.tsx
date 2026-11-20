@@ -56,7 +56,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
 
   return (
     <div>
-      <PageHeader title="Stock" subtitle="Store stock from posted purchases, issues to projects, returns and adjustments — with reservations for customers and orders." />
+      <PageHeader title="Stock" subtitle="Store stock from posted purchases, issues to projects, returns and adjustments, with reservations for customers and orders." />
       <Flash ok={sp.ok} err={sp.err} />
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Items in stock" value={inStock} />
@@ -96,10 +96,10 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                       <div className="font-mono text-xs text-ink-faint">{r.it.code}</div></Td>
                     <Td>{r.it.uom}</Td>
                     <Td className="text-right tabular-nums">{qty(r.onHand)}</Td>
-                    <Td className="text-right tabular-nums">{r.reserved ? qty(r.reserved) : <span className="text-ink-faint">—</span>}</Td>
+                    <Td className="text-right tabular-nums">{r.reserved ? qty(r.reserved) : <span className="text-ink-faint">-</span>}</Td>
                     <Td className={cx("text-right font-medium tabular-nums", r.available < 0 && "text-red-600")}>{qty(r.available)}
                       {r.low && <div><Badge tone="red">{r.available <= 0 ? "out" : "low"}</Badge></div>}</Td>
-                    <Td className="text-right tabular-nums">{r.it.reorderLevel ? qty(r.it.reorderLevel) : <span className="text-ink-faint">—</span>}</Td>
+                    <Td className="text-right tabular-nums">{r.it.reorderLevel ? qty(r.it.reorderLevel) : <span className="text-ink-faint">-</span>}</Td>
                     {seeCost && <><Td className="text-right tabular-nums">{money(r.cost)}</Td><Td className="text-right tabular-nums">{money(r.value)}</Td></>}
                   </tr>
                 ))}
@@ -150,7 +150,7 @@ async function Allocations({ status, write, role }: { status?: string; write: bo
               </Td>
               <Td className="text-xs">{fmtDateTime(a.createdAt)}</Td>
               <Td><StatusBadge status={a.status === "reserved" ? "pending" : a.status === "consumed" ? "done" : "closed"} label={a.status} /></Td>
-              <Td className="max-w-56 whitespace-normal text-xs">{a.notes ?? "—"}</Td>
+              <Td className="max-w-56 whitespace-normal text-xs">{a.notes ?? "-"}</Td>
               {write && <Td>{a.status === "reserved" && (
                 <form action={releaseAllocation.bind(null, a.id, "list")}><SubmitButton size="sm" variant="secondary" pendingText="…" confirm="Release this reservation?">Release</SubmitButton></form>
               )}</Td>}

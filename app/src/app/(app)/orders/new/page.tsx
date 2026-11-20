@@ -62,15 +62,15 @@ export default async function NewOrderPage({ searchParams }: { searchParams: Pro
         <form method="get" className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <Field label="Won quotation" className="flex-1">
             <Select name="quotationId" defaultValue={quotationId ? String(quotationId) : ""}>
-              <option value="">— Manual entry —</option>
+              <option value="">Manual entry</option>
               {won.map((w) => (
-                <option key={w.id} value={w.id}>{w.number} · {w.customerName ?? "—"}{w.projectName ? ` · ${w.projectName}` : ""} · {money0(w.grandTotal)}</option>
+                <option key={w.id} value={w.id}>{w.number} · {w.customerName ?? "-"}{w.projectName ? ` · ${w.projectName}` : ""} · {money0(w.grandTotal)}</option>
               ))}
             </Select>
           </Field>
           <Button type="submit" variant="secondary">Load lines</Button>
         </form>
-        {won.length === 0 && <p className="mt-2 text-sm text-ink-soft">No quotations are marked as won yet — enter the order manually below.</p>}
+        {won.length === 0 && <p className="mt-2 text-sm text-ink-soft">No quotations are marked as won yet. Enter the order manually below.</p>}
         {quotationId && !quote && <p className="mt-2 text-sm text-red-600">Quotation not found.</p>}
         {quote && (
           <p className="mt-2 text-sm text-ink-soft">
@@ -96,7 +96,7 @@ export default async function NewOrderPage({ searchParams }: { searchParams: Pro
             </Field>
             <Field label="Project" hint="Link to the project cost centre, if any">
               <Select name="projectId" defaultValue={quoteProject ? String(quoteProject.id) : ""}>
-                <option value="">— None —</option>
+                <option value="">None</option>
                 {projList.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
               </Select>
             </Field>

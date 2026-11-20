@@ -47,7 +47,7 @@ export default async function BoqTemplatesPage({ searchParams }: { searchParams:
     <div>
       <PageHeader
         title="BOQ templates"
-        subtitle="Standard bills of quantities per system — pick one when creating a quotation and only enter quantities."
+        subtitle="Standard bills of quantities for each system. Pick one when you create a quotation and just enter the quantities."
         actions={writable && <LinkButton href="/boq-templates/new"><Plus className="h-4 w-4" aria-hidden /> New template</LinkButton>}
       />
       <Flash ok={sp.ok} err={sp.err} />

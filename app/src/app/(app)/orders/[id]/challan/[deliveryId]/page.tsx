@@ -66,10 +66,10 @@ export default async function ChallanPage({ params }: { params: Promise<{ id: st
             {c.gstin && <p>GSTIN: {c.gstin}</p>}
           </div>
           <div className="space-y-0.5 sm:text-right">
-            <p>Customer PO: <strong>{o.customerPoNumber || "—"}</strong>{o.customerPoDate ? ` dt ${fmtDate(o.customerPoDate)}` : ""}</p>
+            <p>Customer PO: <strong>{o.customerPoNumber || "-"}</strong>{o.customerPoDate ? ` dt ${fmtDate(o.customerPoDate)}` : ""}</p>
             <p>Our order: {o.number}</p>
             {row.projectName && <p>Project: {row.projectName}</p>}
-            <p>Vehicle no: {d.vehicleNo || "—"}</p>
+            <p>Vehicle no: {d.vehicleNo || "-"}</p>
           </div>
         </section>
 
@@ -89,7 +89,7 @@ export default async function ChallanPage({ params }: { params: Promise<{ id: st
                 <tr key={l.id}>
                   <td className="border border-line px-2 py-1.5">{i + 1}</td>
                   <td className="border border-line px-2 py-1.5 whitespace-normal">{l.description}{l.code && <span className="block text-xs text-ink-soft">{l.code}</span>}</td>
-                  <td className="border border-line px-2 py-1.5">{l.hsn || "—"}</td>
+                  <td className="border border-line px-2 py-1.5">{l.hsn || "-"}</td>
                   <td className="border border-line px-2 py-1.5 text-right font-medium tabular-nums">{qty(l.qty)}</td>
                   <td className="border border-line px-2 py-1.5">{l.uom}</td>
                 </tr>
@@ -103,7 +103,7 @@ export default async function ChallanPage({ params }: { params: Promise<{ id: st
         <footer className="grid grid-cols-2 gap-6 pt-10 text-sm">
           <div>
             <div className="h-12" />
-            <p className="border-t border-line pt-1">Received in good condition{d.receivedBy ? ` — ${d.receivedBy}` : ""}</p>
+            <p className="border-t border-line pt-1">Received in good condition{d.receivedBy ? `: ${d.receivedBy}` : ""}</p>
             <p className="text-xs text-ink-soft">Name, signature & seal</p>
           </div>
           <div className="text-right">

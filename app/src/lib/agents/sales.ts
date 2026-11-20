@@ -1,4 +1,4 @@
-/** Sales agents: follow-ups, quote expiry, margin guard. Deterministic rules — no AI. */
+/** Sales agents: follow-ups, quote expiry, margin guard. Deterministic rules, no AI. */
 import "server-only";
 import { and, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { customers, followUps, quotationLines, quotations } from "@/db/schema";
@@ -56,7 +56,7 @@ export const followupAgent = defineAgent({
           ...base,
           dedupeKey: `fu:due:${q.id}:${q.nextFollowUpDate}`,
           severity: severityForLateness(late, 7),
-          title: `Follow up ${q.number} · ${q.customer} — ${describeDue(q.nextFollowUpDate, today)}`,
+          title: `Follow up ${q.number} · ${q.customer}: ${describeDue(q.nextFollowUpDate, today)}`,
           message: `${q.projectName ? q.projectName + " · " : ""}${moneyShort(q.grandTotal)} · status ${q.status}. ` +
             `${nFu ? `Last contact ${fmtDate(q.last)} (${plural(nFu, "follow-up")} so far).` : "No follow-up logged yet."}` +
             `${q.phone ? ` Call ${q.phone}.` : ""} Log the follow-up with the next date to clear this alert.`,
@@ -72,7 +72,7 @@ export const followupAgent = defineAgent({
             ...base,
             dedupeKey: `fu:none:${q.id}`,
             severity: age > params.noFollowUpDays * 3 ? "critical" : "warning",
-            title: `No follow-up on ${q.number} · ${q.customer} — sent ${plural(age, "day")} ago`,
+            title: `No follow-up on ${q.number} · ${q.customer}: sent ${plural(age, "day")} ago`,
             message: `${q.projectName ? q.projectName + " · " : ""}${moneyShort(q.grandTotal)}. The quote was sent on ${fmtDate(sentOn)} and nobody has followed up yet.${q.phone ? ` Call ${q.phone}.` : ""}`,
             dueDate: addDays(sentOn, params.noFollowUpDays),
           });
@@ -128,7 +128,7 @@ export const quoteExpiryAgent = defineAgent({
           ...base,
           dedupeKey: `qe:exp:${q.id}:${vu}`,
           severity: "warning",
-          title: `${q.number} · ${q.customer} expired on ${fmtDate(vu)} — revise & resend?`,
+          title: `${q.number} · ${q.customer} expired on ${fmtDate(vu)}. Revise & resend?`,
           message: `${moneyShort(q.grandTotal)} quotation was marked Expired automatically. If the customer is still interested, create a revision with current prices; otherwise mark it lost.`,
         };
       }
@@ -136,7 +136,7 @@ export const quoteExpiryAgent = defineAgent({
         ...base,
         dedupeKey: `qe:warn:${q.id}:${vu}`,
         severity: vu === today ? "warning" : "info",
-        title: `${q.number} · ${q.customer} — validity ends ${vu === today ? "today" : fmtDate(vu)}`,
+        title: `${q.number} · ${q.customer}: validity ends ${vu === today ? "today" : fmtDate(vu)}`,
         message: `${moneyShort(q.grandTotal)} quote (${q.status}) ${describeDue(vu, today).replace("due", "expires")}. Push for the PO or extend validity.`,
       };
     });
@@ -156,7 +156,7 @@ const marginMeta = {
 export const marginGuardAgent = defineAgent({
   key: "margin_guard",
   name: "Margin Guard",
-  description: "Checks every draft / sent / negotiation quotation against latest buying cost. Flags quotes below the minimum margin and any line priced below cost — before it reaches the customer.",
+  description: "Checks every draft / sent / negotiation quotation against latest buying cost. Flags quotes below the minimum margin and any line priced below cost, before it reaches the customer.",
   ownerRole: "admin",
   defaultParams: { minMarginPct: 15 },
   paramSchema: numericParams(marginMeta),
@@ -199,7 +199,7 @@ export const marginGuardAgent = defineAgent({
       out.push({
         dedupeKey: `mg:${q.id}`,
         severity: (m != null && m < 0) || nBelow > 0 ? "critical" : "warning",
-        title: `${q.number} · ${q.customer} — ${parts.join(", ")}`,
+        title: `${q.number} · ${q.customer}: ${parts.join(", ")}`,
         message: `Selling ${moneyShort(sell)} (excl. GST) vs cost ${moneyShort(cost)}. ${nBelow ? `Below-cost lines: ${sample}${nBelow > 3 ? "…" : ""}. ` : ""}Re-price before ${q.status === "draft" ? "sending" : "the next revision"}.`,
         entityType: "quotation",
         entityId: q.id,

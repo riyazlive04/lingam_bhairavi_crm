@@ -25,7 +25,7 @@ function errMsg(e: unknown): string {
 }
 class UserError extends Error {}
 
-/** Store has orders:write for deliveries/line status only — creating, closing, cancelling or reopening orders is commercial (admin/sales). */
+/** Store has orders:write for deliveries/line status only. Creating, closing, cancelling or reopening orders is commercial (admin/sales). */
 function assertCommercial(role: string) {
   if (role !== "admin" && role !== "sales") throw new UserError("Only Sales or the Owner can create, close, cancel or reopen orders");
 }
@@ -132,7 +132,7 @@ export async function updateOrderLine(form: FormData) {
   redirect(target);
 }
 
-// ---------------------------------------------------------------- record delivery (challan) — rule 7
+// ---------------------------------------------------------------- record delivery (challan), rule 7
 const deliverySchema = z.object({
   orderId: z.coerce.number().int().positive(),
   date: isoDate,
@@ -189,7 +189,7 @@ export async function recordDelivery(form: FormData) {
     await audit(db, user.id, "create", "delivery", res.id, { number: res.number, orderId: h.orderId, lines: qtys, orderStatus: res.orderStatus });
     revalidatePath(`/orders/${h.orderId}`);
     revalidatePath("/orders");
-    target = withMsg(`/orders/${h.orderId}`, "ok", `Delivery challan ${res.number} recorded${res.orderStatus === "delivered" ? " — order fully delivered" : ""}`);
+    target = withMsg(`/orders/${h.orderId}`, "ok", `Delivery challan ${res.number} recorded${res.orderStatus === "delivered" ? ". The order is fully delivered" : ""}`);
   } catch (e) {
     target = withMsg(orderId ? `/orders/${orderId}` : "/orders", "err", errMsg(e));
   }
@@ -213,10 +213,10 @@ export async function changeOrderStatus(form: FormData) {
       if (d.op === "cancel") {
         if (o.status === "cancelled") throw new UserError("Order is already cancelled");
         const [{ n }] = await tx.select({ n: sql<number>`count(*)`.mapWith(Number) }).from(deliveries).where(eq(deliveries.orderId, d.orderId));
-        if (n > 0) throw new UserError("Deliveries exist for this order — close it instead of cancelling");
+        if (n > 0) throw new UserError("This order already has deliveries. Close it instead of cancelling");
         const [{ inv }] = await tx.select({ inv: sql<number>`count(*)`.mapWith(Number) }).from(salesInvoices)
           .where(and(eq(salesInvoices.orderId, d.orderId), sql`${salesInvoices.status} <> 'cancelled'`));
-        if (inv > 0) throw new UserError("Invoices exist for this order — cancel them first");
+        if (inv > 0) throw new UserError("This order has invoices. Cancel them first");
         await tx.update(salesOrders).set({ status: "cancelled" }).where(eq(salesOrders.id, d.orderId));
         return { from: o.status, to: "cancelled" };
       }

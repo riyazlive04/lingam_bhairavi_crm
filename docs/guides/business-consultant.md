@@ -1,24 +1,24 @@
 # Business Consultant Guide
 
-Role: understand Linga Bhairavi Enterprise's business, capture and maintain requirements, design processes so that data actually gets entered, and drive adoption.
+Your role: understand Linga Bhairavi Enterprise's business, capture and maintain the requirements, design processes so that staff actually enter data, and drive adoption.
 
-## 1. Domain primer (what you must know to talk to this client)
+## 1. Domain primer (what you need to know to talk to this client)
 
-| Term | Meaning in this business |
+| Term | What it means in this business |
 |---|---|
-| Turnkey fire-protection project | Supply + installation (erection) + testing + commissioning of a complete system for a factory/building to meet fire authority / National Building Code requirements |
-| Hydrant system | Pumps (electric main, diesel standby, jockey), GI/MS pipes, hydrant valves (single/double), hose reels, hose boxes, RRL hoses, branch pipes, fire brigade inlet (2-way/4-way FBI), valves (butterfly, gate, NRV, foot valve, Y-strainer) |
-| Sprinkler system | Pipes, pendant / upright / sidewall sprinklers, rosette plates, installation control valve, flow switches |
-| FAS | Fire Alarm System — conventional or addressable panel, detectors (heat, smoke, multi, beam, gas), manual call point (MCP), hooter, isolator/control modules, FRLS / fire-survival cables |
-| PA / Voice Evacuation | Zone-wise voice evacuation system, amplifiers, horn/ceiling speakers |
-| Extinguishers | ABC (2–50 kg), CO2 (2–50 kg), clean agent, foam; makes Chakraa, Safex; refilling and spares |
-| NB | Nominal Bore — pipe/valve size in mm (300, 250, 200, 150, 100, 80, 65, 50, 40, 32, 25) |
-| BOQ | Bill of Quantities — line list with BOQ Ref, description, qty, UOM, supply rate, erection rate |
-| Supply / Erection | Two separate rates per line: material supply, and installation labour |
-| UL | UL-listed variant of a product (priced separately) |
+| Turnkey fire-protection project | Supply, installation (erection), testing and commissioning of a complete system for a factory or building, to meet fire authority and National Building Code requirements |
+| Hydrant system | Pumps (electric main, diesel standby, jockey), GI/MS pipes, hydrant valves (single or double), hose reels, hose boxes, RRL hoses, branch pipes, fire brigade inlet (2-way or 4-way FBI), and valves (butterfly, gate, NRV, foot valve, Y-strainer) |
+| Sprinkler system | Pipes, pendant, upright and sidewall sprinklers, rosette plates, installation control valve, flow switches |
+| FAS | Fire Alarm System: a conventional or addressable panel, detectors (heat, smoke, multi, beam, gas), manual call point (MCP), hooter, isolator and control modules, FRLS or fire-survival cables |
+| PA / Voice Evacuation | Zone-wise voice evacuation system, amplifiers, horn and ceiling speakers |
+| Extinguishers | ABC (2 to 50 kg), CO2 (2 to 50 kg), clean agent and foam. Makes include Chakraa and Safex. Also refilling and spares |
+| NB | Nominal Bore: the pipe or valve size in mm (300, 250, 200, 150, 100, 80, 65, 50, 40, 32, 25) |
+| BOQ | Bill of Quantities: a list of lines with BOQ Ref, description, qty, UOM, supply rate and erection rate |
+| Supply / Erection | Two separate rates on each line: one for the material supplied, one for installation labour |
+| UL | The UL-listed version of a product (priced separately) |
 | PO / SO / DC | Customer purchase order / our sales order / delivery challan |
 
-## 2. Business process map (to-be)
+## 2. Business process map (how it will work)
 
 ```
 Enquiry / consultant BOQ
@@ -32,37 +32,37 @@ Enquiry / consultant BOQ
 
 ## 3. Your responsibilities
 
-1. **Meetings** — prepare questions, attend, write notes per [meetings/README.md](../meetings/README.md) within 1 working day.
-2. **Requirements** — maintain [REQUIREMENTS.md](../REQUIREMENTS.md): REQ table, user stories, business rules, change log. Every REQ must trace to a meeting timestamp, a client document, or be marked `Sirah` (proposal = assumption).
-3. **Clarifications** — own the open questions list (currently Q-01 … Q-19 in the kickoff notes). Highest priority: pipe UOM, purchase-vs-selling price list, markup, erection rate method, GST, Tally relationship, approvals.
-4. **Data-entry design** — for each module, define *who* must enter *what*, *when*, with ≤ 6 mandatory fields. Keep [user-guides/](../user-guides/) "What you MUST enter" sections current.
-5. **Master data readiness** — work with the client to complete the price list (fire-alarm and extinguisher prices are blank; many hydrant items blank), customer list, vendor list, company header details.
-6. **UAT & training** — with the tester, write business scenarios; run role-wise training using the user guides.
-7. **Adoption review** — after go-live, review the Data Hygiene "pending entries by person" weekly with the owner.
+1. **Meetings.** Prepare questions, attend, and write the notes following [meetings/README.md](../meetings/README.md) within 1 working day.
+2. **Requirements.** Maintain [REQUIREMENTS.md](../REQUIREMENTS.md): the REQ table, user stories, business rules and change log. Every REQ must trace to a meeting timestamp or a client document, or be marked `Sirah` (our proposal, which counts as an assumption).
+3. **Clarifications.** You own the open questions list (currently Q-01 to Q-19 in the kickoff notes). The most urgent ones: pipe UOM, purchase vs selling price list, markup, how erection rates are worked out, GST, the link with Tally, and approvals.
+4. **Data-entry design.** For each module, decide *who* enters *what*, and *when*, with no more than 6 mandatory fields. Keep the "What you MUST enter" sections in [user-guides/](../user-guides/) up to date.
+5. **Master data readiness.** Work with the client to complete the price list (fire-alarm and extinguisher prices are blank, and many hydrant items are too), the customer list, the vendor list and the company header details.
+6. **UAT and training.** Write business scenarios with the tester, and run training for each role using the user guides.
+7. **Adoption review.** After go-live, go through the Data Hygiene "pending entries by person" list with the owner every week.
 
-## 4. Requirement writing standards
+## 4. How to write requirements
 
-- One requirement = one testable statement. Bad: "Price should be updated". Good: "When a purchase invoice line is saved, the item's latest purchase rate becomes that line's rate (REQ-005/006)".
-- Use the client's own vocabulary (BOQ, NB, supply/erection, refill), and real examples from their files (e.g. "Pipe GI 200 NB ₹3,750").
-- Mark every assumption. Never present an assumption as a client statement.
-- MoSCoW: Must = system unusable for the stated pain without it; Should = important, workaround exists; Could = nice-to-have; Won't = explicitly deferred.
-- When the transcript translation is ambiguous, quote the timestamp and confirm with the client (e.g. "NPC" probably means NBC).
+- One requirement is one testable statement. Bad: "Price should be updated". Good: "When a purchase invoice line is saved, the item's latest purchase rate becomes that line's rate (REQ-005/006)".
+- Use the client's own words (BOQ, NB, supply/erection, refill) and real examples from their files (for example "Pipe GI 200 NB ₹3,750").
+- Mark every assumption. Never present an assumption as something the client said.
+- MoSCoW: Must means the system can't fix the stated pain without it. Should means important, but a workaround exists. Could means nice to have. Won't means we have deliberately deferred it.
+- When the transcript translation is unclear, quote the timestamp and confirm with the client (for example, "NPC" probably means NBC).
 
-## 5. Preventing the last CRM's failure — checklist
+## 5. Checklist: avoiding the last CRM's failure
 
-- [ ] Every report the owner wants is traced back to the entry that feeds it and the role who makes it.
-- [ ] Each role has fewer than 5 recurring entry tasks per day.
-- [ ] Entries happen at the moment of the event (on site on mobile; at the desk when an invoice arrives), not in batches.
-- [ ] The system gives something back immediately (auto price, auto reminders, pop-up), so entering data feels useful.
-- [ ] Owner dashboard shows pending entries per person — the owner asks about them in a weekly review.
-- [ ] No duplicate entry with Tally: agree which side is master for invoices/outstanding (Q-11).
+- [ ] Every report the owner wants is traced back to the entry that feeds it, and to the role that makes that entry.
+- [ ] Each role has fewer than 5 recurring entry tasks a day.
+- [ ] Entries happen when the event happens (on site on the phone, at the desk when an invoice arrives), not in batches later.
+- [ ] The system gives something back straight away (automatic prices, reminders, the pop-up), so entering data feels worth it.
+- [ ] The owner's dashboard shows pending entries for each person, and the owner asks about them in a weekly review.
+- [ ] No double entry with Tally: agree which side is the master for invoices and outstanding (Q-11).
 
-## 6. Deliverables you own
+## 6. Documents you own
 
 | Document | Location |
 |---|---|
-| Meeting notes (per meeting) | `docs/meetings/YYYY-MM-DD-topic.md` |
+| Meeting notes (one per meeting) | `docs/meetings/YYYY-MM-DD-topic.md` |
 | BRD | `docs/REQUIREMENTS.md` |
 | Agent catalogue (business side) | `docs/AUTOMATION_AGENTS.md` |
 | End-user guides | `docs/user-guides/*.md` |
-| UAT business scenarios (with tester) | `docs/guides/tester.md` |
+| UAT business scenarios (with the tester) | `docs/guides/tester.md` |

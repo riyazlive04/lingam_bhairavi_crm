@@ -49,7 +49,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
 
   return (
     <div>
-      <PageHeader title="Customers" subtitle="Customers, consultants and builders — with quotations, orders, invoices and refill assets."
+      <PageHeader title="Customers" subtitle="Customers, consultants and builders, with their quotations, orders, invoices and refill assets."
         actions={write && <LinkButton href="/customers/new"><Plus size={16} aria-hidden /> New customer</LinkButton>} />
       <Flash ok={sp.ok} err={sp.err} />
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -87,11 +87,11 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
                   <tr key={c.id} className="hover:bg-muted/50">
                     <Td><Link href={`/customers/${c.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{c.name}</Link>{!c.active && <> <Badge>inactive</Badge></>}</Td>
                     <Td><Badge tone={c.type === "customer" ? "blue" : c.type === "consultant" ? "violet" : "amber"}>{CUSTOMER_TYPES[c.type as keyof typeof CUSTOMER_TYPES] ?? c.type}</Badge></Td>
-                    <Td>{c.city ?? "—"}</Td>
-                    <Td className="text-xs">{c.contactPerson ?? "—"}{c.phone && <div><a href={`tel:${c.phone}`} className="text-ink-soft hover:underline">{c.phone}</a></div>}</Td>
+                    <Td>{c.city ?? "-"}</Td>
+                    <Td className="text-xs">{c.contactPerson ?? "-"}{c.phone && <div><a href={`tel:${c.phone}`} className="text-ink-soft hover:underline">{c.phone}</a></div>}</Td>
                     <Td className={cx("text-right tabular-nums", overLimit && "font-semibold text-red-600")} title={overLimit ? "Over credit limit" : undefined}>
-                      {r && r.outstanding > 0.5 ? money(r.outstanding) : <span className="text-ink-faint">—</span>}</Td>
-                    <Td className="text-right tabular-nums">{r && r.overdue > 0.5 ? <span className="font-medium text-red-600">{money(r.overdue)}</span> : <span className="text-ink-faint">—</span>}</Td>
+                      {r && r.outstanding > 0.5 ? money(r.outstanding) : <span className="text-ink-faint">-</span>}</Td>
+                    <Td className="text-right tabular-nums">{r && r.overdue > 0.5 ? <span className="font-medium text-red-600">{money(r.overdue)}</span> : <span className="text-ink-faint">-</span>}</Td>
                   </tr>
                 );
               })}

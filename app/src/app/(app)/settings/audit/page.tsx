@@ -85,7 +85,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
                           <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-2 text-xs text-ink">{JSON.stringify(r.details, null, 2)}</pre>
                         </details>
                       ) : <code className="break-all text-xs text-ink-soft">{details}</code>
-                    ) : <span className="text-ink-faint">—</span>}
+                    ) : <span className="text-ink-faint">-</span>}
                   </Td>
                 </tr>
               );

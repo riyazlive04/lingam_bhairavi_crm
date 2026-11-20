@@ -133,14 +133,14 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
                     <div className="text-xs text-ink-soft">{r.code}{r.startDate ? ` · from ${fmtDate(r.startDate)}` : ""}</div>
                   </Td>
                   <Td className="max-w-56 truncate">{r.customerName}</Td>
-                  <Td>{r.engineerName ?? <span className="text-ink-faint">—</span>}</Td>
+                  <Td>{r.engineerName ?? <span className="text-ink-faint">-</span>}</Td>
                   <Td><StatusBadge status={r.status} /></Td>
                   {full && <Td className="text-right tabular-nums">{money0(c?.contractValue)}</Td>}
                   <Td className="text-right tabular-nums">{acc.spend ? money0(c?.actualCost) : <span className="text-ink-faint">hidden</span>}</Td>
-                  <Td>{acc.spend && c ? <BudgetBar usedPct={c.budgetUsedPct} budget={c.budget} /> : <span className="text-ink-faint">—</span>}</Td>
+                  <Td>{acc.spend && c ? <BudgetBar usedPct={c.budgetUsedPct} budget={c.budget} /> : <span className="text-ink-faint">-</span>}</Td>
                   {full && (
                     <Td className={cx("text-right tabular-nums", c && c.margin < 0 ? "font-semibold text-red-600" : "text-ink")}>
-                      {c && c.contractValue ? pct(c.marginPct) : "—"}
+                      {c && c.contractValue ? pct(c.marginPct) : "-"}
                       {c && c.contractValue ? <div className="text-xs text-ink-soft">{money0(c.margin)}</div> : null}
                     </Td>
                   )}

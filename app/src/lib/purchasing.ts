@@ -1,7 +1,7 @@
 /**
- * Purchase invoice domain logic. OWNED BY: Team A (Masters & Purchasing).
+ * Purchase invoice domain logic. Maintainer: Sirah Digital.
  *
- * `postPurchaseInvoice` implements CONVENTIONS rule 4 — the single place that turns a supplier invoice into
+ * `postPurchaseInvoice` implements CONVENTIONS rule 4, the single place that turns a supplier invoice into
  * price history, vendor-item rates, stock movements and the item's latest cost (which quotations auto-pick).
  */
 import "server-only";
@@ -55,12 +55,12 @@ export async function postPurchaseInvoice(db: DB, invoiceId: number, userId: num
     const inv = claimed[0];
     if (!inv) {
       const [cur] = await tx.select({ status: purchaseInvoices.status }).from(purchaseInvoices).where(eq(purchaseInvoices.id, invoiceId));
-      throw new PurchaseError(cur ? `Invoice is already ${cur.status} — only drafts can be posted` : "Invoice not found");
+      throw new PurchaseError(cur ? `Invoice is already ${cur.status}. Only drafts can be posted` : "Invoice not found");
     }
     const lines = (await tx.select().from(purchaseInvoiceLines).where(eq(purchaseInvoiceLines.invoiceId, invoiceId)))
       .filter((l) => Number(l.qty) > 0)
       .sort((a, b) => a.id - b.id);
-    if (!lines.length) throw new PurchaseError("Invoice has no lines with quantity — add items before posting");
+    if (!lines.length) throw new PurchaseError("This invoice has no lines with a quantity. Add items before posting");
 
     // Recompute totals from lines so the posted figures are always consistent.
     const totals = computePurchaseTotals(lines);
@@ -84,7 +84,7 @@ export async function postPurchaseInvoice(db: DB, invoiceId: number, userId: num
       if (inv.projectId) {
         await tx.insert(stockMovements).values({
           itemId: l.itemId, qty: -qty, type: "issue_project", rate, projectId: inv.projectId, refType: "purchase_invoice", refId: inv.id,
-          date: inv.invoiceDate, notes: `Direct to site — purchase ${inv.invoiceNo}`, createdBy: userId,
+          date: inv.invoiceDate, notes: `Direct to site, purchase ${inv.invoiceNo}`, createdBy: userId,
         });
       }
     }

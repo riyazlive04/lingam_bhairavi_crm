@@ -4,7 +4,7 @@ import type { SessionUser } from "@/lib/session";
 /**
  * Project visibility rules:
  * - admin / sales / purchase / accounts (canSeeCost): full costing sheet incl. contract value & margin.
- * - assigned site engineer: budget vs actual spend, materials (qty + value), expenses — no contract value / margin / billing.
+ * - assigned site engineer: budget vs actual spend, materials (qty + value), expenses (no contract value / margin / billing).
  * - other engineers: basic project info only (read-only).
  * - editing: admin any project; engineer only projects assigned to them.
  */

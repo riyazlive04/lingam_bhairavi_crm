@@ -61,7 +61,7 @@ export async function logFollowUp(form: FormData) {
     revalidatePath("/follow-ups");
     revalidatePath("/quotations");
     revalidatePath(`/quotations/${p.quotationId}`);
-    target = withMsg(back, "ok", `Follow-up logged for ${q.number}${p.nextDate && open ? ` — next on ${p.nextDate}` : ""}`);
+    target = withMsg(back, "ok", `Follow-up logged for ${q.number}${p.nextDate && open ? `. Next follow-up on ${p.nextDate}` : ""}`);
   } catch (e) {
     const msg = publicError(e, "Could not log follow-up");
     target = withMsg(back, "err", msg);

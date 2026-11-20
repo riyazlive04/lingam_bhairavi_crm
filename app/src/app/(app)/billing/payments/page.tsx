@@ -108,12 +108,12 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                 <Td className="whitespace-nowrap">{fmtDate(p.date)}</Td>
                 <Td>{p.direction === "in" ? <Badge tone="green">Received</Badge> : <Badge tone="blue">Paid</Badge>}</Td>
                 <Td className="max-w-56 truncate">
-                  {p.direction === "in" && p.customerId ? <Link href={`/billing/receivables/${p.customerId}`} className="hover:underline">{customerName ?? "—"}</Link>
-                    : p.vendorId ? <Link href={`/billing/payables?vendor=${p.vendorId}`} className="hover:underline">{vendorName ?? "—"}</Link> : "—"}
+                  {p.direction === "in" && p.customerId ? <Link href={`/billing/receivables/${p.customerId}`} className="hover:underline">{customerName ?? "-"}</Link>
+                    : p.vendorId ? <Link href={`/billing/payables?vendor=${p.vendorId}`} className="hover:underline">{vendorName ?? "-"}</Link> : "-"}
                 </Td>
-                <Td>{p.salesInvoiceId ? <Link href={`/billing/invoices/${p.salesInvoiceId}`} className="text-brand-700 hover:underline dark:text-brand-300">{siNumber}</Link> : piNumber ?? "—"}</Td>
+                <Td>{p.salesInvoiceId ? <Link href={`/billing/invoices/${p.salesInvoiceId}`} className="text-brand-700 hover:underline dark:text-brand-300">{siNumber}</Link> : piNumber ?? "-"}</Td>
                 <Td className="uppercase">{p.mode}</Td>
-                <Td>{p.reference || "—"}</Td>
+                <Td>{p.reference || "-"}</Td>
                 <Td className={`text-right tabular-nums ${p.direction === "in" ? "text-emerald-700 dark:text-emerald-400" : ""}`}>{money(p.amount)}</Td>
               </tr>
             ))}

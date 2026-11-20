@@ -60,7 +60,7 @@ export default async function TemplateDetailPage({ params, searchParams }: { par
             ["Status", t.active ? <Badge tone="green">Active</Badge> : <Badge>Inactive</Badge>],
             ["Lines", `${lines.length} (${unlinked} free-text)`],
             ["Used in quotations", String(Number(used))],
-            ["Description", t.description || "—"],
+            ["Description", t.description || "-"],
           ]} />
         </Card>
         {writable && (
@@ -73,7 +73,7 @@ export default async function TemplateDetailPage({ params, searchParams }: { par
               <form action={deleteTemplate}>
                 <input type="hidden" name="id" value={t.id} />
                 <SubmitButton variant="danger" className="w-full" pendingText="Deleting…"
-                  confirm={Number(used) > 0 ? "This template is used by quotations — it will be deactivated instead. Continue?" : "Delete this template permanently?"}>
+                  confirm={Number(used) > 0 ? "Quotations use this template, so it will be deactivated instead. Continue?" : "Delete this template permanently?"}>
                   Delete template
                 </SubmitButton>
               </form>
@@ -106,9 +106,9 @@ export default async function TemplateDetailPage({ params, searchParams }: { par
                       <Td className="text-xs">{it ? <><span className="font-mono">{it.code}</span><br /><span className="text-ink-soft">{it.name}</span></> : <Badge tone="amber">Free text</Badge>}</Td>
                       <Td>{l.uom}</Td>
                       <Td className="text-right tabular-nums">{qty(l.defaultQty)}</Td>
-                      {showCost && <Td className="text-right tabular-nums">{r ? money(r.costRate) : "—"}</Td>}
-                      <Td className="text-right tabular-nums">{r ? money(r.supplyRate) : "—"}</Td>
-                      <Td className="text-right tabular-nums">{r ? money(r.erectionRate) : "—"}</Td>
+                      {showCost && <Td className="text-right tabular-nums">{r ? money(r.costRate) : "-"}</Td>}
+                      <Td className="text-right tabular-nums">{r ? money(r.supplyRate) : "-"}</Td>
+                      <Td className="text-right tabular-nums">{r ? money(r.erectionRate) : "-"}</Td>
                     </tr>
                   );
                 })}

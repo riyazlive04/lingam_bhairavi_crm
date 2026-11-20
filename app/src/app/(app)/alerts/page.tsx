@@ -90,7 +90,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
       </form>
 
       {rows.length === 0 ? (
-        <EmptyState title={status === "open" ? "All clear — nothing needs attention" : "No alerts match these filters"}>
+        <EmptyState title={status === "open" ? "All clear, nothing needs your attention" : "No alerts match these filters"}>
           Agents check quotations, deliveries, refills, payments, prices and stock every morning. New findings will appear here.
         </EmptyState>
       ) : (

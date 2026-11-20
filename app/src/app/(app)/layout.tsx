@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { and, count, eq, inArray, isNull, or } from "drizzle-orm";
 import { AppShell } from "@/components/app-shell";
 import { StartupDigest } from "@/components/startup-digest";
@@ -18,7 +19,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       roles ? or(inArray(alerts.assignedRole, roles), eq(alerts.assignedUserId, user.id), isNull(alerts.assignedRole)) : undefined));
   return (
     <AppShell user={{ name: user.name, role: user.role }} alertCount={Number(n)} demo={isDemoDatabase()}>
-      <StartupDigest user={user} />
+      {/* Streams in after the page paints, so it can never hold up first render. */}
+      <Suspense fallback={null}><StartupDigest user={user} /></Suspense>
       {children}
     </AppShell>
   );

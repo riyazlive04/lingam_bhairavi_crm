@@ -1,5 +1,5 @@
 /**
- * Item & Price Master helpers. OWNED BY: Team A (Masters & Purchasing).
+ * Item & Price Master helpers. Maintainer: Sirah Digital.
  *
  * Other teams: use `getLatestCost` / `latestCostOf` / `getLatestCosts` to price quotations (CONVENTIONS rule 1)
  * and `suggestedSupplyRate` for rule 2.
@@ -26,7 +26,7 @@ export type LatestCost = {
 
 type CostFields = Pick<typeof items.$inferSelect, "lastPurchaseRate" | "lastPurchaseDate" | "lastPurchaseVendorId" | "listPrice">;
 
-/** Pure: CONVENTIONS rule 1 — lastPurchaseRate, falling back to listPrice. */
+/** Pure: CONVENTIONS rule 1: lastPurchaseRate, falling back to listPrice. */
 export function latestCostOf(it: CostFields): LatestCost {
   if (it.lastPurchaseRate != null && Number(it.lastPurchaseRate) > 0) {
     return { rate: Number(it.lastPurchaseRate), source: "purchase", date: it.lastPurchaseDate ?? null, vendorId: it.lastPurchaseVendorId ?? null };
@@ -167,7 +167,7 @@ export function vendorComparison(points: PricePoint[]): VendorComparison[] {
   }).sort((a, b) => a.lastRate - b.lastRate);
 }
 
-/** Most recent purchase price point before the latest one — used to show price movement. */
+/** Most recent purchase price point before the latest one, used to show price movement. */
 export async function previousPurchaseRates(db: Executor, itemIds: number[]): Promise<Map<number, number>> {
   const out = new Map<number, number>();
   if (!itemIds.length) return out;

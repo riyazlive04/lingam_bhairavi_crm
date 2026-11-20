@@ -28,7 +28,7 @@ export async function templateGridLines(db: DB, templateId: number, markupPct: n
 
 /**
  * Refill quotation from the Refill Tracker: selected extinguisher assets of one customer → one line per
- * (type, make), priced from the matching "Refilling <type> <size> — <make>" item in the master (rule 2).
+ * (type, make), priced from the matching "Refilling <type> <size>, <make>" item in the master (rule 2).
  */
 export async function refillGridLines(db: DB, customerId: number, assetIds: number[], markupPct: number, showCost: boolean): Promise<GridLine[]> {
   if (!assetIds.length) return [];
@@ -60,7 +60,7 @@ export async function refillGridLines(db: DB, customerId: number, assetIds: numb
     const where = g.locations.size ? ` (${[...g.locations].slice(0, 4).join(", ")}${g.locations.size > 4 ? "…" : ""})` : "";
     return {
       key: `rf${idx}`, lineId: null, section: "Extinguisher Refilling", boqRef: String(idx + 1), itemId: it && p ? it.id : null,
-      description: `Refilling of ${g.extType} fire extinguisher${g.make ? ` — ${g.make}` : ""}${where}`, uom: it?.uom ?? "Nos", qty: g.qty,
+      description: `Refilling of ${g.extType} fire extinguisher${g.make ? `, ${g.make}` : ""}${where}`, uom: it?.uom ?? "Nos", qty: g.qty,
       costRate: showCost ? r.costRate : null, supplyRate: r.supplyRate, erectionRate: r.erectionRate, remarks: "", manual: !(it && p),
     };
   });

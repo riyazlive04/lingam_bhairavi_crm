@@ -146,7 +146,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     }
     if (g.section && groups.length > 1) {
       ws.mergeCells(r, 1, r, 5);
-      ws.getCell(r, 1).value = `Total — ${secTitle}`;
+      ws.getCell(r, 1).value = `Total: ${secTitle}`;
       ws.getCell(r, 1).alignment = { horizontal: "right" };
       ws.getCell(r, 6).value = { formula: `SUM(F${first}:F${r - 1})`, result: g.lines.reduce((s, l) => s + l.qty * l.supplyRate, 0) };
       ws.getCell(r, 8).value = { formula: `SUM(H${first}:H${r - 1})`, result: g.lines.reduce((s, l) => s + l.qty * l.erectionRate, 0) };

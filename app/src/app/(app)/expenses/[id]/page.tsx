@@ -64,11 +64,11 @@ export default async function ExpenseDetailPage({ params, searchParams }: { para
             ["Date", fmtDate(e.date)],
             ["Amount", money(e.amount)],
             ["Category", categoryLabel(e.category)],
-            ["Paid to", e.paidTo || "—"],
-            ["Bill / receipt no.", e.billRef || "—"],
-            ["Entered by", `${row.userName ?? "—"} · ${fmtDateTime(e.createdAt)}`],
-            ["Reviewed by", e.status === "pending" ? "Awaiting approval" : row.approverName ?? "—"],
-            ["Description", e.description || "—"],
+            ["Paid to", e.paidTo || "-"],
+            ["Bill / receipt no.", e.billRef || "-"],
+            ["Entered by", `${row.userName ?? "-"} · ${fmtDateTime(e.createdAt)}`],
+            ["Reviewed by", e.status === "pending" ? "Awaiting approval" : row.approverName ?? "-"],
+            ["Description", e.description || "-"],
           ]}
         />
       </Card>
@@ -87,7 +87,7 @@ export default async function ExpenseDetailPage({ params, searchParams }: { para
             </tbody>
           </Table>
         ) : (
-          <p className="text-sm text-ink-soft">Office overhead — not charged to any project.</p>
+          <p className="text-sm text-ink-soft">Office overhead, not charged to any project.</p>
         )}
       </Card>
 

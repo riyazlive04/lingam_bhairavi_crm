@@ -10,7 +10,7 @@ describe("refills (rule 8)", () => {
     expect(computeNextDue("2025-12-01", 36)).toBe("2028-12-01");
     expect(computeNextDue("2026-12-03", 12)).toBe("2027-12-03");
   });
-  it("refillBucket — RF-1 enters the 10-day window on 21-11-2026, not 20-11", () => {
+  it("refillBucket: RF-1 enters the 10-day window on 21-11-2026, not 20-11", () => {
     expect(refillBucket("2026-12-01", "2026-11-21")).toBe("due10");
     expect(refillBucket("2026-12-01", "2026-11-20")).toBe("due30");
     expect(refillBucket("2026-11-20", "2026-11-21")).toBe("overdue");
@@ -72,7 +72,7 @@ describe("invoiceStatusFor / ageingBucket (rule 6)", () => {
     expect(outstandingOf(362496, 100000)).toBe(262496);
     expect(outstandingOf(100, 200)).toBe(0);
   });
-  it("ageing buckets (OS-1: 45 days → 31–60)", () => {
+  it("ageing buckets (OS-1: 45 days → 31 to 60)", () => {
     expect(ageingBucket(-1)).toBe("notDue");
     expect(ageingBucket(0)).toBe("d0_30");
     expect(ageingBucket(30)).toBe("d0_30");

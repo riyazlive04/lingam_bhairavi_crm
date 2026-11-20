@@ -1,5 +1,5 @@
 /**
- * Markdown → sanitised HTML (allowlist). OWNED BY: Team D (Meeting notes).
+ * Markdown → sanitised HTML (allowlist). Maintainer: Sirah Digital.
  * Every user-supplied markdown must go through renderMarkdown() before dangerouslySetInnerHTML.
  */
 import "server-only";
@@ -64,7 +64,7 @@ export function meetingNoteToMarkdown(n: MeetingNoteForExport, revisions: Meetin
   out.push(`# ${n.title}`, "");
   out.push("| Field | Value |", "|---|---|");
   out.push(`| **Date** | ${n.meetingDate} |`);
-  out.push(`| **Attendees** | ${esc(n.attendees || "—")} |`);
+  out.push(`| **Attendees** | ${esc(n.attendees || "-")} |`);
   out.push(`| **Version** | v${n.version} (updated ${iso(n.updatedAt)}) |`, "");
   out.push("## 1. Summary", "", n.summary?.trim() || "_None recorded._", "");
   out.push("## 2. Decisions", "", n.decisions?.trim() || "_None recorded._", "");
@@ -72,7 +72,7 @@ export function meetingNoteToMarkdown(n: MeetingNoteForExport, revisions: Meetin
   if (n.actionItems.length) {
     out.push("| # | Action | Owner | Due | Status |", "|---|---|---|---|---|");
     n.actionItems.forEach((a, i) => {
-      out.push(`| A-${String(i + 1).padStart(2, "0")} | ${esc(a.text)} | ${esc(a.owner || "—")} | ${a.due || "—"} | ${a.done ? "Done" : "Open"} |`);
+      out.push(`| A-${String(i + 1).padStart(2, "0")} | ${esc(a.text)} | ${esc(a.owner || "-")} | ${a.due || "-"} | ${a.done ? "Done" : "Open"} |`);
     });
   } else out.push("_No action items._");
   out.push("");
@@ -80,8 +80,8 @@ export function meetingNoteToMarkdown(n: MeetingNoteForExport, revisions: Meetin
   out.push("## 5. Change log / revision history", "");
   out.push("| Version | Date | By | Change |", "|---|---|---|---|");
   const sorted = [...revisions].sort((a, b) => b.version - a.version);
-  for (const r of sorted) out.push(`| v${r.version + 1} | ${iso(r.createdAt)} | ${esc(r.by || "—")} | ${esc(r.changeSummary || "Updated")} |`);
-  out.push(`| v1 | ${iso(n.createdAt)} | — | Created |`);
+  for (const r of sorted) out.push(`| v${r.version + 1} | ${iso(r.createdAt)} | ${esc(r.by || "-")} | ${esc(r.changeSummary || "Updated")} |`);
+  out.push(`| v1 | ${iso(n.createdAt)} | - | Created |`);
   out.push("");
   if (n.transcript?.trim()) out.push("## 6. Transcript / raw notes", "", n.transcript.trim(), "");
   return out.join("\n");

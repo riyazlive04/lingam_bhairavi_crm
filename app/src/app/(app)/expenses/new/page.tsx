@@ -16,7 +16,7 @@ export default async function NewExpensePage({ searchParams }: { searchParams: P
   const preset = projectList.some((p) => p.id === pre) ? [{ projectId: pre, amount: 0 }] : [];
   return (
     <div className="mx-auto max-w-2xl">
-      <PageHeader title="New expense voucher" subtitle="Enter it the same day — the bill amount goes straight into the project cost once approved." back={{ href: "/expenses", label: "Expenses" }} />
+      <PageHeader title="New expense voucher" subtitle="Enter it the same day. Once approved, the bill amount goes straight into the project cost." back={{ href: "/expenses", label: "Expenses" }} />
       <Flash ok={sp.ok} err={sp.err} />
       <Card>
         <VoucherForm

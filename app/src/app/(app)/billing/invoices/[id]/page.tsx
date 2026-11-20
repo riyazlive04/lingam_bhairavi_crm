@@ -73,7 +73,7 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
         }
       />
       <Flash ok={sp.ok} err={sp.err} />
-      {isOpen && !c.email && <p className="mb-4 text-sm text-amber-700 dark:text-amber-300">No e-mail on file for this customer — reminders cannot be sent. Add it in Customers.</p>}
+      {isOpen && !c.email && <p className="mb-4 text-sm text-amber-700 dark:text-amber-300">There is no e-mail on file for this customer, so reminders cannot be sent. Add one in Customers.</p>}
 
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div className="rounded-xl border border-line bg-surface p-4"><div className="text-xs uppercase tracking-wide text-ink-soft">Total</div><div className="mt-1 text-xl font-semibold tabular-nums">{money(inv.total)}</div></div>
@@ -88,11 +88,11 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
           <DL items={[
             ["Invoice date", fmtDate(inv.invoiceDate)],
             ["Due date", fmtDate(inv.dueDate)],
-            ["Customer GSTIN", c.gstin || "—"],
-            ["Customer e-mail", c.email || "—"],
-            ["Order", inv.orderId && row.orderNumber ? <Link href={`/orders/${inv.orderId}`} className="text-brand-700 hover:underline dark:text-brand-300">{row.orderNumber}{row.customerPo ? ` (PO ${row.customerPo})` : ""}</Link> : "—"],
-            ["Project", row.projectName || "—"],
-            ["Notes", inv.notes || "—"],
+            ["Customer GSTIN", c.gstin || "-"],
+            ["Customer e-mail", c.email || "-"],
+            ["Order", inv.orderId && row.orderNumber ? <Link href={`/orders/${inv.orderId}`} className="text-brand-700 hover:underline dark:text-brand-300">{row.orderNumber}{row.customerPo ? ` (PO ${row.customerPo})` : ""}</Link> : "-"],
+            ["Project", row.projectName || "-"],
+            ["Notes", inv.notes || "-"],
           ]} />
         </Card>
         {write && isOpen ? (
@@ -148,7 +148,7 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
               <thead><tr><Th>Date</Th><Th>Mode</Th><Th>Reference</Th><Th className="text-right">Amount</Th></tr></thead>
               <tbody>
                 {pays.map((p) => (
-                  <tr key={p.id}><Td className="whitespace-nowrap">{fmtDate(p.date)}</Td><Td className="uppercase">{p.mode}</Td><Td>{p.reference || "—"}</Td><Td className="text-right tabular-nums">{money(p.amount)}</Td></tr>
+                  <tr key={p.id}><Td className="whitespace-nowrap">{fmtDate(p.date)}</Td><Td className="uppercase">{p.mode}</Td><Td>{p.reference || "-"}</Td><Td className="text-right tabular-nums">{money(p.amount)}</Td></tr>
                 ))}
               </tbody>
             </Table>

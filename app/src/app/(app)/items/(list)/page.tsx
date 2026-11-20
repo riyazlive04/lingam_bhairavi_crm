@@ -9,9 +9,11 @@ import { SYSTEMS } from "@/lib/constants";
 import { fmtDate, money, money0, pct, todayIST, addDays } from "@/lib/format";
 import { NB_SIZES, STALE_DAYS_DEFAULT, STALE_DAYS_VOLATILE, isPriceStale, latestCostOf, normaliseNB, priceAgeDays, suggestedSupplyRate } from "@/lib/items";
 import { Badge, Button, Card, EmptyState, Flash, Input, LinkButton, PageHeader, Select, Table, Td, Th, buttonClass, cx } from "@/components/ui";
-import { LinkTabs, Pager, qs } from "./_components/tabs";
+import { LinkTabs, Pager, qs } from "../_components/tabs";
 
 const PAGE_SIZE = 100;
+/** Non-NB items listed under the size matrix (the item list has the rest). */
+const OTHERS_LIMIT = 40;
 
 type SP = { q?: string; system?: string; group?: string; make?: string; stale?: string; view?: string; basis?: string; page?: string; ok?: string; err?: string };
 
@@ -54,7 +56,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Promis
     <div>
       <PageHeader
         title="Item & Price Master"
-        subtitle="Latest cost is picked automatically from posted supplier invoices — no manual verification per quotation."
+        subtitle="Latest cost is picked automatically from posted supplier invoices, so you never have to re-check prices for each quotation."
         actions={<>
           <a href={"/items/export" + qs({ system, group: sp.group, make: sp.make, q: sp.q })} className={buttonClass("secondary")}><Download size={16} aria-hidden /> Export Excel</a>
           {write && <LinkButton href="/items/new"><Plus size={16} aria-hidden /> New item</LinkButton>}
@@ -104,15 +106,17 @@ export default async function ItemsPage({ searchParams }: { searchParams: Promis
 async function ItemList({ where, sp, base, seeCost, today }: { where: SQL | undefined; sp: SP; base: Record<string, string | undefined>; seeCost: boolean; today: string }) {
   const db = await getDb();
   const page = Math.max(1, Number(sp.page) || 1);
-  const [{ n }] = await db.select({ n: count() }).from(items).where(where);
+  const [[{ n }], rows] = await Promise.all([
+    db.select({ n: count() }).from(items).where(where),
+    db
+      .select({ it: items, vendorName: vendors.name })
+      .from(items)
+      .leftJoin(vendors, eq(vendors.id, items.lastPurchaseVendorId))
+      .where(where)
+      .orderBy(asc(items.system), asc(items.groupName), asc(items.code))
+      .limit(PAGE_SIZE).offset((page - 1) * PAGE_SIZE),
+  ]);
   const total = Number(n);
-  const rows = await db
-    .select({ it: items, vendorName: vendors.name })
-    .from(items)
-    .leftJoin(vendors, eq(vendors.id, items.lastPurchaseVendorId))
-    .where(where)
-    .orderBy(asc(items.system), asc(items.groupName), asc(items.code))
-    .limit(PAGE_SIZE).offset((page - 1) * PAGE_SIZE);
 
   if (!rows.length) {
     return <EmptyState title="No items match these filters">Try clearing the search or choosing another system.</EmptyState>;
@@ -121,7 +125,7 @@ async function ItemList({ where, sp, base, seeCost, today }: { where: SQL | unde
   return (
     <>
       <p className="mb-2 text-sm text-ink-soft">{total} item{total === 1 ? "" : "s"}{seeCost && <> · prices are buying cost; stale = volatile &gt; {STALE_DAYS_VOLATILE} days, others &gt; {STALE_DAYS_DEFAULT} days since last purchase</>}</p>
-      <Table>
+      <Table tall>
         <thead>
           <tr>
             <Th>Code</Th><Th>Item</Th><Th>Size</Th><Th>Make</Th><Th>UOM</Th>
@@ -142,22 +146,22 @@ async function ItemList({ where, sp, base, seeCost, today }: { where: SQL | unde
                 <Td className="font-mono text-xs"><Link href={`/items/${it.id}`} className="text-brand-700 hover:underline dark:text-brand-300">{it.code}</Link></Td>
                 <Td className="max-w-72 whitespace-normal"><Link href={`/items/${it.id}`} className="hover:underline">{it.name}</Link>
                   <div className="text-xs text-ink-faint">{SYSTEMS[it.system as keyof typeof SYSTEMS] ?? it.system} · {it.groupName}</div></Td>
-                <Td>{it.size ?? "—"}</Td>
-                <Td>{it.make ?? "—"}</Td>
+                <Td>{it.size ?? "-"}</Td>
+                <Td>{it.make ?? "-"}</Td>
                 <Td>{it.uom}</Td>
                 {seeCost && <>
                   <Td className="text-right tabular-nums">{money(c.rate)}</Td>
                   <Td className="text-xs">
                     {c.source === "purchase"
-                      ? <span title={vendorName ?? undefined}>{fmtDate(c.date)}<div className="max-w-40 truncate text-ink-faint">{vendorName ?? "—"}</div></span>
+                      ? <span title={vendorName ?? undefined}>{fmtDate(c.date)}<div className="max-w-40 truncate text-ink-faint">{vendorName ?? "-"}</div></span>
                       : c.source === "list" ? <Badge tone="gray">list</Badge> : <Badge tone="red">no price</Badge>}
                   </Td>
                   <Td className="text-right">
-                    {age == null ? <span className="text-ink-faint">—</span>
+                    {age == null ? <span className="text-ink-faint">-</span>
                       : <Badge tone={stale ? (it.volatilePrice ? "red" : "amber") : "green"}>{age}d{stale ? " · stale" : ""}</Badge>}
                   </Td>
                 </>}
-                <Td className="text-right tabular-nums">{it.lastSaleRate != null ? <span title={fmtDate(it.lastSaleDate)}>{money(it.lastSaleRate)}</span> : "—"}</Td>
+                <Td className="text-right tabular-nums">{it.lastSaleRate != null ? <span title={fmtDate(it.lastSaleDate)}>{money(it.lastSaleRate)}</span> : "-"}</Td>
                 {seeCost && <Td className="text-right tabular-nums">{pct(it.markupPct, 0)}</Td>}
                 <Td className="text-right font-medium tabular-nums">{money0(sell)}</Td>
               </tr>
@@ -172,7 +176,12 @@ async function ItemList({ where, sp, base, seeCost, today }: { where: SQL | unde
 
 async function PriceMatrix({ where, seeCost, basis, base }: { where: SQL | undefined; seeCost: boolean; basis: "cost" | "sell"; base: Record<string, string | undefined> }) {
   const db = await getDb();
-  const rows = await db.select().from(items).where(where).orderBy(asc(items.system), asc(items.groupName), asc(items.make));
+  const rows = await db
+    .select({
+      id: items.id, code: items.code, name: items.name, groupName: items.groupName, make: items.make, size: items.size, markupPct: items.markupPct,
+      lastPurchaseRate: items.lastPurchaseRate, lastPurchaseDate: items.lastPurchaseDate, lastPurchaseVendorId: items.lastPurchaseVendorId, listPrice: items.listPrice,
+    })
+    .from(items).where(where).orderBy(asc(items.system), asc(items.groupName), asc(items.make));
   type Cell = { id: number; rate: number | null; source: string; code: string };
   const matrix = new Map<string, { group: string; make: string | null; cells: Map<string, Cell> }>();
   const used = new Set<string>();
@@ -188,6 +197,7 @@ async function PriceMatrix({ where, seeCost, basis, base }: { where: SQL | undef
     used.add(nb);
   }
   const sizes = NB_SIZES.filter((s) => used.has(s));
+  const othersShown = others.slice(0, OTHERS_LIMIT);
 
   return (
     <div className="space-y-4">
@@ -205,7 +215,7 @@ async function PriceMatrix({ where, seeCost, basis, base }: { where: SQL | undef
       {matrix.size === 0 ? (
         <EmptyState title="No NB-sized items for these filters">The size matrix covers pipes, fittings and valves sized in NB. Other items are listed below and in the item list.</EmptyState>
       ) : (
-        <Table>
+        <Table tall>
           <thead>
             <tr>
               <Th className="sticky left-0 z-10">Group / make</Th>
@@ -220,7 +230,7 @@ async function PriceMatrix({ where, seeCost, basis, base }: { where: SQL | undef
                   const c = r.cells.get(s);
                   return (
                     <Td key={s} className={cx("text-right tabular-nums", c?.source === "list" && "italic text-ink-soft")}>
-                      {c ? <Link href={`/items/${c.id}`} title={c.code} className="hover:underline">{c.rate == null ? "—" : money0(c.rate)}</Link> : <span className="text-ink-faint">·</span>}
+                      {c ? <Link href={`/items/${c.id}`} title={c.code} className="hover:underline">{c.rate == null ? "-" : money0(c.rate)}</Link> : <span className="text-ink-faint">·</span>}
                     </Td>
                   );
                 })}
@@ -230,24 +240,30 @@ async function PriceMatrix({ where, seeCost, basis, base }: { where: SQL | undef
         </Table>
       )}
       {others.length > 0 && (
-        <Card title={`Other items (${others.length}) — not sized in NB`} bodyClassName="p-0">
+        <Card title={`Other items not sized in NB (${others.length})`} bodyClassName="p-0">
           <Table className="rounded-none border-0 shadow-none">
             <thead><tr><Th>Group</Th><Th>Item</Th><Th>Size</Th><Th>Make</Th><Th className="text-right">{basis === "cost" ? "Latest cost" : "Suggested sell"}</Th></tr></thead>
             <tbody>
-              {others.map((it) => {
+              {othersShown.map((it) => {
                 const c = latestCostOf(it);
                 const rate = basis === "cost" ? c.rate : suggestedSupplyRate(c.rate, it.markupPct);
                 return (
                   <tr key={it.id}>
                     <Td>{it.groupName}</Td>
                     <Td className="max-w-72 whitespace-normal"><Link href={`/items/${it.id}`} className="hover:underline">{it.name}</Link></Td>
-                    <Td>{it.size ?? "—"}</Td><Td>{it.make ?? "—"}</Td>
+                    <Td>{it.size ?? "-"}</Td><Td>{it.make ?? "-"}</Td>
                     <Td className={cx("text-right tabular-nums", c.source === "list" && "italic text-ink-soft")}>{money0(rate)}</Td>
                   </tr>
                 );
               })}
             </tbody>
           </Table>
+          {others.length > othersShown.length && (
+            <p className="border-t border-line px-4 py-3 text-sm text-ink-soft">
+              Showing the first {othersShown.length} of {others.length}.{" "}
+              <Link href={"/items" + qs({ ...base })} className="font-medium text-brand-700 hover:underline dark:text-brand-300">See every item in the item list</Link>
+            </p>
+          )}
         </Card>
       )}
     </div>

@@ -60,7 +60,7 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
         back={order ? { href: `/orders/${order.o.id}`, label: order.o.number } : { href: "/billing/invoices", label: "Invoices" }}
       />
       <Flash err={sp.err} />
-      {orderId && !order && <Flash err="Order not found — creating a manual invoice instead." />}
+      {orderId && !order && <Flash err="We couldn't find that order, so you're creating a manual invoice instead." />}
 
       <form action={createInvoice} className="space-y-4">
         <Card title="Invoice details">
@@ -72,9 +72,9 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
               <div className="mb-4">
                 <DL items={[
                   ["Customer", order.c.name],
-                  ["GSTIN", order.c.gstin || "—"],
-                  ["Customer PO", order.o.customerPoNumber ? `${order.o.customerPoNumber} (${fmtDate(order.o.customerPoDate)})` : "—"],
-                  ["Project", order.projectName || "—"],
+                  ["GSTIN", order.c.gstin || "-"],
+                  ["Customer PO", order.o.customerPoNumber ? `${order.o.customerPoNumber} (${fmtDate(order.o.customerPoDate)})` : "-"],
+                  ["Project", order.projectName || "-"],
                 ]} />
               </div>
             </>
@@ -88,7 +88,7 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
               </Field>
               <Field label="Project">
                 <Select name="projectId" defaultValue="">
-                  <option value="">— None —</option>
+                  <option value="">None</option>
                   {projList.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
                 </Select>
               </Field>

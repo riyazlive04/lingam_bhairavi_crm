@@ -1,16 +1,16 @@
 # Frontend Developer Guide
 
-Scope: UI in the Next.js 15 App Router app (`app/`), TypeScript + Tailwind. Read with [ui-ux-designer.md](ui-ux-designer.md), [REQUIREMENTS.md](../REQUIREMENTS.md) and [ARCHITECTURE.md](../ARCHITECTURE.md).
+Scope: the UI in the Next.js 15 App Router app (`app/`), in TypeScript and Tailwind. Read it together with [ui-ux-designer.md](ui-ux-designer.md), [REQUIREMENTS.md](../REQUIREMENTS.md) and [ARCHITECTURE.md](../ARCHITECTURE.md).
 
 ## 1. Conventions
 
-- **Server Components by default**; Client Components only for interactive parts (quotation grid, forms, pop-up, charts). Mark with `"use client"` at the smallest boundary.
-- Data mutations via **Server Actions** or route handlers that enforce role checks server-side; the UI only hides what a role can't do.
-- Forms: validate with the same schema on client and server (e.g. zod); show field-level errors in plain English.
-- No secrets or DB access in client code. Never import server modules into Client Components.
-- Accessibility: semantic HTML (`<table>`, `<label>`, `<button>`), focus states, `aria-live` for toasts and errors.
+- **Server Components by default.** Use Client Components only for interactive parts (the quotation grid, forms, the pop-up, charts), and put `"use client"` at the smallest possible boundary.
+- Data changes go through **Server Actions** or route handlers that check the role on the server. The UI only hides what a role can't do.
+- Forms: validate with the same schema on client and server (for example zod), and show field-level errors in plain English.
+- No secrets or database access in client code. Never import server modules into Client Components.
+- Accessibility: semantic HTML (`<table>`, `<label>`, `<button>`), visible focus states, and `aria-live` for toasts and errors.
 
-## 2. Formatting utilities (use everywhere, never hand-format)
+## 2. Formatting utilities (use them everywhere, never format by hand)
 
 ```ts
 export const inr = (n: number) =>
@@ -23,52 +23,52 @@ export const ddmmyyyy = (d: Date | string) =>
 // → "21-11-2026"
 ```
 
-- Money arrives from the server as strings (exact decimals) — convert only for display. Do not do totals in floating point on the client except for live preview; the server recalculates on save.
-- BOQ Ref is a string (`"A.11.3"`, `"1.2"`) — never `Number()` it.
+- Money comes from the server as strings (exact decimals). Convert only for display. Don't total in floating point on the client except for a live preview, because the server recalculates on save.
+- BOQ Ref is a string (`"A.11.3"`, `"1.2"`). Never pass it through `Number()`.
 
-## 3. Screen-specific notes
+## 3. Notes for each screen
 
 | Screen | Notes |
 |---|---|
-| Quotation grid | Keyboard: Enter moves down, Tab moves right; sticky header and first columns; virtualise if > 200 lines. Side panel shows latest purchase rate + date + vendor, stale badge, last sold rate (customer / overall), margin %. Red warning when margin < minimum (BR-4). |
-| BOQ template → quote | Qty inputs only; show live count of lines with qty > 0 and excluded zero lines; confirm dialog before creating quotation. |
-| Login pop-up | Fetch pending SO lines once after login; modal with list (overdue first), "Dismiss for this session" (store flag in sessionStorage, wrapped in try/catch). |
-| Mobile expense (engineer) | `inputmode="decimal"` for amount; `<input type="file" accept="image/*" capture="environment">` for receipts; compress image client-side (< 500 KB) before upload; recent projects first; split editor that enforces 100 %. |
-| Deliveries (store) | Checklist of pending lines; qty stepper defaulting to pending qty; big "Save delivery" button. |
-| Dashboard | Tiles link to filtered lists; numbers use `inr()`; use lakh/crore abbreviations only with tooltip of full value. |
-| Exports | "Export Excel" calls a server route that returns `.xlsx`; "Print" opens a print-styled route (`@media print`, A4, company header). |
+| Quotation grid | Keyboard: Enter moves down, Tab moves right. Sticky header and first columns. Virtualise if there are more than 200 lines. The side panel shows the latest purchase rate with date and vendor, a stale badge, the last sold rate (for this customer and overall) and margin %. Show a red warning when margin is below the minimum (BR-4). |
+| BOQ template → quote | Qty inputs only. Show a live count of lines with qty > 0 and of the zero lines left out. Ask for confirmation before creating the quotation. |
+| Login pop-up | Fetch pending SO lines once after login. A modal with the list (overdue first) and "Dismiss for this session" (store the flag in sessionStorage, wrapped in try/catch). |
+| Mobile expense (engineer) | `inputmode="decimal"` for the amount. `<input type="file" accept="image/*" capture="environment">` for receipts. Compress the image in the browser (under 500 KB) before upload. Recent projects first. A split editor that insists on 100 %. |
+| Deliveries (store) | A checklist of pending lines, a qty stepper that defaults to the pending qty, and a big "Save delivery" button. |
+| Dashboard | Tiles link to filtered lists. Numbers use `inr()`. Use lakh and crore short forms only with a tooltip showing the full value. |
+| Exports | "Export Excel" calls a server route that returns `.xlsx`. "Print" opens a print-styled route (`@media print`, A4, company header). |
 
 ## 4. Responsiveness
 
-- Mobile-first Tailwind (`sm:`, `md:`, `lg:` add desktop features). Test at **360 px**, 768 px, 1366 px.
-- Tables: wrap in `overflow-x-auto` container; on mobile prefer card lists for engineer/store screens.
-- Tap targets ≥ 44 px (`min-h-11`).
+- Mobile-first Tailwind (`sm:`, `md:` and `lg:` add the desktop features). Test at **360 px**, 768 px and 1366 px.
+- Tables: wrap them in an `overflow-x-auto` container. On mobile, prefer card lists for the engineer and store screens.
+- Tap targets at least 44 px (`min-h-11`).
 
-## 5. Role-aware navigation
+## 5. Navigation by role
 
 | Menu | admin | sales | purchase | accounts | engineer | store |
 |---|---|---|---|---|---|---|
 | Dashboard | ✓ | ✓ | ✓ | ✓ | ✓ (own) | ✓ |
-| Items & Prices | ✓ | view | ✓ | view | — | view |
-| Vendors | ✓ | — | ✓ | view | — | — |
+| Items & Prices | ✓ | view | ✓ | view | - | view |
+| Vendors | ✓ | - | ✓ | view | - | - |
 | Customers | ✓ | ✓ | view | ✓ | view | view |
-| BOQ Templates / Quotations | ✓ | ✓ | view | view | — | — |
+| BOQ Templates / Quotations | ✓ | ✓ | view | view | - | - |
 | Sales Orders / Deliveries | ✓ | ✓ | view | view | view | ✓ |
-| Purchase Invoices | ✓ | — | ✓ | ✓ | — | view |
-| Stock (Phase 2) | ✓ | view | ✓ | — | — | ✓ |
-| Projects | ✓ | view | view | view | own | — |
+| Purchase Invoices | ✓ | - | ✓ | ✓ | - | view |
+| Stock (Phase 2) | ✓ | view | ✓ | - | - | ✓ |
+| Projects | ✓ | view | view | view | own | - |
 | Expenses | ✓ | own | own | ✓ approve | own | own |
-| Sales Invoices / Payments / Outstanding | ✓ | view | — | ✓ | — | — |
-| Refill Tracker | ✓ | ✓ | — | — | ✓ | — |
+| Sales Invoices / Payments / Outstanding | ✓ | view | - | ✓ | - | - |
+| Refill Tracker | ✓ | ✓ | - | - | ✓ | - |
 | Meeting Notes | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Agents / Settings / Users | ✓ | — | — | — | — | — |
+| Agents / Settings / Users | ✓ | - | - | - | - | - |
 
-This mirrors the server RBAC matrix (see [security-engineer.md](security-engineer.md)); the server is authoritative.
+("-" means no access.) This mirrors the server's role matrix (see [security-engineer.md](security-engineer.md)). The server always has the final say.
 
 ## 6. Definition of done (frontend)
 
-- [ ] Matches REQ acceptance criteria; INR and date utilities used.
-- [ ] Works at 360 px; keyboard accessible; labels on all inputs.
-- [ ] Loading, empty and error states designed (e.g. empty state "No pending deliveries").
-- [ ] No console errors; Lighthouse accessibility ≥ 90 on key screens.
-- [ ] Role visibility checked for all six roles.
+- [ ] Meets the REQ acceptance criteria, and uses the INR and date utilities.
+- [ ] Works at 360 px, is keyboard accessible, and every input has a label.
+- [ ] Loading, empty and error states are designed (for example the empty state "No pending deliveries").
+- [ ] No console errors, and Lighthouse accessibility is 90 or above on key screens.
+- [ ] What each of the six roles can see has been checked.

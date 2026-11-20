@@ -14,7 +14,7 @@ export function SmtpBanner({ configured }: { configured: boolean }) {
     <div role="status" className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
       <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
       <div>
-        <p><strong>Demo mode — e-mails are logged here, not sent.</strong> To send through Office 365, set these environment variables and restart:</p>
+        <p><strong>Demo mode: e-mails are logged here, not sent.</strong> To send through Office 365, set these environment variables and restart:</p>
         <code className="mt-1 block overflow-x-auto whitespace-pre rounded bg-amber-100/70 px-2 py-1 text-xs dark:bg-amber-900/40">
           {"SMTP_HOST=smtp.office365.com\nSMTP_PORT=587\nSMTP_USER=accounts@yourdomain.com\nSMTP_PASS=********\nSMTP_FROM=\"Linga Bhairavi Enterprise <accounts@yourdomain.com>\""}
         </code>

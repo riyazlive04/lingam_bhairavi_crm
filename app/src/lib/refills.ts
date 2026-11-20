@@ -1,6 +1,6 @@
 /**
- * Extinguisher refill tracker helpers (business rule 8). OWNED BY: Team D.
- * Internal reminders only — customers are never notified automatically.
+ * Extinguisher refill tracker helpers (business rule 8). Maintainer: Sirah Digital.
+ * Internal reminders only; customers are never notified automatically.
  */
 import "server-only";
 import { and, asc, eq, lte } from "drizzle-orm";

@@ -61,7 +61,7 @@ export default async function AgentsPage({ searchParams }: { searchParams: Promi
           <div className="min-w-0 flex-1">
             <h2 id="saved-h" className="text-lg font-semibold">≈ {hours(monthTotal)} of manual checking saved this month</h2>
             <p className="mt-1 text-sm text-ink-soft">
-              These agents are <b className="text-ink">rule-based — zero AI credits</b>. Each one is a fixed set of database checks
+              These agents are <b className="text-ink">rule-based and use zero AI credits</b>. Each one is a fixed set of database checks
               (dates, quantities, amounts) that runs daily at 8:00 AM IST and on demand. Time saved is estimated from the minutes a person
               would spend finding each issue by hand; only <i>new</i> findings, emails and automatic updates count, so re-runs never inflate it.
             </p>

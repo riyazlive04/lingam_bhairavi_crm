@@ -29,7 +29,7 @@ export default async function MeetingNotesPage({ searchParams }: { searchParams:
     <div>
       <PageHeader
         title="Meeting Notes"
-        subtitle="Living, versioned notes — every edit keeps the previous version."
+        subtitle="Living, versioned notes. Every edit keeps the previous version."
         actions={writable && <LinkButton href="/meeting-notes/new"><Plus className="h-4 w-4" aria-hidden /> New meeting</LinkButton>}
       />
       <Flash ok={sp.ok} err={sp.err} />
@@ -52,7 +52,7 @@ export default async function MeetingNotesPage({ searchParams }: { searchParams:
                     <Link href={`/meeting-notes/${r.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{r.title}</Link>
                     {r.attendees && <div className="max-w-72 truncate text-xs text-ink-soft">{r.attendees}</div>}
                   </Td>
-                  <Td>{items.length ? <Badge tone={open ? "amber" : "green"}>{open} of {items.length} open</Badge> : <span className="text-ink-faint">—</span>}</Td>
+                  <Td>{items.length ? <Badge tone={open ? "amber" : "green"}>{open} of {items.length} open</Badge> : <span className="text-ink-faint">-</span>}</Td>
                   <Td><Badge tone="violet">v{r.version}</Badge></Td>
                   <Td className="whitespace-nowrap text-ink-soft">{fmtDateTime(r.updatedAt)}{r.updatedByName ? ` · ${r.updatedByName}` : ""}</Td>
                 </tr>

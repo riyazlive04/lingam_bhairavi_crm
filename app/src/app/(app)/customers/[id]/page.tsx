@@ -85,7 +85,7 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
       <thead><tr><Th>Number</Th><Th>Date</Th><Th>Project</Th><Th>Status</Th><Th className="text-right">Grand total</Th></tr></thead>
       <tbody>{list.map((q) => (
         <tr key={q.id}><Td>{L("quotations", `/quotations/${q.id}`, q.number + (q.revision ? ` R${q.revision}` : ""))}</Td><Td>{fmtDate(q.quoteDate)}</Td>
-          <Td className="max-w-64 whitespace-normal">{q.projectName ?? "—"}</Td><Td><StatusBadge status={q.status} /></Td><Td className="text-right tabular-nums">{money(q.grandTotal)}</Td></tr>
+          <Td className="max-w-64 whitespace-normal">{q.projectName ?? "-"}</Td><Td><StatusBadge status={q.status} /></Td><Td className="text-right tabular-nums">{money(q.grandTotal)}</Td></tr>
       ))}</tbody>
     </Table>
   );
@@ -99,7 +99,7 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
           <tr key={i.id}><Td>{L("billing", `/billing/invoices/${i.id}`, i.number)}</Td><Td>{fmtDate(i.invoiceDate)}</Td>
             <Td className={cx(od && "font-medium text-red-600")}>{fmtDate(i.dueDate)}{od && <div className="text-xs">overdue</div>}</Td>
             <Td><StatusBadge status={i.status} /></Td><Td className="text-right tabular-nums">{money(i.total)}</Td>
-            <Td className="text-right tabular-nums">{money(i.paidAmount)}</Td><Td className="text-right tabular-nums">{out > 0.5 ? money(out) : "—"}</Td></tr>
+            <Td className="text-right tabular-nums">{money(i.paidAmount)}</Td><Td className="text-right tabular-nums">{out > 0.5 ? money(out) : "-"}</Td></tr>
         );
       })}</tbody>
     </Table>
@@ -164,7 +164,7 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
         <Table>
           <thead><tr><Th>Order</Th><Th>Customer PO</Th><Th>Date</Th><Th>Expected</Th><Th>Status</Th><Th className="text-right">Total</Th></tr></thead>
           <tbody>{orders.map((o) => (
-            <tr key={o.id}><Td>{L("orders", `/orders/${o.id}`, o.number)}</Td><Td>{o.customerPoNumber ?? "—"}{o.customerPoDate && <div className="text-xs text-ink-faint">{fmtDate(o.customerPoDate)}</div>}</Td>
+            <tr key={o.id}><Td>{L("orders", `/orders/${o.id}`, o.number)}</Td><Td>{o.customerPoNumber ?? "-"}{o.customerPoDate && <div className="text-xs text-ink-faint">{fmtDate(o.customerPoDate)}</div>}</Td>
               <Td>{fmtDate(o.orderDate)}</Td><Td>{fmtDate(o.expectedDelivery)}</Td><Td><StatusBadge status={o.status} /></Td><Td className="text-right tabular-nums">{money(o.total)}</Td></tr>
           ))}</tbody>
         </Table>
@@ -184,7 +184,7 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
           <thead><tr><Th>Type</Th><Th>Location</Th><Th className="text-right">Qty</Th><Th>Last refill</Th><Th>Next due</Th><Th>HPT due</Th><Th>Status</Th></tr></thead>
           <tbody>{assets.map((a) => (
             <tr key={a.id}><Td className="font-medium">{a.extType}<div className="text-xs text-ink-faint">{[a.make, a.serialNo].filter(Boolean).join(" · ")}</div></Td>
-              <Td className="max-w-56 whitespace-normal">{a.location ?? "—"}</Td><Td className="text-right">{a.qty}</Td><Td>{fmtDate(a.lastRefillDate)}</Td>
+              <Td className="max-w-56 whitespace-normal">{a.location ?? "-"}</Td><Td className="text-right">{a.qty}</Td><Td>{fmtDate(a.lastRefillDate)}</Td>
               <Td className={cx(a.status === "active" && a.nextDueDate <= today && "font-medium text-red-600")}>{fmtDate(a.nextDueDate)}</Td>
               <Td>{fmtDate(a.hptDueDate)}</Td><Td><StatusBadge status={a.status} /></Td></tr>
           ))}</tbody>
@@ -201,16 +201,16 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
       ))}
       {tab === "prices" && (prices.length === 0 ? <EmptyState title="No price history with this customer">Last quoted and sold rates per item appear here.</EmptyState> : (
         <>
-          <p className="text-sm text-ink-soft">Last rate quoted and sold to {c.name}, per item — use this to stay consistent when re-quoting.</p>
+          <p className="text-sm text-ink-soft">Last rate quoted and sold to {c.name}, per item. Use this to stay consistent when re-quoting.</p>
           <Table>
             <thead><tr><Th>Item</Th><Th className="text-right">Last quoted</Th><Th>Quotation</Th><Th className="text-right">Last sold</Th><Th>Invoice</Th></tr></thead>
             <tbody>{prices.map(([itemId, p]) => (
               <tr key={itemId}>
                 <Td className="max-w-72 whitespace-normal"><Link href={`/items/${itemId}`} className="hover:underline">{p.name}</Link><div className="font-mono text-xs text-ink-faint">{p.code}</div></Td>
-                <Td className="text-right tabular-nums">{p.q ? <>{money(p.q.rate)}<span className="text-xs text-ink-faint">/{p.uom}</span></> : "—"}</Td>
-                <Td>{p.q ? <>{L("quotations", `/quotations/${p.q.qid}`, p.q.number)}<div className="text-xs text-ink-faint">{fmtDate(p.q.date)}</div></> : "—"}</Td>
-                <Td className="text-right tabular-nums">{p.s ? <>{money(p.s.rate)}<span className="text-xs text-ink-faint">/{p.uom}</span></> : "—"}</Td>
-                <Td>{p.s ? <>{p.s.refType === "sales_invoice" && p.s.refId ? L("billing", `/billing/invoices/${p.s.refId}`, `Invoice #${p.s.refId}`) : "—"}<div className="text-xs text-ink-faint">{fmtDate(p.s.date)}</div></> : "—"}</Td>
+                <Td className="text-right tabular-nums">{p.q ? <>{money(p.q.rate)}<span className="text-xs text-ink-faint">/{p.uom}</span></> : "-"}</Td>
+                <Td>{p.q ? <>{L("quotations", `/quotations/${p.q.qid}`, p.q.number)}<div className="text-xs text-ink-faint">{fmtDate(p.q.date)}</div></> : "-"}</Td>
+                <Td className="text-right tabular-nums">{p.s ? <>{money(p.s.rate)}<span className="text-xs text-ink-faint">/{p.uom}</span></> : "-"}</Td>
+                <Td>{p.s ? <>{p.s.refType === "sales_invoice" && p.s.refId ? L("billing", `/billing/invoices/${p.s.refId}`, `Invoice #${p.s.refId}`) : "-"}<div className="text-xs text-ink-faint">{fmtDate(p.s.date)}</div></> : "-"}</Td>
               </tr>
             ))}</tbody>
           </Table>

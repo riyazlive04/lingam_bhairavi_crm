@@ -27,7 +27,7 @@ export default async function ReceivablesPage({ searchParams }: { searchParams: 
         <Stat label="Due in 7 days" value={moneyShort(t.dueNext7)} tone="warn" />
         <Stat label="90+ days" value={moneyShort(t.d90p)} tone={t.d90p ? "bad" : "default"} />
       </div>
-      <AgeingTable rows={rows} hrefFor={(id) => `/billing/receivables/${id}`} emptyTitle="No customer outstanding — all invoices are paid." />
+      <AgeingTable rows={rows} hrefFor={(id) => `/billing/receivables/${id}`} emptyTitle="Nothing outstanding. All customer invoices are paid." />
     </>
   );
 }

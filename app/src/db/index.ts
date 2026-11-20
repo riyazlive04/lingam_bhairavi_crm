@@ -1,5 +1,5 @@
 /**
- * Database access. OWNED BY: Architect.
+ * Database access. Maintainer: Sirah Digital.
  *
  * - Production: Neon serverless Postgres when DATABASE_URL is set.
  * - Local / demo: embedded PGlite (Postgres compiled to WASM). Data dir: PGLITE_DIR or ./.data/pglite

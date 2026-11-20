@@ -51,7 +51,7 @@ export default async function BillingOverview({ searchParams }: { searchParams: 
         <Stat label="Collected this month" value={moneyShort(month.in.total)} tone="good" hint={`${month.in.count} receipt${month.in.count === 1 ? "" : "s"} since ${fmtDate(monthStart)}`} href="/billing/payments?direction=in" />
       </div>
       <div className="mb-8">
-        <AgeingTable rows={recv} limit={10} hrefFor={(id) => `/billing/receivables/${id}`} emptyTitle="No customer outstanding — all invoices are paid." />
+        <AgeingTable rows={recv} limit={10} hrefFor={(id) => `/billing/receivables/${id}`} emptyTitle="Nothing outstanding. All customer invoices are paid." />
         {recv.length > 10 && <p className="mt-2 text-sm"><Link href="/billing/receivables" className="text-brand-700 hover:underline dark:text-brand-300">View all {recv.length} customers →</Link></p>}
       </div>
 

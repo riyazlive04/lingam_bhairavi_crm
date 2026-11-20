@@ -15,7 +15,7 @@ export default async function SystemPage() {
   const db = await getDb();
   const demo = isDemoDatabase();
   const smtp = smtpConfigured();
-  // booleans only — never render secret values
+  // booleans only; never render secret values
   const cron = !!process.env.CRON_SECRET;
   const authSecret = !!process.env.AUTH_SECRET && process.env.AUTH_SECRET.length >= 32;
 
@@ -36,9 +36,9 @@ export default async function SystemPage() {
         <DL
           items={[
             ["Database", <span key="db" className="inline-flex flex-wrap items-center gap-2"><Check ok={!demo} yes="Postgres (production)" no="Embedded demo database" />{demo && <span className="text-xs text-ink-soft">Set DATABASE_URL to use the production database.</span>}</span>],
-            ["Email (Office 365 SMTP)", <span key="smtp" className="inline-flex flex-wrap items-center gap-2"><Check ok={smtp} yes="Configured — emails are sent" no="Not configured — emails are only logged" /></span>],
-            ["Automation cron secret", <Check key="cron" ok={cron} yes="Set" no="Not set — scheduled agents cannot run" />],
-            ["Session signing secret", <Check key="auth" ok={authSecret} yes="Set" no="Using development default — set AUTH_SECRET" />],
+            ["Email (Office 365 SMTP)", <span key="smtp" className="inline-flex flex-wrap items-center gap-2"><Check ok={smtp} yes="Configured, emails are sent" no="Not configured, emails are only logged" /></span>],
+            ["Automation cron secret", <Check key="cron" ok={cron} yes="Set" no="Not set, so scheduled agents can't run" />],
+            ["Session signing secret", <Check key="auth" ok={authSecret} yes="Set" no="Using the development default. Set AUTH_SECRET" />],
             ["Environment", process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "unknown"],
             ["Last agent run", lastRun[0] ? `${fmtDateTime(lastRun[0].startedAt)} · ${lastRun[0].trigger} · ${lastRun[0].status}` : "Never"],
           ]}

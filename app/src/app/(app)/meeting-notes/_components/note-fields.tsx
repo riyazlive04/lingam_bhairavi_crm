@@ -21,7 +21,7 @@ export function NoteFields({ v }: { v: NoteFieldValues }) {
       <Card title="Meeting">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Title" required className="sm:col-span-2">
-            <Input name="title" required maxLength={200} defaultValue={v.title} placeholder="e.g. Demo review — Projects & Expenses" />
+            <Input name="title" required maxLength={200} defaultValue={v.title} placeholder="e.g. Demo review: Projects & Expenses" />
           </Field>
           <Field label="Meeting date" required>
             <Input type="date" name="meetingDate" required defaultValue={v.meetingDate} />

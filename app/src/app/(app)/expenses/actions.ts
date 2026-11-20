@@ -40,7 +40,7 @@ function parseAllocations(raw: FormDataEntryValue | null) {
 /** Validate allocations against the voucher total (server-side source of truth). */
 async function checkAllocations(db: DB, total: number, allocs: { projectId: number; amount: number }[]) {
   const ids = allocs.map((a) => a.projectId);
-  if (new Set(ids).size !== ids.length) throw new UserError("The same project is selected twice — merge the rows");
+  if (new Set(ids).size !== ids.length) throw new UserError("The same project is selected twice. Please merge the rows");
   if (!allocs.length) return [];
   const found = await db.select({ id: projects.id, status: projects.status }).from(projects).where(inArray(projects.id, ids));
   if (found.length !== ids.length) throw new UserError("One of the selected projects no longer exists");
@@ -91,7 +91,7 @@ export async function saveExpense(form: FormData) {
       });
       await audit(db, user.id, "create", "expense", row.id, { voucherNo: row.voucherNo, amount, category: d.category, allocations: allocs });
       const again = form.get("next") === "new";
-      target = flashUrl(again ? "/expenses/new" : "/expenses", "ok", `Voucher ${row.voucherNo} saved — awaiting approval`);
+      target = flashUrl(again ? "/expenses/new" : "/expenses", "ok", `Voucher ${row.voucherNo} saved and awaiting approval`);
     }
   } catch (e) {
     target = flashUrl(back, "err", errMsg(e));

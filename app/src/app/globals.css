@@ -1,63 +1,200 @@
 @import "tailwindcss";
 
-/* Design tokens — Linga Bhairavi Enterprise CRM. Fire-red brand accent, calm neutral surfaces. */
+/*
+ * Design tokens for the Linga Bhairavi Enterprise CRM.
+ * Fire-red brand with a warm amber accent, soft neutral surfaces, gentle elevation.
+ * Maintainer: Sirah Digital.
+ */
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
 :root {
-  --bg: #f6f7f9;
+  --bg: #f5f6f8;
   --surface: #ffffff;
-  --muted: #f1f3f6;
-  --line: #e3e6eb;
-  --ink: #16191f;
-  --ink-soft: #5b6472;
-  --ink-faint: #9aa3af;
+  --surface-2: #fbfbfc;
+  --muted: #f1f2f5;
+  --line: #e4e6eb;
+  --line-strong: #d3d7de;
+  --ink: #141820;
+  --ink-soft: #545d6b;
+  --ink-faint: #6f7886;
+  --zebra: #fafbfc;
+  --ring: #d0221d;
+  --shadow-xs: 0 1px 2px rgb(16 24 40 / 0.05);
+  --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.06);
+  --shadow-md: 0 4px 12px -2px rgb(16 24 40 / 0.08), 0 2px 4px -2px rgb(16 24 40 / 0.05);
+  --shadow-lg: 0 20px 40px -12px rgb(16 24 40 / 0.22);
+  --sidebar: #ffffff;
+  color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0e1116;
-    --surface: #161a21;
-    --muted: #1d222b;
-    --line: #2a313c;
+    --bg: #0c0f14;
+    --surface: #141922;
+    --surface-2: #171c26;
+    --muted: #1c222d;
+    --line: #262d39;
+    --line-strong: #333b49;
     --ink: #eef1f5;
-    --ink-soft: #a3acb9;
-    --ink-faint: #6b7584;
+    --ink-soft: #a9b2bf;
+    --ink-faint: #8a94a3;
+    --zebra: #161b24;
+    --ring: #f87171;
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3), 0 1px 3px rgb(0 0 0 / 0.25);
+    --shadow-md: 0 6px 16px -4px rgb(0 0 0 / 0.45);
+    --shadow-lg: 0 24px 48px -12px rgb(0 0 0 / 0.6);
+    --sidebar: #11151d;
+    color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0e1116;
-  --surface: #161a21;
-  --muted: #1d222b;
-  --line: #2a313c;
+  --bg: #0c0f14;
+  --surface: #141922;
+  --surface-2: #171c26;
+  --muted: #1c222d;
+  --line: #262d39;
+  --line-strong: #333b49;
   --ink: #eef1f5;
-  --ink-soft: #a3acb9;
-  --ink-faint: #6b7584;
+  --ink-soft: #a9b2bf;
+  --ink-faint: #8a94a3;
+  --zebra: #161b24;
+  --ring: #f87171;
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3), 0 1px 3px rgb(0 0 0 / 0.25);
+  --shadow-md: 0 6px 16px -4px rgb(0 0 0 / 0.45);
+  --shadow-lg: 0 24px 48px -12px rgb(0 0 0 / 0.6);
+  --sidebar: #11151d;
+  color-scheme: dark;
 }
 
 @theme inline {
   --color-bg: var(--bg);
   --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
   --color-muted: var(--muted);
   --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
   --color-ink: var(--ink);
   --color-ink-soft: var(--ink-soft);
   --color-ink-faint: var(--ink-faint);
-  --color-brand-50: #fef2f2;
-  --color-brand-100: #fee2e2;
-  --color-brand-200: #fecaca;
-  --color-brand-300: #fca5a5;
-  --color-brand-500: #e5322d;
-  --color-brand-600: #d0221d;
-  --color-brand-700: #ad1a16;
-  --color-brand-800: #8c1714;
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --color-sidebar: var(--sidebar);
+  /* Fire red: 600 is the primary action colour (white text contrast 5.6:1). */
+  --color-brand-50: #fff3f1;
+  --color-brand-100: #ffe3df;
+  --color-brand-200: #ffc9c1;
+  --color-brand-300: #fda294;
+  --color-brand-400: #f76b5a;
+  --color-brand-500: #e8402f;
+  --color-brand-600: #cf2a1d;
+  --color-brand-700: #ad1f15;
+  --color-brand-800: #8f1d16;
+  --color-brand-900: #761d18;
+  --color-brand-950: #410a07;
+  /* Warm accent (saffron/amber) for highlights. */
+  --color-accent-50: #fff8eb;
+  --color-accent-100: #feecc7;
+  --color-accent-400: #f8a93a;
+  --color-accent-500: #f28c13;
+  --color-accent-600: #d66a0b;
+  --font-sans: var(--font-sans-app), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1rem;
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
 }
 
 html, body { background: var(--bg); color: var(--ink); }
-body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv11", "ss01";
+  text-rendering: optimizeLegibility;
+}
 .tabular-nums { font-variant-numeric: tabular-nums; }
+::selection { background: color-mix(in srgb, var(--color-brand-500) 22%, transparent); }
+
+/* Visible keyboard focus everywhere (mouse clicks stay clean). */
+:where(a, button, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@layer components {
+/* ------------------------------------------------------------------ tables
+ * Cell styling lives here (not in per-cell utility strings) so big tables ship far less HTML. */
+.ui-table-wrap { position: relative; overflow: auto; max-width: 100%; }
+.ui-table { width: 100%; min-width: max-content; font-size: 0.875rem; border-collapse: separate; border-spacing: 0; }
+.ui-th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--muted);
+  border-bottom: 1px solid var(--line);
+  padding: 0.625rem 0.75rem;
+  text-align: left;
+  font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.ui-td { border-bottom: 1px solid var(--line); padding: 0.625rem 0.75rem; vertical-align: top; color: var(--ink); }
+.ui-table > tbody > tr:nth-child(even) > .ui-td { background: var(--zebra); }
+.ui-table > tbody > tr:hover > .ui-td { background: var(--muted); }
+.ui-table > tbody > tr:last-child > .ui-td { border-bottom: 0; }
+.ui-table .text-right { font-variant-numeric: tabular-nums; }
+/* Tall tables: limit height so the sticky header stays useful. */
+.ui-table-wrap.ui-table-tall { max-height: 75vh; }
+
+/* ------------------------------------------------------------------ prose (help centre & markdown) */
+.prose-app { color: var(--ink); line-height: 1.7; font-size: 0.9375rem; }
+.prose-app > * + * { margin-top: 0.85em; }
+.prose-app h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em; margin-top: 0; }
+.prose-app h2 { font-size: 1.2rem; font-weight: 650; margin-top: 1.8em; padding-bottom: 0.3em; border-bottom: 1px solid var(--line); }
+.prose-app h3 { font-size: 1.02rem; font-weight: 650; margin-top: 1.4em; }
+.prose-app a { color: var(--color-brand-700); text-decoration: underline; text-underline-offset: 2px; }
+.prose-app ul { list-style: disc; padding-left: 1.4em; }
+.prose-app ol { list-style: decimal; padding-left: 1.4em; }
+.prose-app li + li { margin-top: 0.3em; }
+.prose-app code { background: var(--muted); padding: 0.1em 0.35em; border-radius: 6px; font-size: 0.875em; }
+.prose-app pre { background: var(--muted); padding: 0.9em 1em; border-radius: 10px; overflow-x: auto; }
+.prose-app pre code { background: transparent; padding: 0; }
+.prose-app blockquote { border-left: 3px solid var(--color-accent-500); padding: 0.2em 0 0.2em 1em; color: var(--ink-soft); }
+.prose-app table { display: block; overflow-x: auto; border-collapse: collapse; font-size: 0.875rem; }
+.prose-app th, .prose-app td { border: 1px solid var(--line); padding: 0.4em 0.7em; text-align: left; }
+.prose-app th { background: var(--muted); }
+.prose-app hr { border: 0; border-top: 1px solid var(--line); margin: 2em 0; }
+.prose-app img { max-width: 100%; border-radius: 10px; }
+:root[data-theme="dark"] .prose-app a { color: var(--color-brand-300); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .prose-app a { color: var(--color-brand-300); } }
+
+}
+
+/* ------------------------------------------------------------------ motion */
+@keyframes ui-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes ui-pop { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes ui-shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+.ui-fade-in { animation: ui-fade-in 0.25s ease-out both; }
+.ui-pop { animation: ui-pop 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.skeleton {
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--muted) 0, var(--line) 40%, var(--muted) 80%);
+  background-size: 800px 100%;
+  animation: ui-shimmer 1.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-fade-in, .ui-pop, .skeleton { animation: none; }
+}
+
+/* Bottom safe area on phones with a home indicator. */
+.pb-safe { padding-bottom: max(1.5rem, env(safe-area-inset-bottom)); }
 
 @media print {
   .no-print { display: none !important; }
   body { background: #fff; color: #000; }
   .print-area { box-shadow: none !important; border: 0 !important; }
+  .ui-th { position: static; }
+  .ui-table-wrap { overflow: visible; max-height: none; }
 }
+
+/* Display face for headings (Plus Jakarta Sans via next/font). */
+@theme inline { --font-display: var(--font-display-app), var(--font-sans-app), ui-sans-serif, system-ui, sans-serif; }

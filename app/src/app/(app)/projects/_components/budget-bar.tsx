@@ -1,7 +1,7 @@
 import { cx } from "@/components/ui";
 import { pct } from "@/lib/format";
 
-/** Budget burn bar: green < 80 %, amber 80–100 %, red > 100 %. */
+/** Budget burn bar: green < 80 %, amber 80 to 100 %, red > 100 %. */
 export function BudgetBar({ usedPct, budget, className, showLabel = true }: { usedPct: number; budget: number; className?: string; showLabel?: boolean }) {
   if (!budget) return <span className="text-xs text-ink-faint">No budget set</span>;
   const w = Math.max(0, Math.min(100, usedPct));

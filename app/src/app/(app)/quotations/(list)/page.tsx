@@ -95,8 +95,8 @@ export default async function QuotationsPage({ searchParams }: { searchParams: P
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Open pipeline" value={moneyShort(openV)} hint={`${openN} sent / in negotiation`} href={qs({ status: "sent", page: undefined })} />
         <Stat label="Won" value={moneyShort(stat("won").value)} hint={`${won} quotation${won === 1 ? "" : "s"}`} tone="good" href={qs({ status: "won", page: undefined })} />
-        <Stat label="Conversion" value={conversion == null ? "—" : pct(conversion, 0)} hint={`won ÷ (won + lost) · ${lost} lost`} tone={conversion != null && conversion < 25 ? "warn" : "default"} />
-        <Stat label="Avg. days to close" value={avgClose == null ? "—" : Math.round(avgClose)} hint="quote date → won" />
+        <Stat label="Conversion" value={conversion == null ? "-" : pct(conversion, 0)} hint={`won ÷ (won + lost) · ${lost} lost`} tone={conversion != null && conversion < 25 ? "warn" : "default"} />
+        <Stat label="Avg. days to close" value={avgClose == null ? "-" : Math.round(avgClose)} hint="quote date → won" />
       </div>
 
       <nav aria-label="Filter by status" className="mb-4 flex gap-2 overflow-x-auto pb-1">
@@ -158,16 +158,16 @@ export default async function QuotationsPage({ searchParams }: { searchParams: P
                       {r.system && <div className="text-xs text-ink-soft">{SYSTEMS[r.system as SystemKey] ?? r.system}</div>}
                     </Td>
                     <Td className="max-w-xs whitespace-normal">
-                      <div className="font-medium">{r.customerName ?? "—"}</div>
+                      <div className="font-medium">{r.customerName ?? "-"}</div>
                       {r.projectName && <div className="truncate text-xs text-ink-soft">{r.projectName}</div>}
                     </Td>
                     <Td className="whitespace-nowrap">{fmtDate(r.quoteDate)}</Td>
                     <Td><StatusBadge status={r.status} /></Td>
                     <Td className="whitespace-nowrap text-right tabular-nums">{money(r.grandTotal)}</Td>
                     <Td className={cx("whitespace-nowrap", overdue && "font-medium text-red-600")}>
-                      {open ? (r.nextFollowUpDate ? `${fmtDate(r.nextFollowUpDate)}${overdue ? " ⚠" : ""}` : <span className="text-amber-700 dark:text-amber-400">Not set</span>) : "—"}
+                      {open ? (r.nextFollowUpDate ? `${fmtDate(r.nextFollowUpDate)}${overdue ? " ⚠" : ""}` : <span className="text-amber-700 dark:text-amber-400">Not set</span>) : "-"}
                     </Td>
-                    <Td className="whitespace-nowrap text-ink-soft">{r.preparedBy ?? "—"}</Td>
+                    <Td className="whitespace-nowrap text-ink-soft">{r.preparedBy ?? "-"}</Td>
                   </tr>
                 );
               })}

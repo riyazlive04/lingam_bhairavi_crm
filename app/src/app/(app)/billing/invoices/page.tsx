@@ -97,12 +97,12 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                     <Link href={`/billing/invoices/${r.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{r.number}</Link>
                     <div className="text-xs text-ink-soft">{fmtDate(r.invoiceDate)}{r.orderNumber ? ` · ${r.orderNumber}` : ""}</div>
                   </Td>
-                  <Td className="max-w-60 truncate"><Link href={`/billing/receivables/${r.customerId}`} className="hover:underline">{r.customerName ?? "—"}</Link></Td>
+                  <Td className="max-w-60 truncate"><Link href={`/billing/receivables/${r.customerId}`} className="hover:underline">{r.customerName ?? "-"}</Link></Td>
                   <Td className="text-right tabular-nums">{money(r.total)}</Td>
-                  <Td className="text-right font-medium tabular-nums">{out > 0 ? money(out) : "—"}</Td>
+                  <Td className="text-right font-medium tabular-nums">{out > 0 ? money(out) : "-"}</Td>
                   <Td className="whitespace-nowrap">{fmtDate(r.dueDate)}{od > 0 && <div><Badge tone="red">{od}d overdue</Badge></div>}</Td>
                   <Td><StatusBadge status={r.status} /></Td>
-                  <Td className="text-right tabular-nums">{r.reminderCount || "—"}</Td>
+                  <Td className="text-right tabular-nums">{r.reminderCount || "-"}</Td>
                 </tr>
               );
             })}

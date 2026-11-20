@@ -71,7 +71,7 @@ export function ItemForm({ action, item, groups, makes, cancelHref }: {
           <div className="flex flex-col justify-end gap-2">
             <label className="flex items-center gap-2 text-sm text-ink">
               <input type="checkbox" name="volatilePrice" defaultChecked={item?.volatilePrice ?? false} className="h-4 w-4 accent-brand-600" />
-              Volatile price (pipes) — flag stale after 7 days
+              Volatile price (pipes): flag as stale after 7 days
             </label>
             {item && (
               <label className="flex items-center gap-2 text-sm text-ink">

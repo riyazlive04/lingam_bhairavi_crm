@@ -1,51 +1,82 @@
-# User Guide — Purchase
+# User Guide: Purchase
 
-For: staff who buy material from suppliers and record supplier invoices (system role **purchase**).
+This guide is for staff who buy material from suppliers and record supplier invoices (system role **purchase**).
 
-Why your entries matter most: **every quotation price comes from the purchase invoices you enter.** When you enter a supplier invoice for 200 NB GI pipe, the next quotation with 200 NB GI pipe automatically uses that rate. If invoices are not entered, sales go back to calling suppliers for every quote — the exact problem the owner wants to stop (kickoff meeting [04:35–05:00]).
+Why your entries matter most: **every quotation price comes from the purchase invoices you enter.** When you enter a supplier invoice for 200 NB GI pipe, the next quotation with 200 NB GI pipe uses that rate automatically. If invoices aren't entered, sales go back to calling suppliers for every quote, which is exactly what the owner wants to stop (kickoff meeting [04:35 to 05:00]).
+
+## Your first day
+
+1. Open https://lbe-fire-crm.vercel.app and log in with the email and password your admin gave you.
+2. Open **Vendors** and check that your regular suppliers are listed, with GSTIN, phone, email and payment terms.
+3. Open **Item & Price Master** and search for a few items you buy often, such as "pipe ms 80". Look at the size and make on each item.
+4. Pick one recent supplier invoice from your desk and enter it in **Purchase Invoices**, following section 1 below.
+5. Open the item again and see your new rate in its purchase history.
 
 ## 1. Daily workflow
 
-### Entering a supplier (purchase) invoice — as soon as it arrives
-1. Purchase Invoices → **New**.
-2. Vendor (type to search; create if new: name, GSTIN, phone, e-mail, payment terms in days, categories).
-3. Invoice no. and invoice date (exactly as printed).
-4. **Project** — select the project if the material is for a specific site (it then counts in that project's cost). Leave blank / "Store" for general stock.
-5. Lines: type to find the item, e.g. "pipe ms 80" → *Pipe MS 80 NB*; enter qty, rate (before GST), GST %.
-   - Item not found? Click **+ New item** inline: name, size (e.g. 65 NB, ½", M10), make (e.g. Ravel UL, Polycab, Safex), UOM.
-   - Make matters: Honeywell / Morley / System Sensor, Ravel, Glyptic, Edwards, ASES (and UL versions) are **different items** with different prices.
-6. Check totals against the paper invoice; **Save**.
+### Entering a supplier (purchase) invoice as soon as it arrives
+1. Go to **Purchase Invoices → New**.
+2. Choose the vendor (type to search). If the vendor is new, create them with name, GSTIN, phone, email, payment terms in days and categories.
+3. Enter the invoice number and invoice date exactly as printed.
+4. **Project:** select the project if the material is for a particular site, so it counts in that project's cost. Leave it blank for general store stock.
+5. Add the lines. Type to find the item, for example "pipe ms 80" finds *Pipe MS 80 NB*. Enter qty, rate (before GST) and GST %.
+   - Item not found? Add it as a new item with name, size (for example 65 NB, ½", M10), make (for example Ravel UL, Polycab, Safex) and UOM.
+   - Make matters. Honeywell, Morley, System Sensor, Ravel, Glyptic, Edwards and ASES (and their UL versions) are **different items** with different prices.
+6. Check the totals against the paper invoice and save it as a draft.
+7. When everything matches, **Post** the invoice. Posting is what updates prices and stock, and it can only be done once.
 
-What happens automatically on save:
-- The item's **purchase price history** gets a new row; it becomes the **latest procured price** used in quotations.
-- The **vendor master** updates: this vendor supplies this item at this rate.
-- A **vendor payable** is created with due date (invoice date + payment terms).
-- The project's cost increases (if a project was selected).
+What happens automatically when you post:
+- The item's **purchase price history** gets a new row, and this becomes the **latest buying price** used in quotations.
+- The **vendor master** is updated to show that this vendor supplies this item at this rate.
+- A **vendor payable** is created with a due date (invoice date plus payment terms).
+- The project's cost goes up (if you selected a project).
+- If the rate has jumped by 5 % or more, you will see a warning so you can double-check it.
 
 ### Checking prices before a big quotation
-Items & Prices → item → **Purchase history**: date, vendor, rate for the last months/years. The **Vendors** list on the item shows all 3–4 suppliers with their last rates; the cheapest is highlighted.
+Open **Item & Price Master**, then the item, and look at its **purchase history**: date, vendor and rate for recent months and years. The vendor list on the item shows all 3 or 4 suppliers with their last rates, with the cheapest highlighted.
 
 ### Refreshing stale prices
-Pipes change price daily. Each morning open **Alerts → Stale prices**. Call the suppliers for the flagged items you are about to quote, and either:
+Pipe prices change daily. Each morning, open **Alerts** and look for the Stale Price alerts. Call the suppliers about the flagged items that are about to be quoted, and then either:
 - enter the actual invoice when you buy, or
-- tell the salesperson the confirmed rate so they can override the line. *(A "supplier rate confirmation" entry without an invoice is a proposed feature — to be confirmed with the owner.)*
+- give the salesperson the confirmed rate so they can change the line. *(A "supplier rate confirmation" entry without an invoice is a proposed feature, still to be confirmed with the owner.)*
 
 ## 2. What the automation agents will remind you about
 
 | Agent | Reminder |
 |---|---|
-| Stale Price | Items whose latest rate is older than 7 days (pipes) or 30 days (others); items with no price at all (many fire-alarm and extinguisher items in the current list) |
-| Data Hygiene | Purchase invoices without project/store tag; items without UOM or price |
-| Pending Delivery | PO lines waiting for material you are procuring |
-| Low Stock (later, after distributorship) | Stock items below reorder level |
+| Stale Price | Items whose latest rate is older than 7 days (pipes and cables) or 90 days (other items in use), and items with no price at all (many fire-alarm and extinguisher items in the current list) |
+| Data Hygiene | Draft purchase invoices not yet posted, and items without a UOM or price |
+| Pending Delivery | PO lines waiting for material you are buying |
+| Low Stock (later, once distributorship starts) | Stock items below the reorder level |
 
-## 3. What you MUST enter so the system works
+## 3. What you need to enter so the system works
 
-| Entry | When | If you skip it… |
+| Entry | When | If you skip it |
 |---|---|---|
-| **Every supplier invoice**, line by line, with correct item, size and make | The day it arrives | Quotations use old prices; vendor rates are wrong; payables are missing |
-| Project on the invoice (if for a site) | Same time | Project cost and margin are understated |
-| Vendor payment terms | When creating a vendor | Payables Due agent can't warn accounts |
-| New items with size + make + UOM | When first bought | Duplicates and wrong prices |
+| **Every supplier invoice**, line by line, with the correct item, size and make, and posted | The day it arrives | Quotations use old prices, vendor rates are wrong and payables are missing |
+| The project on the invoice (if it is for a site) | At the same time | The project's cost and margin look better than they really are |
+| Vendor payment terms | When you create a vendor | The Payables Due agent can't warn accounts |
+| New items with size, make and UOM | The first time you buy them | Duplicate items and wrong prices |
 
-Tip: don't create "Pipe GI 2 inch" if *Pipe GI 50 NB* exists — search by NB size first.
+Tip: don't create "Pipe GI 2 inch" if *Pipe GI 50 NB* already exists. Search by NB size first.
+
+## Quick help
+
+**I saved an invoice but the price didn't change. Why?**
+It is probably still a draft. Open it in **Purchase Invoices** and click **Post**. Prices, stock and payables update only after posting.
+
+**I entered a wrong rate on a posted invoice. Can I edit it?**
+A posted invoice is locked to protect the price history. Tell your admin, who can help you correct it.
+
+**The same item appears twice with different names. What should I do?**
+Use the one with the correct NB size and make, and tell your admin about the duplicate so it can be tidied up.
+
+**Do I need to enter small local purchases?**
+If they are bought for a site, the site engineer usually records them as an expense under **Expenses**. Supplier invoices for material always go in **Purchase Invoices**.
+
+**Where do I see what we owe a vendor?**
+Open **Vendors** and select the vendor. You will see their bills, payments and the outstanding balance.
+
+---
+
+Prepared by Sirah Digital · https://sirahdigital.in/

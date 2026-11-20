@@ -1,10 +1,10 @@
-/** Shared enums & labels. OWNED BY: Architect. */
+/** Shared enums & labels. Maintainer: Sirah Digital. */
 export const SYSTEMS = {
   hydrant_sprinkler: "Hydrant & Sprinkler",
   fire_alarm: "Fire Alarm (FAS)",
   pa_system: "PA / Voice Evacuation",
-  extinguisher_new: "Extinguishers — New",
-  extinguisher_refill: "Extinguishers — Refilling",
+  extinguisher_new: "Extinguishers (New)",
+  extinguisher_refill: "Extinguishers (Refilling)",
   spares: "Spares",
   general: "General / Pump House",
 } as const;

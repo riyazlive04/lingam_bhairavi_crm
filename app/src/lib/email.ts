@@ -1,6 +1,6 @@
 /**
  * Email: queue into email_outbox, then deliver through Office 365 SMTP (smtp.office365.com:587, STARTTLS)
- * when SMTP_* env vars are set. Otherwise status = "logged" (demo mode — visible on /emails, nothing is sent).
+ * when SMTP_* env vars are set. Otherwise status = "logged" (demo mode: visible on /emails, nothing is sent).
  */
 import "server-only";
 import { eq } from "drizzle-orm";

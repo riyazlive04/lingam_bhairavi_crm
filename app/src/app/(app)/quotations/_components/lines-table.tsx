@@ -74,12 +74,12 @@ export function QuoteLinesTable({ lines, totals, discountPct, gstPct, print }: {
                     <td className={cell}>{l.uom}</td>
                     <td className={cx(cell, num)}>{money(l.supplyRate)}</td>
                     <td className={cx(cell, num)}>{money(l.qty * l.supplyRate)}</td>
-                    <td className={cx(cell, num)}>{l.erectionRate ? money(l.erectionRate) : "—"}</td>
-                    <td className={cx(cell, num)}>{l.erectionRate ? money(l.qty * l.erectionRate) : "—"}</td>
+                    <td className={cx(cell, num)}>{l.erectionRate ? money(l.erectionRate) : "-"}</td>
+                    <td className={cx(cell, num)}>{l.erectionRate ? money(l.qty * l.erectionRate) : "-"}</td>
                     <td className={cx(cell, print ? "text-[10px]" : "text-xs text-ink-soft")}>{l.remarks}</td>
                   </tr>
                 ))}
-                {g.section && groups.length > 1 && totalRow(`Total — ${title}`, money(sSup), money(sErc))}
+                {g.section && groups.length > 1 && totalRow(`Total: ${title}`, money(sSup), money(sErc))}
               </Fragment>
             );
           })}

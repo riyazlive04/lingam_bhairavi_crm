@@ -65,7 +65,7 @@ export default async function NewQuotationPage({ searchParams }: { searchParams:
     return (
       <div>
         <PageHeader
-          title="New quotation — enter quantities"
+          title="New quotation: enter quantities"
           subtitle={<>Step 2 of 2 · {cust.name}{tmpl ? <> · {tmpl.name}</> : " · blank quotation"}. Only lines with a quantity are saved.</>}
           back={{ href: `/quotations/new?${new URLSearchParams({ customerId: String(cust.id), ...(templateId ? { templateId: String(templateId) } : {}) }).toString()}`, label: "Back to step 1" }}
         />
@@ -107,8 +107,8 @@ export default async function NewQuotationPage({ searchParams }: { searchParams:
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Existing customer" className="sm:col-span-2" hint="Or leave this empty and quick-create a new customer below">
               <Select name="customerId" defaultValue={customerId ?? ""}>
-                <option value="">— Select customer —</option>
-                {custs.map((c) => <option key={c.id} value={c.id}>{c.name}{c.city ? ` — ${c.city}` : ""}</option>)}
+                <option value="">Select a customer</option>
+                {custs.map((c) => <option key={c.id} value={c.id}>{c.name}{c.city ? `, ${c.city}` : ""}</option>)}
               </Select>
             </Field>
           </div>
@@ -139,7 +139,7 @@ export default async function NewQuotationPage({ searchParams }: { searchParams:
             <Field label="Site location">
               <Input name="siteLocation" maxLength={200} defaultValue={sp.site} placeholder="e.g. SIPCOT Phase II, Hosur" />
             </Field>
-            <Field label="Standard BOQ template" className="sm:col-span-2" hint="All lines of the template appear in the next step — enter quantities; zero-qty lines are left out.">
+            <Field label="Standard BOQ template" className="sm:col-span-2" hint="All lines of the template appear in the next step. Enter quantities; lines with zero qty are left out.">
               <Select name="templateId" defaultValue={templateId ?? ""}>
                 <option value="">Blank quotation (add items manually)</option>
                 {[...bySystem.entries()].map(([sys, list]) => (

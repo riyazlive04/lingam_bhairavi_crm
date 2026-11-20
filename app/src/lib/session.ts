@@ -1,4 +1,4 @@
-/** JWT session token helpers — edge-safe (used by middleware and server). OWNED BY: Architect + Security. */
+/** JWT session token helpers, edge-safe (used by middleware and server). Maintainer: Sirah Digital. */
 import { SignJWT, jwtVerify } from "jose";
 import type { Role } from "./constants";
 

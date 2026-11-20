@@ -1,16 +1,18 @@
 /**
- * Startup digest — shown once per login (cookie "lbe_digest" = "1", set by /api/auth/login, cleared on dismiss).
+ * Startup digest: shown once per login (cookie "lbe_digest" = "1", set by /api/auth/login, cleared on dismiss).
  * Lists, for the signed-in user's role: undelivered customer-PO lines (overdue first), follow-ups due,
  * refills due within 10 days, overdue receivables, expenses awaiting approval, and their top alerts.
- * Before reading, refreshes the agents if the last run is older than 6 hours (so data is fresh even without cron).
- * Never throws — the app layout must not break because of the digest.
+ * Rendered inside <Suspense> by the app layout, so it never delays the first paint. When the agents are
+ * older than 6 hours they are refreshed in the background (next/server after()), not in the request path.
+ * Never throws: the app layout must not break because of the digest.
  */
 import { cookies } from "next/headers";
+import { after } from "next/server";
 import { getDb } from "@/db";
 import type { SessionUser } from "@/lib/session";
 import { canApproveExpenses, canRead } from "@/lib/rbac";
 import { daysBetween, fmtDate, money0, moneyShort, qty, todayIST } from "@/lib/format";
-import { refreshIfStale } from "@/lib/agents";
+import { lastAgentRunAt, refreshIfStale } from "@/lib/agents";
 import {
   followUpsDue, overdueReceivables, pendingDeliveryCounts, pendingDeliveryLines, pendingExpenses, refillsDueByCustomer, topAlerts,
 } from "@/lib/agents/queries";
@@ -24,7 +26,14 @@ export async function StartupDigest({ user }: { user: SessionUser }) {
   if (c.get("lbe_digest")?.value !== "1") return null;
   try {
     const db = await getDb();
-    const refreshed = await refreshIfStale(db, 6);
+    // If the agents have not run for 6 hours, refresh them after the response is sent (never blocks the page).
+    // The digest shows what is already known; fresh alerts appear on the next navigation.
+    const last = await lastAgentRunAt(db);
+    const stale = !last || Date.now() - last.getTime() > 6 * 3600e3;
+    // Very first run on a fresh database: wait for it (we are inside <Suspense>, so the page has already painted).
+    let refreshed = false;
+    if (!last) refreshed = await refreshIfStale(db, 6);
+    else if (stale) after(() => refreshIfStale(db, 6).then(() => undefined));
     const today = todayIST();
     const role = user.role;
     const showDeliveries = canRead(role, "orders") && ["admin", "sales", "store", "purchase"].includes(role);
@@ -47,14 +56,14 @@ export async function StartupDigest({ user }: { user: SessionUser }) {
     if (showDeliveries) {
       sections.push({
         key: "deliveries",
-        title: "Undelivered PO lines",
+        title: "Customer PO lines still to deliver",
         href: "/orders",
         total: lineCounts?.total,
         items: lines.map((l): DigestItem => {
           const pending = Number(l.qty) - Number(l.deliveredQty);
           const late = l.expected ? daysBetween(l.expected, today) : null;
           return {
-            label: `${l.poNumber ? "PO " + l.poNumber : l.orderNumber} · ${l.customer} — ${l.description}`,
+            label: `${l.poNumber ? "PO " + l.poNumber : l.orderNumber} · ${l.customer}: ${l.description}`,
             sub: `${qty(pending)} ${l.uom} pending · ${l.expected ? describeDue(l.expected, today) : "no delivery date set"}`,
             href: `/orders/${l.orderId}`,
             tone: late != null && late > 0 ? "bad" : late == null ? "warn" : "info",
@@ -65,7 +74,7 @@ export async function StartupDigest({ user }: { user: SessionUser }) {
     if (showFollowUps) {
       sections.push({
         key: "followups",
-        title: "Follow-ups due today / overdue",
+        title: "Follow-ups due today or overdue",
         href: "/follow-ups",
         items: fus.map((q) => ({
           label: `${q.number} · ${q.customer}`,
@@ -78,10 +87,10 @@ export async function StartupDigest({ user }: { user: SessionUser }) {
     if (showRefills) {
       sections.push({
         key: "refills",
-        title: "Extinguisher refills due (10 days)",
+        title: "Extinguisher refills due in the next 10 days",
         href: "/refills",
         items: refills.map((r) => ({
-          label: `${r.customer} — ${r.units} extinguisher${r.units === 1 ? "" : "s"}`,
+          label: `${r.customer}, ${r.units} extinguisher${r.units === 1 ? "" : "s"}`,
           sub: `${describeDue(r.due, today)} (${fmtDate(r.due)})${r.phone ? " · " + r.phone : ""}`,
           href: `/refills?customer=${r.customerId}`,
           tone: r.due < today ? "bad" : "info",
@@ -94,7 +103,7 @@ export async function StartupDigest({ user }: { user: SessionUser }) {
         title: "Overdue receivables",
         href: "/billing",
         items: rcv.map((i) => ({
-          label: `${i.number} · ${i.customer} — ${money0(i.outstanding)}`,
+          label: `${i.number} · ${i.customer}: ${money0(i.outstanding)} due`,
           sub: describeDue(i.dueDate, today),
           href: `/billing/invoices/${i.id}`,
           tone: daysBetween(i.dueDate, today) > 60 ? "bad" : "warn",

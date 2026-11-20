@@ -85,7 +85,7 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
           <Select name="project" defaultValue={sp.project ?? ""}>
             <option value="">All (stock & projects)</option>
             <option value="stock">Into stock only</option>
-            {projectList.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}
+            {projectList.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
           </Select>
         </label>
         <div className="flex gap-2">
@@ -113,14 +113,14 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
                 return (
                   <tr key={inv.id} className="hover:bg-muted/50">
                     <Td><Link href={`/purchases/${inv.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{inv.invoiceNo}</Link></Td>
-                    <Td className="max-w-56 truncate">{vendorName ? (canRead(user.role, "vendors") ? <Link href={`/vendors/${inv.vendorId}`} className="hover:underline">{vendorName}</Link> : vendorName) : "—"}</Td>
+                    <Td className="max-w-56 truncate">{vendorName ? (canRead(user.role, "vendors") ? <Link href={`/vendors/${inv.vendorId}`} className="hover:underline">{vendorName}</Link> : vendorName) : "-"}</Td>
                     <Td>{fmtDate(inv.invoiceDate)}</Td>
                     <Td className={cx(od && "font-medium text-red-600")}>{fmtDate(inv.dueDate)}{od && <div className="text-xs">overdue</div>}</Td>
                     <Td>{projectCode ? <span title={projectName ?? undefined}><Badge tone="violet">{projectCode}</Badge></span> : <span className="text-ink-faint">Stock</span>}</Td>
                     <Td><StatusBadge status={st} /></Td>
                     <Td className="text-right tabular-nums">{money(inv.total)}</Td>
-                    <Td className="text-right tabular-nums">{inv.status === "posted" ? money(inv.paidAmount) : "—"}</Td>
-                    <Td className="text-right tabular-nums">{inv.status === "posted" ? (out > 0.5 ? <span className="font-medium">{money(out)}</span> : <span className="text-ink-faint">—</span>) : "—"}</Td>
+                    <Td className="text-right tabular-nums">{inv.status === "posted" ? money(inv.paidAmount) : "-"}</Td>
+                    <Td className="text-right tabular-nums">{inv.status === "posted" ? (out > 0.5 ? <span className="font-medium">{money(out)}</span> : <span className="text-ink-faint">-</span>) : "-"}</Td>
                   </tr>
                 );
               })}

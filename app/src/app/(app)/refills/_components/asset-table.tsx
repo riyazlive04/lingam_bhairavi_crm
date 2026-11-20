@@ -94,7 +94,7 @@ export function AssetTable({ rows, canWrite, today, recordAction, back }: {
       </div>
 
       {oneCustomer && copied === "fail" && (
-        <Textarea readOnly value={text} rows={6} className="mb-3 font-mono text-xs" aria-label="Reminder text — copy manually" />
+        <Textarea readOnly value={text} rows={6} className="mb-3 font-mono text-xs" aria-label="Reminder text to copy manually" />
       )}
 
       {canWrite && showRecord && selected.length > 0 && (
@@ -136,10 +136,10 @@ export function AssetTable({ rows, canWrite, today, recordAction, back }: {
               </Td>
               <Td>
                 <Link href={`/refills/${r.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{r.customerName}</Link>
-                <div className="max-w-56 truncate text-xs text-ink-soft">{r.location || "—"}</div>
+                <div className="max-w-56 truncate text-xs text-ink-soft">{r.location || "-"}</div>
               </Td>
               <Td className="whitespace-nowrap">{r.extType}</Td>
-              <Td>{r.make || "—"}{r.serialNo && <div className="text-xs text-ink-soft">#{r.serialNo}</div>}</Td>
+              <Td>{r.make || "-"}{r.serialNo && <div className="text-xs text-ink-soft">#{r.serialNo}</div>}</Td>
               <Td className="text-right tabular-nums">{r.qty}</Td>
               <Td className="whitespace-nowrap">{fmtDate(r.lastRefillDate)}</Td>
               <Td>{r.refillIntervalMonths % 12 === 0 ? `${r.refillIntervalMonths / 12} yr` : `${r.refillIntervalMonths} mo`}</Td>

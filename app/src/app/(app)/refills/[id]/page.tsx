@@ -62,9 +62,9 @@ export default async function AssetPage({ params, searchParams }: { params: Prom
             ["Last refill", fmtDate(a.lastRefillDate)],
             ["Install date", fmtDate(a.installDate)],
             ["HPT due", fmtDate(a.hptDueDate)],
-            ["Make / serial", `${a.make || "—"}${a.serialNo ? ` · #${a.serialNo}` : ""}`],
-            ["Customer phone", row.customerPhone ? <a key="p" href={`tel:${row.customerPhone}`} className="hover:text-brand-700">{row.customerPhone}</a> : "—"],
-            ["Notes", a.notes || "—"],
+            ["Make / serial", `${a.make || "-"}${a.serialNo ? ` · #${a.serialNo}` : ""}`],
+            ["Customer phone", row.customerPhone ? <a key="p" href={`tel:${row.customerPhone}`} className="hover:text-brand-700">{row.customerPhone}</a> : "-"],
+            ["Notes", a.notes || "-"],
           ]}
         />
       </Card>
@@ -82,7 +82,7 @@ export default async function AssetPage({ params, searchParams }: { params: Prom
                 </Select>
               </Field>
               <Field label="Amount (₹)"><Input type="number" name="amount" min={0} step="0.01" inputMode="decimal" /></Field>
-              <Field label="Next HPT due" hint="Optional — defaults to 5 years after an HPT"><Input type="date" name="hptDueDate" /></Field>
+              <Field label="Next HPT due" hint="Optional. Defaults to 5 years after an HPT"><Input type="date" name="hptDueDate" /></Field>
               <Field label="Notes" className="sm:col-span-2"><Textarea name="notes" rows={2} maxLength={1000} /></Field>
             </div>
             <SubmitButton>Record</SubmitButton>
@@ -99,9 +99,9 @@ export default async function AssetPage({ params, searchParams }: { params: Prom
                 <tr key={h.id}>
                   <Td className="whitespace-nowrap">{fmtDate(h.date)}</Td>
                   <Td>{REFILL_KINDS[h.kind as keyof typeof REFILL_KINDS] ?? h.kind}</Td>
-                  <Td className="text-right tabular-nums">{h.amount != null ? money(h.amount) : "—"}</Td>
-                  <Td title={fmtDateTime(h.createdAt)}>{h.userName ?? "—"}</Td>
-                  <Td className="max-w-72 whitespace-pre-wrap">{h.notes || "—"}</Td>
+                  <Td className="text-right tabular-nums">{h.amount != null ? money(h.amount) : "-"}</Td>
+                  <Td title={fmtDateTime(h.createdAt)}>{h.userName ?? "-"}</Td>
+                  <Td className="max-w-72 whitespace-pre-wrap">{h.notes || "-"}</Td>
                 </tr>
               ))}
             </tbody>

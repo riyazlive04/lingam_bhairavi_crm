@@ -102,7 +102,7 @@ export default async function FollowUpsPage({ searchParams }: { searchParams: Pr
   function renderRow(r: Row) {
     const lf = last.get(r.id);
     const sentDays = r.sentAt ? daysBetween(istDate(r.sentAt), today) : null;
-    const wa = whatsappLink(r.phone, `Dear ${r.contactPerson || r.customerName || "Sir/Madam"}, following up on our quotation ${r.number}${r.projectName ? ` for ${r.projectName}` : ""} (₹${Math.round(r.grandTotal).toLocaleString("en-IN")}). Kindly let us know your feedback or if you need any clarification. — ${user.name}, Linga Bhairavi Enterprise`);
+    const wa = whatsappLink(r.phone, `Dear ${r.contactPerson || r.customerName || "Sir/Madam"}, following up on our quotation ${r.number}${r.projectName ? ` for ${r.projectName}` : ""} (₹${Math.round(r.grandTotal).toLocaleString("en-IN")}). Kindly let us know your feedback or if you need any clarification. Regards, ${user.name}, Linga Bhairavi Enterprise`);
     const tel = telLink(r.phone);
     const late = r.nextFollowUpDate && r.nextFollowUpDate < today ? daysBetween(r.nextFollowUpDate, today) : 0;
     return (
@@ -114,7 +114,7 @@ export default async function FollowUpsPage({ searchParams }: { searchParams: Pr
               <StatusBadge status={r.status} />
               {late > 0 && <Badge tone="red">{late} day{late === 1 ? "" : "s"} overdue</Badge>}
             </div>
-            <div className="mt-0.5 text-sm text-ink">{r.customerName ?? "—"}{r.contactPerson && <span className="text-ink-soft"> · {r.contactPerson}</span>}</div>
+            <div className="mt-0.5 text-sm text-ink">{r.customerName ?? "-"}{r.contactPerson && <span className="text-ink-soft"> · {r.contactPerson}</span>}</div>
             {r.projectName && <div className="truncate text-xs text-ink-soft">{r.projectName}</div>}
           </div>
           <div className="text-left sm:text-right">
@@ -165,14 +165,14 @@ export default async function FollowUpsPage({ searchParams }: { searchParams: Pr
 
   return (
     <div>
-      <PageHeader title="Follow-up tracker" subtitle="Every sent quotation — who it went to, when to call next, and whether it converted." />
+      <PageHeader title="Follow-up tracker" subtitle="Every sent quotation: who it went to, when to call next, and whether it converted." />
       <Flash ok={sp.ok} err={sp.err} />
 
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Stat label="Overdue" value={overdue.length} tone={overdue.length ? "bad" : "good"} hint={moneyShort(overdue.reduce((s, r) => s + r.grandTotal, 0))} />
         <Stat label="Due today" value={dueToday.length} tone={dueToday.length ? "warn" : "default"} />
         <Stat label={`Won · ${monthLabel}`} value={wonN} tone="good" hint={moneyShort(wonM?.value ?? 0)} />
-        <Stat label="Conversion (month)" value={conv == null ? "—" : pct(conv, 0)} hint={`${wonN} won / ${lostN} lost`} />
+        <Stat label="Conversion (month)" value={conv == null ? "-" : pct(conv, 0)} hint={`${wonN} won / ${lostN} lost`} />
         <Stat label="Activity (month)" value={Number(fuMonth)} hint={`follow-ups · ${Number(sentMonth)} quotes sent`} />
       </div>
 
@@ -192,7 +192,7 @@ export default async function FollowUpsPage({ searchParams }: { searchParams: Pr
         </EmptyState>
       ) : (
         <>
-          {renderSection("overdue", "Overdue", overdue, "bad", "Nothing overdue — great work.")}
+          {renderSection("overdue", "Overdue", overdue, "bad", "Nothing overdue. Great work!")}
           {renderSection("today", "Due today", dueToday, "warn", "No follow-ups due today.")}
           {renderSection("upcoming", "Upcoming 7 days", upcoming, "default", "Nothing scheduled for the next 7 days.")}
           {renderSection("none", "No follow-up scheduled", unscheduled, "muted", "Every open quotation has a next follow-up date.")}

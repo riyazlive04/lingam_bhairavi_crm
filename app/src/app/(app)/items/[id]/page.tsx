@@ -74,14 +74,14 @@ export default async function ItemDetailPage({ params, searchParams }: { params:
 
   // Combined sales-side points (quote + sale), newest first
   const salesPoints = [
-    ...sales.map((s) => ({ key: `s${s.id}`, kind: "sale" as const, date: s.date, customerId: s.customerId, customerName: s.customerName, rate: Number(s.rate), qty: s.qty, href: can.billing && s.refType === "sales_invoice" && s.refId ? `/billing/invoices/${s.refId}` : null, doc: s.refType === "sales_invoice" ? "Invoice" : (s.refType ?? "—"), status: null as string | null })),
+    ...sales.map((s) => ({ key: `s${s.id}`, kind: "sale" as const, date: s.date, customerId: s.customerId, customerName: s.customerName, rate: Number(s.rate), qty: s.qty, href: can.billing && s.refType === "sales_invoice" && s.refId ? `/billing/invoices/${s.refId}` : null, doc: s.refType === "sales_invoice" ? "Invoice" : (s.refType ?? "-"), status: null as string | null })),
     ...quotes.map((q, i) => ({ key: `q${q.qid}-${i}`, kind: "quote" as const, date: q.date, customerId: q.customerId, customerName: q.customerName, rate: Number(q.rate), qty: q.qty, href: can.quotations ? `/quotations/${q.qid}` : null, doc: q.number, status: q.status })),
   ].filter((p) => p.rate > 0).sort((a, b) => b.date.localeCompare(a.date));
 
   // Last price per customer
   const byCustomer = new Map<string, { name: string; customerId: number | null; lastQuote?: { rate: number; date: string }; lastSale?: { rate: number; date: string } }>();
   for (const p of [...salesPoints].reverse()) {
-    const k = String(p.customerId ?? "—");
+    const k = String(p.customerId ?? "-");
     const e = byCustomer.get(k) ?? { name: p.customerName ?? "Unknown", customerId: p.customerId };
     if (p.kind === "quote") e.lastQuote = { rate: p.rate, date: p.date }; else e.lastSale = { rate: p.rate, date: p.date };
     byCustomer.set(k, e);
@@ -107,8 +107,8 @@ export default async function ItemDetailPage({ params, searchParams }: { params:
         {seeCost && (
           <Stat label="Latest cost" value={money(cost.rate)} tone={cost.source !== "purchase" || stale ? "warn" : "default"}
             hint={cost.source === "purchase"
-              ? <>{fmtDate(cost.date)} · {row.vendorName ?? "—"} · {age}d old{stale && ` (stale > ${it.volatilePrice ? STALE_DAYS_VOLATILE : STALE_DAYS_DEFAULT}d)`}</>
-              : cost.source === "list" ? "From list price — no purchase yet" : "No price available"} />
+              ? <>{fmtDate(cost.date)} · {row.vendorName ?? "-"} · {age}d old{stale && ` (stale > ${it.volatilePrice ? STALE_DAYS_VOLATILE : STALE_DAYS_DEFAULT}d)`}</>
+              : cost.source === "list" ? "From list price (no purchase yet)" : "No price available"} />
         )}
         <Stat label="Suggested sell" value={money(sell)} hint={seeCost ? `Cost + ${pct(it.markupPct, 0)} markup` : `Per ${it.uom}`} />
         <Stat label="Last sale rate" value={money(it.lastSaleRate)}
@@ -124,7 +124,7 @@ export default async function ItemDetailPage({ params, searchParams }: { params:
             ["Size", it.size], ["Make", it.make], ["UOM", it.uom], ["HSN", it.hsn], ["GST", pct(it.gstRate, 0)],
             ["Erection rate", seeCost || it.erectionRate ? money(it.erectionRate) : null],
             ...(seeCost ? [["List price", money(it.listPrice)] as [string, string], ["Default markup", pct(it.markupPct, 0)] as [string, string]] : []),
-            ["Volatile price", it.volatilePrice ? `Yes — stale after ${STALE_DAYS_VOLATILE} days` : `No — stale after ${STALE_DAYS_DEFAULT} days`],
+            ["Volatile price", it.volatilePrice ? `Yes, stale after ${STALE_DAYS_VOLATILE} days` : `No, stale after ${STALE_DAYS_DEFAULT} days`],
             ["Description", it.description],
           ]} />
         </Card>
@@ -175,7 +175,7 @@ export default async function ItemDetailPage({ params, searchParams }: { params:
                     <tr key={m.month}><Td>{new Date(m.month + "-01T00:00:00").toLocaleDateString("en-IN", { month: "short", year: "numeric" })}</Td>
                       <Td className="text-right tabular-nums">{money(m.avg)}</Td>
                       <Td className={cx("text-right tabular-nums", m.changePct != null && m.changePct > 0 && "text-red-600", m.changePct != null && m.changePct < 0 && "text-emerald-600")}>
-                        {m.changePct == null ? "—" : `${m.changePct > 0 ? "▲" : m.changePct < 0 ? "▼" : ""} ${pct(Math.abs(m.changePct))}`}</Td></tr>
+                        {m.changePct == null ? "-" : `${m.changePct > 0 ? "▲" : m.changePct < 0 ? "▼" : ""} ${pct(Math.abs(m.changePct))}`}</Td></tr>
                   ))}</tbody>
                 </Table>
               </Card>
@@ -193,14 +193,14 @@ export default async function ItemDetailPage({ params, searchParams }: { params:
                       <tr key={String(v.vendorId)}>
                         <Td>{v.vendorId && can.vendors ? <Link href={`/vendors/${v.vendorId}`} className="hover:underline">{v.vendorName}</Link> : v.vendorName}{i === 0 && vendorsCmp.length > 1 && <> <Badge tone="green">cheapest</Badge></>}</Td>
                         <Td className="text-right tabular-nums">{money(v.lastRate)}</Td><Td>{fmtDate(v.lastDate)}</Td><Td className="text-right">{v.count}</Td>
-                        <Td className="text-right tabular-nums">{money(v.avg)}</Td><Td className="text-right tabular-nums">{i === 0 ? "—" : `+${pct(diff)}`}</Td>
+                        <Td className="text-right tabular-nums">{money(v.avg)}</Td><Td className="text-right tabular-nums">{i === 0 ? "-" : `+${pct(diff)}`}</Td>
                       </tr>
                     );
                   })}
                   {linkedOnly.map((v) => (
                     <tr key={`l${v.vendorId}`}>
                       <Td>{can.vendors ? <Link href={`/vendors/${v.vendorId}`} className="hover:underline">{v.name}</Link> : v.name} <Badge>linked</Badge></Td>
-                      <Td className="text-right tabular-nums">{money(v.lastRate)}</Td><Td>{fmtDate(v.lastDate)}</Td><Td className="text-right">0</Td><Td className="text-right">—</Td><Td className="text-right">—</Td>
+                      <Td className="text-right tabular-nums">{money(v.lastRate)}</Td><Td>{fmtDate(v.lastDate)}</Td><Td className="text-right">0</Td><Td className="text-right">-</Td><Td className="text-right">-</Td>
                     </tr>
                   ))}
                 </tbody>
@@ -218,12 +218,12 @@ export default async function ItemDetailPage({ params, searchParams }: { params:
                     return (
                       <tr key={p.id}>
                         <Td>{fmtDate(p.date)}</Td>
-                        <Td>{p.vendorId ? (can.vendors ? <Link href={`/vendors/${p.vendorId}`} className="hover:underline">{p.vendorName}</Link> : p.vendorName) : "—"}</Td>
-                        <Td>{p.refType === "purchase_invoice" && p.refId ? (can.purchases ? <Link href={`/purchases/${p.refId}`} className="text-brand-700 hover:underline dark:text-brand-300">{invNos.get(p.refId) ?? `#${p.refId}`}</Link> : (invNos.get(p.refId) ?? `#${p.refId}`)) : "—"}</Td>
+                        <Td>{p.vendorId ? (can.vendors ? <Link href={`/vendors/${p.vendorId}`} className="hover:underline">{p.vendorName}</Link> : p.vendorName) : "-"}</Td>
+                        <Td>{p.refType === "purchase_invoice" && p.refId ? (can.purchases ? <Link href={`/purchases/${p.refId}`} className="text-brand-700 hover:underline dark:text-brand-300">{invNos.get(p.refId) ?? `#${p.refId}`}</Link> : (invNos.get(p.refId) ?? `#${p.refId}`)) : "-"}</Td>
                         <Td className="text-right tabular-nums">{qty(p.qty)}</Td>
                         <Td className="text-right tabular-nums">{money(p.rate)}</Td>
                         <Td className={cx("text-right tabular-nums text-xs", ch != null && Math.abs(ch) >= 5 && (ch > 0 ? "font-semibold text-red-600" : "font-semibold text-emerald-600"))}>
-                          {ch == null ? "—" : `${ch > 0 ? "+" : ""}${pct(ch)}`}</Td>
+                          {ch == null ? "-" : `${ch > 0 ? "+" : ""}${pct(ch)}`}</Td>
                       </tr>
                     );
                   })}
@@ -237,7 +237,7 @@ export default async function ItemDetailPage({ params, searchParams }: { params:
       <section aria-labelledby="sh" className="space-y-4">
         <div>
           <h2 id="sh" className="text-lg font-semibold text-ink">Sales price history</h2>
-          <p className="text-sm text-ink-soft">Quoted and invoiced selling rates to customers — kept separate from purchase prices.{seeCost && " Margin is against today's latest cost."}</p>
+          <p className="text-sm text-ink-soft">Quoted and invoiced selling rates to customers, kept separate from purchase prices.{seeCost && " Margin is against today's latest cost."}</p>
         </div>
         {salesPoints.length === 0 ? <EmptyState title="Not quoted or sold yet">Selling rates appear here once this item is used in a quotation or sales invoice.</EmptyState> : (
           <>
@@ -247,9 +247,9 @@ export default async function ItemDetailPage({ params, searchParams }: { params:
                 <tbody>{[...byCustomer.values()].map((c) => (
                   <tr key={String(c.customerId)}>
                     <Td>{c.customerId && can.customers ? <Link href={`/customers/${c.customerId}`} className="hover:underline">{c.name}</Link> : c.name}</Td>
-                    <Td className="text-right tabular-nums">{c.lastQuote ? <>{money(c.lastQuote.rate)}<div className="text-xs text-ink-faint">{fmtDate(c.lastQuote.date)}</div></> : "—"}</Td>
-                    <Td className="text-right tabular-nums">{c.lastSale ? <>{money(c.lastSale.rate)}<div className="text-xs text-ink-faint">{fmtDate(c.lastSale.date)}</div></> : "—"}</Td>
-                    {seeCost && <Td className="text-right tabular-nums">{c.lastSale && cost.rate ? pct(marginPct(c.lastSale.rate, cost.rate)) : "—"}</Td>}
+                    <Td className="text-right tabular-nums">{c.lastQuote ? <>{money(c.lastQuote.rate)}<div className="text-xs text-ink-faint">{fmtDate(c.lastQuote.date)}</div></> : "-"}</Td>
+                    <Td className="text-right tabular-nums">{c.lastSale ? <>{money(c.lastSale.rate)}<div className="text-xs text-ink-faint">{fmtDate(c.lastSale.date)}</div></> : "-"}</Td>
+                    {seeCost && <Td className="text-right tabular-nums">{c.lastSale && cost.rate ? pct(marginPct(c.lastSale.rate, cost.rate)) : "-"}</Td>}
                   </tr>
                 ))}</tbody>
               </Table>
@@ -263,11 +263,11 @@ export default async function ItemDetailPage({ params, searchParams }: { params:
                     <tr key={p.key}>
                       <Td>{fmtDate(p.date)}</Td>
                       <Td><Badge tone={p.kind === "sale" ? "green" : "blue"}>{p.kind}</Badge>{p.status && <> <StatusBadge status={p.status} /></>}</Td>
-                      <Td>{p.customerId && can.customers ? <Link href={`/customers/${p.customerId}`} className="hover:underline">{p.customerName}</Link> : (p.customerName ?? "—")}</Td>
+                      <Td>{p.customerId && can.customers ? <Link href={`/customers/${p.customerId}`} className="hover:underline">{p.customerName}</Link> : (p.customerName ?? "-")}</Td>
                       <Td>{p.href ? <Link href={p.href} className="text-brand-700 hover:underline dark:text-brand-300">{p.doc}</Link> : p.doc}</Td>
                       <Td className="text-right tabular-nums">{qty(p.qty)}</Td>
                       <Td className="text-right tabular-nums">{money(p.rate)}</Td>
-                      {seeCost && <Td className={cx("text-right tabular-nums", m != null && m < 10 && "text-red-600")}>{m == null ? "—" : pct(m)}</Td>}
+                      {seeCost && <Td className={cx("text-right tabular-nums", m != null && m < 10 && "text-red-600")}>{m == null ? "-" : pct(m)}</Td>}
                     </tr>
                   );
                 })}</tbody>

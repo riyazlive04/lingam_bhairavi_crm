@@ -7,7 +7,7 @@
  *  - dunning emails are gated by an atomic UPDATE … RETURNING claim on sales_invoices (+ "already emailed today" check);
  *  - automatic status changes (quote expiry) are conditional UPDATEs;
  *  - "minutes saved" counts only NEW alerts / emails / actions, never re-detections.
- * No AI / LLM calls anywhere — pure SQL + TypeScript rules.
+ * No AI / LLM calls anywhere: pure SQL + TypeScript rules.
  */
 import "server-only";
 import { and, desc, eq, inArray, like, or } from "drizzle-orm";
@@ -234,7 +234,7 @@ async function runAgentsInner(db: DB, opts: { trigger: AgentTrigger; only?: stri
 // Serialise runs inside one server instance (cron, "Run now" and on-login refresh can overlap).
 const g = globalThis as unknown as { __lbeAgentChain?: Promise<unknown>; __lbeAgentRefresh?: Promise<unknown> | null };
 
-/** Run all enabled agents (or just `only`). Safe to call repeatedly — see idempotency notes above. */
+/** Run all enabled agents (or just `only`). Safe to call repeatedly (see the idempotency notes above). */
 export function runAgents(db: DB, opts: { trigger: AgentTrigger; only?: string; today?: string }): Promise<RunAgentsResult> {
   const prev = g.__lbeAgentChain ?? Promise.resolve();
   const next = prev.catch(() => undefined).then(() => runAgentsInner(db, opts));

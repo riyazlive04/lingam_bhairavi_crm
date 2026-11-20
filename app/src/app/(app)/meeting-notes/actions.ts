@@ -49,7 +49,7 @@ export async function createNote(form: FormData) {
       openQuestions: d.openQuestions ?? null, transcript: d.transcript ?? null, actionItems: items, version: 1, updatedBy: user.id,
     }).returning({ id: meetingNotes.id });
     await audit(db, user.id, "create", "meeting_note", row.id, { title: d.title, carriedForward: carried });
-    target = flashUrl(`/meeting-notes/${row.id}`, "ok", `Meeting note created${carried ? ` — ${carried} open action item${carried === 1 ? "" : "s"} carried forward` : ""}`);
+    target = flashUrl(`/meeting-notes/${row.id}`, "ok", `Meeting note created${carried ? `. ${carried} open action item${carried === 1 ? "" : "s"} carried forward` : ""}`);
   } catch (e) {
     target = flashUrl("/meeting-notes/new", "err", errMsg(e));
   }
@@ -110,7 +110,7 @@ export async function toggleActionItem(form: FormData) {
     const [cur] = await db.select({ actionItems: meetingNotes.actionItems }).from(meetingNotes).where(eq(meetingNotes.id, d.id)).limit(1);
     if (!cur) throw new UserError("Note not found");
     const items = [...(cur.actionItems ?? [])];
-    if (!items[d.index] || items[d.index].text !== d.text) throw new UserError("The action items changed — reload the page and try again");
+    if (!items[d.index] || items[d.index].text !== d.text) throw new UserError("The action items have changed. Reload the page and try again");
     items[d.index] = { ...items[d.index], done: d.done === "1" };
     await db.update(meetingNotes).set({ actionItems: items, updatedBy: user.id, updatedAt: new Date() }).where(eq(meetingNotes.id, d.id));
     await audit(db, user.id, "update", "meeting_note", d.id, { actionItem: items[d.index].text, done: d.done === "1" });

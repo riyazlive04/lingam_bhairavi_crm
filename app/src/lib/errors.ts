@@ -1,4 +1,4 @@
-/** Safe user-facing error messages. OWNED BY: Security. */
+/** Safe user-facing error messages. Maintainer: Sirah Digital. */
 import { z } from "zod";
 
 /**

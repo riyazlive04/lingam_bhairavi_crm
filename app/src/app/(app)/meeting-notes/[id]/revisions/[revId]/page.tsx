@@ -34,7 +34,7 @@ export default async function RevisionSnapshotPage({ params }: { params: Promise
       />
       <div role="note" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
         Read-only view of v{row.r.version} as it was before {row.by ?? "someone"} saved v{row.r.version + 1} on {fmtDateTime(row.r.createdAt)}
-        {row.r.changeSummary ? <> — “{row.r.changeSummary}”</> : null}.
+        {row.r.changeSummary ? <>: “{row.r.changeSummary}”</> : null}.
       </div>
       {s.attendees && <p className="text-sm text-ink-soft"><span className="font-medium text-ink">Attendees:</span> {s.attendees}</p>}
       <Card title="Summary"><Markdown md={s.summary} /></Card>
@@ -44,7 +44,7 @@ export default async function RevisionSnapshotPage({ params }: { params: Promise
           <ul className="space-y-1 text-sm">
             {s.actionItems.map((a, i) => (
               <li key={i} className={cx(a.done ? "text-ink-faint line-through" : "text-ink")}>
-                {a.done ? "☑" : "☐"} {a.text}{a.owner ? ` — ${a.owner}` : ""}{a.due ? ` (due ${fmtDate(a.due)})` : ""}
+                {a.done ? "☑" : "☐"} {a.text}{a.owner ? ` (${a.owner})` : ""}{a.due ? ` (due ${fmtDate(a.due)})` : ""}
               </li>
             ))}
           </ul>

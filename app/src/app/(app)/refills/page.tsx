@@ -120,7 +120,7 @@ export default async function RefillsPage({ searchParams }: { searchParams: Prom
     <div>
       <PageHeader
         title="Extinguisher Refill Tracker"
-        subtitle="Internal reminders only — customers are not notified automatically. Refills due within 10 days also appear on the dashboard."
+        subtitle="Internal reminders only; customers are not notified automatically. Refills due within 10 days also appear on the dashboard."
         actions={writable && <LinkButton href="/refills/new"><Plus className="h-4 w-4" aria-hidden /> Add assets</LinkButton>}
       />
       <Flash ok={sp.ok} err={sp.err} />
@@ -173,7 +173,7 @@ export default async function RefillsPage({ searchParams }: { searchParams: Prom
       ) : (
         <AssetTable rows={assetRows} canWrite={writable} today={today} recordAction={recordRefill} back={keep({})} />
       )}
-      {rows.length >= 1000 && <p className="mt-2 text-xs text-ink-soft">Showing the first 1,000 assets — use the filters to narrow down.</p>}
+      {rows.length >= 1000 && <p className="mt-2 text-xs text-ink-soft">Showing the first 1,000 assets. Use the filters to narrow things down.</p>}
 
       {summary.length > 0 && (
         <Card title="Customer-wise summary" className="mt-6" bodyClassName="p-0">
@@ -183,7 +183,7 @@ export default async function RefillsPage({ searchParams }: { searchParams: Prom
               {summary.map((s) => (
                 <tr key={s.customerId}>
                   <Td><Link href={keep({ customerId: String(s.customerId), bucket: undefined })} className="text-brand-700 hover:underline dark:text-brand-300">{s.name}</Link></Td>
-                  <Td>{s.phone ? <a href={`tel:${s.phone}`} className="hover:text-brand-700">{s.phone}</a> : "—"}</Td>
+                  <Td>{s.phone ? <a href={`tel:${s.phone}`} className="hover:text-brand-700">{s.phone}</a> : "-"}</Td>
                   <Td className="text-right tabular-nums">{s.units}</Td>
                   <Td className={cx("text-right tabular-nums", s.overdue ? "font-semibold text-red-600" : "text-ink-faint")}>{s.overdue}</Td>
                   <Td className={cx("text-right tabular-nums", s.due30 ? "text-amber-700 dark:text-amber-400" : "text-ink-faint")}>{s.due30}</Td>

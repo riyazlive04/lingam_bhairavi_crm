@@ -1,8 +1,8 @@
 /**
  * Billing domain helpers: receivables/payables ageing, customer ledger, invoice status (rule 6),
- * Indian amount-in-words, reminder/statement e-mail builders. OWNED BY: Team C (Orders, Delivery & Billing).
+ * Indian amount-in-words, reminder/statement e-mail builders. Maintainer: Sirah Digital.
  *
- * `buildReminderEmail` is a pure function — the Automation Agents team imports it for automatic dunning,
+ * `buildReminderEmail` is a pure function; the Automation Agents team imports it for automatic dunning,
  * so its signature must stay stable.
  */
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
@@ -33,7 +33,7 @@ export const outstandingOf = (total: number, paid: number) => Math.max(0, round2
 
 export type Ageing = { notDue: number; d0_30: number; d31_60: number; d61_90: number; d90p: number };
 export const AGEING_LABELS: [keyof Ageing, string][] = [
-  ["notDue", "Not due"], ["d0_30", "0–30"], ["d31_60", "31–60"], ["d61_90", "61–90"], ["d90p", "90+"],
+  ["notDue", "Not due"], ["d0_30", "0-30"], ["d31_60", "31-60"], ["d61_90", "61-90"], ["d90p", "90+"],
 ];
 const emptyAgeing = (): Ageing => ({ notDue: 0, d0_30: 0, d31_60: 0, d61_90: 0, d90p: 0 });
 
@@ -127,7 +127,7 @@ export async function openSalesInvoices(db: DbLike, opts: { customerId?: number;
     .map((r) => {
       const total = Number(r.total), paidAmount = Number(r.paidAmount);
       return {
-        ...r, partyName: r.partyName ?? "—", total, paidAmount, outstanding: outstandingOf(total, paidAmount),
+        ...r, partyName: r.partyName ?? "-", total, paidAmount, outstanding: outstandingOf(total, paidAmount),
         daysOverdue: daysBetween(r.dueDate, today),
       };
     })
@@ -152,7 +152,7 @@ export async function openPurchaseInvoices(db: DbLike, opts: { vendorId?: number
       const total = Number(r.total), paidAmount = Number(r.paidAmount);
       const dueDate = r.dueDate ?? addDays(r.invoiceDate, Number(terms ?? 30));
       return {
-        ...r, partyName: r.partyName ?? "—", dueDate, total, paidAmount, outstanding: outstandingOf(total, paidAmount),
+        ...r, partyName: r.partyName ?? "-", dueDate, total, paidAmount, outstanding: outstandingOf(total, paidAmount),
         daysOverdue: daysBetween(dueDate, today),
       };
     })
@@ -349,7 +349,7 @@ function wrap(inner: string) {
 
 /**
  * Polite payment reminder with a mini statement of the open invoices.
- * STABLE API — imported by the Receivables Dunning Agent.
+ * STABLE API: imported by the Receivables Dunning Agent.
  */
 export function buildReminderEmail(opts: {
   customerName: string;
@@ -363,7 +363,7 @@ export function buildReminderEmail(opts: {
   const single = invoices.length === 1 ? invoices[0] : null;
 
   const subject = single
-    ? `${single.daysOverdue > 0 ? "Payment reminder" : "Payment due"}: Invoice ${single.number} — ${money(single.outstanding)} | ${company.name}`
+    ? `${single.daysOverdue > 0 ? "Payment reminder" : "Payment due"}: Invoice ${single.number}, ${money(single.outstanding)} | ${company.name}`
     : `Payment reminder: ${money(totalOutstanding)} outstanding (${invoices.length} invoices) | ${company.name}`;
 
   const rows = invoices.map((i) => {
@@ -392,7 +392,7 @@ export function buildReminderEmail(opts: {
     + `<tfoot><tr><td colspan="4" style="${cellR}"><strong>Total outstanding</strong></td><td style="${cellR}"><strong>${escapeHtml(money(totalOutstanding))}</strong></td><td style="${cell}"></td></tr></tfoot>`
     + `</table>`
     + `<p>We request you to kindly arrange the payment at the earliest${company.bank ? " to our bank account below" : ""}.`
-    + ` If the payment has already been made, please share the transaction details so that we can update our records — and kindly ignore this reminder.</p>`
+    + ` If the payment has already been made, please share the transaction details so that we can update our records, and kindly ignore this reminder.</p>`
     + (company.bank ? `<p style="background:#f1f3f6;padding:10px 12px;border-radius:6px;font-size:13px"><strong>Bank details:</strong> ${escapeHtml(company.bank)}</p>` : "")
     + `<p>For any clarification regarding these invoices, please feel free to reply to this e-mail${company.phone ? ` or call us on ${escapeHtml(company.phone)}` : ""}.</p>`
     + signature(company),
@@ -413,7 +413,7 @@ export function buildStatementEmail(opts: {
     `<tr><td style="${cell}">${escapeHtml(fmtDate(e.date))}</td><td style="${cell}">${escapeHtml(e.ref)}</td><td style="${cell}">${escapeHtml(e.description)}</td>`
     + `<td style="${cellR}">${e.debit ? escapeHtml(money(e.debit)) : ""}</td><td style="${cellR}">${e.credit ? escapeHtml(money(e.credit)) : ""}</td>`
     + `<td style="${cellR}">${escapeHtml(money(e.balance))}</td></tr>`).join("");
-  const subject = `Statement of account as on ${fmtDate(asOn)} — ${company.name}`;
+  const subject = `Statement of account as on ${fmtDate(asOn)} | ${company.name}`;
   const html = wrap(
     `<h2 style="margin:0 0 4px;font-size:18px;color:#ad1a16">${escapeHtml(company.name)}</h2>`
     + `<p style="margin:0 0 16px;color:#5b6472;font-size:13px">Statement of account as on ${escapeHtml(fmtDate(asOn))}</p>`

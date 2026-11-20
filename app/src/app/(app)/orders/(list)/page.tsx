@@ -9,7 +9,7 @@ import { ORDER_STATUSES } from "@/lib/constants";
 import { fmtDate, money0, qty, todayIST } from "@/lib/format";
 import { LINE_STATUS_LABEL, OPEN_ORDER_STATUSES, orderProgress, pendingDeliveryLines, type PendingLine } from "@/lib/orders";
 import { Badge, Button, Card, EmptyState, Flash, Input, LinkButton, PageHeader, Select, Stat, StatusBadge, Table, Td, Th, cx } from "@/components/ui";
-import { LineProgress } from "./_components/progress";
+import { LineProgress } from "../_components/progress";
 
 export const metadata = { title: "Orders & Delivery" };
 
@@ -31,6 +31,11 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
   const status = (ORDER_STATUSES as readonly string[]).includes(sp.status ?? "") ? sp.status : undefined;
   const q = sp.q?.trim();
 
+  // Filter dropdown data does not depend on anything else: start it now, await it later.
+  const listsP = Promise.all([
+    db.select({ id: customers.id, name: customers.name }).from(customers).orderBy(asc(customers.name)),
+    db.select({ id: projects.id, name: projects.name, code: projects.code }).from(projects).orderBy(desc(projects.id)).limit(300),
+  ]);
   const pending = await pendingDeliveryLines(db, { customerId, projectId, today });
   const overdueCount = pending.filter((l) => (l.daysOverdue ?? 0) > 0).length;
   const inTransit = pending.filter((l) => l.deliveryStatus === "in_transit").length;
@@ -61,10 +66,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
     .limit(200);
   const progress = await orderProgress(db, orders.map((o) => o.id), today);
 
-  const [custList, projList] = await Promise.all([
-    db.select({ id: customers.id, name: customers.name }).from(customers).orderBy(asc(customers.name)),
-    db.select({ id: projects.id, name: projects.name, code: projects.code }).from(projects).orderBy(desc(projects.id)).limit(300),
-  ]);
+  const [custList, projList] = await listsP;
   const write = canWrite(user.role, "orders");
   const filtered = !!(q || status || customerId || projectId || sp.pending);
 
@@ -126,7 +128,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
                     <tr key={l.lineId} className={cx((l.daysOverdue ?? 0) > 0 && "bg-red-50/60 dark:bg-red-950/30")}>
                       <Td className="max-w-52 truncate" title={l.customerName}>{l.customerName}{l.projectName && <div className="truncate text-xs text-ink-soft">{l.projectName}</div>}</Td>
                       <Td>
-                        <Link href={`/orders/${l.orderId}#line-${l.lineId}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{l.customerPoNumber || "—"}</Link>
+                        <Link href={`/orders/${l.orderId}#line-${l.lineId}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{l.customerPoNumber || "-"}</Link>
                         <div className="text-xs text-ink-soft">{l.orderNumber}</div>
                       </Td>
                       <Td className="max-w-72 whitespace-normal">{l.description}{l.remarks && <div className="text-xs text-ink-soft">{l.remarks}</div>}</Td>
@@ -194,10 +196,10 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
                     <div className="text-xs text-ink-soft">{fmtDate(o.orderDate)}</div>
                   </Td>
                   <Td className="max-w-60">
-                    <div className="truncate">{o.customerName ?? "—"}</div>
+                    <div className="truncate">{o.customerName ?? "-"}</div>
                     {o.projectName && <div className="truncate text-xs text-ink-soft">{o.projectName}</div>}
                   </Td>
-                  <Td>{o.customerPoNumber || "—"}<div className="text-xs text-ink-soft">{fmtDate(o.customerPoDate)}</div></Td>
+                  <Td>{o.customerPoNumber || "-"}<div className="text-xs text-ink-soft">{fmtDate(o.customerPoDate)}</div></Td>
                   <Td className="whitespace-nowrap">{fmtDate(o.expectedDelivery)}</Td>
                   <Td className="text-right tabular-nums">{money0(o.total)}</Td>
                   <Td>

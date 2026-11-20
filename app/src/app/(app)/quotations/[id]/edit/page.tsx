@@ -24,7 +24,7 @@ export default async function EditQuotationPage({ params, searchParams }: { para
   const sp = await searchParams;
   const [q] = await db.select().from(quotations).where(eq(quotations.id, id));
   if (!q) notFound();
-  if (!isEditableStatus(q.status)) redirect(`/quotations/${id}?err=${encodeURIComponent(`A ${q.status} quotation cannot be edited — use Revise`)}`);
+  if (!isEditableStatus(q.status)) redirect(`/quotations/${id}?err=${encodeURIComponent(`A ${q.status} quotation can't be edited. Use Revise instead`)}`);
   const showCost = canSeeCost(user.role);
   const [[cust], tmplRows, pricing, catalog, lines] = await Promise.all([
     db.select({ name: customers.name, city: customers.city }).from(customers).where(eq(customers.id, q.customerId)),
@@ -38,7 +38,7 @@ export default async function EditQuotationPage({ params, searchParams }: { para
     <div>
       <PageHeader
         title={<span className="flex flex-wrap items-center gap-2">Edit {q.number} <StatusBadge status={q.status} /></span>}
-        subtitle={q.status !== "draft" ? "This quotation was already sent — consider “Revise” to keep the sent version on record." : "Only lines with a quantity are saved."}
+        subtitle={q.status !== "draft" ? "This quotation was already sent. Consider “Revise” to keep the sent version on record." : "Only lines with a quantity are saved."}
         back={{ href: `/quotations/${id}`, label: "Quotation" }}
       />
       <Flash ok={sp.ok} err={sp.err} />

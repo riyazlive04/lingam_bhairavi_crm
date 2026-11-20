@@ -38,7 +38,7 @@ export default async function VendorsPage({ searchParams }: { searchParams: Prom
 
   return (
     <div>
-      <PageHeader title="Vendors" subtitle="Vendor master — who supplies what, at what rate, and what we owe them."
+      <PageHeader title="Vendors" subtitle="Vendor master: who supplies what, at what rate, and what we owe them."
         actions={write && <LinkButton href="/vendors/new"><Plus size={16} aria-hidden /> New vendor</LinkButton>} />
       <Flash ok={sp.ok} err={sp.err} />
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -74,12 +74,12 @@ export default async function VendorsPage({ searchParams }: { searchParams: Prom
                   <Td><Link href={`/vendors/${v.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{v.name}</Link>
                     <div className="text-xs text-ink-faint">{v.city ?? ""}{!v.active && " · inactive"}</div></Td>
                   <Td className="max-w-80 whitespace-normal"><div className="flex flex-wrap gap-1">
-                    {v.systems.length ? v.systems.map((s) => <Badge key={s} tone="blue">{SYSTEMS[s as keyof typeof SYSTEMS] ?? s}</Badge>) : <span className="text-ink-faint">—</span>}
+                    {v.systems.length ? v.systems.map((s) => <Badge key={s} tone="blue">{SYSTEMS[s as keyof typeof SYSTEMS] ?? s}</Badge>) : <span className="text-ink-faint">-</span>}
                   </div></Td>
-                  <Td className="text-xs">{v.contactPerson ?? "—"}{v.phone && <div><a href={`tel:${v.phone}`} className="text-ink-soft hover:underline">{v.phone}</a></div>}</Td>
+                  <Td className="text-xs">{v.contactPerson ?? "-"}{v.phone && <div><a href={`tel:${v.phone}`} className="text-ink-soft hover:underline">{v.phone}</a></div>}</Td>
                   <Td className="text-right tabular-nums">{itemsBy.get(v.id) ?? 0}</Td>
                   <Td>{fmtDate(lastBy.get(v.id) ?? null)}</Td>
-                  <Td className="text-right tabular-nums">{due > 0.5 ? <span className="font-medium text-amber-700 dark:text-amber-300">{money(due)}</span> : <span className="text-ink-faint">—</span>}</Td>
+                  <Td className="text-right tabular-nums">{due > 0.5 ? <span className="font-medium text-amber-700 dark:text-amber-300">{money(due)}</span> : <span className="text-ink-faint">-</span>}</Td>
                 </tr>
               );
             })}

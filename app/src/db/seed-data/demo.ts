@@ -15,10 +15,10 @@ export const DEMO_CUSTOMERS: DemoCustomer[] = [
   { name: "Annapoorna Textiles Pvt Ltd", contactPerson: "P. Gopinath (Director)", phone: "+91 9600478213", email: "gopinath@annapoornatex.example.com", gstin: "33AACCA5567R1Z6", address: "Survey No. 211, Shoolagiri Industrial Area, Shoolagiri", city: "Shoolagiri", state: "Tamil Nadu", type: "customer", paymentTermsDays: 30, creditLimit: 500000 },
   { name: "Bengaluru Logistics Park LLP", contactPerson: "Naveen Gowda (Projects)", phone: "+91 9845067321", email: "naveen.g@blrlogipark.example.com", gstin: "29AAQFB6612L1Z2", address: "Survey 88, Attibele-Sarjapur Road, Attibele, Bengaluru Urban", city: "Attibele", state: "Karnataka", type: "customer", paymentTermsDays: 30, creditLimit: 2500000 },
   { name: "Sunrise Tech Parks Pvt Ltd", contactPerson: "Deepa Raghunath (Facility Head)", phone: "+91 9886523410", email: "deepa.r@sunrisetechparks.example.com", gstin: "29AAICS8834H1Z9", address: "Phase II, Electronic City, Hosur Road, Bengaluru", city: "Bengaluru", state: "Karnataka", type: "customer", paymentTermsDays: 15, creditLimit: 3000000 },
-  { name: "Velan Multispeciality Hospital", contactPerson: "Dr. A. Kumaresan (Administrator)", phone: "+91 9944781230", email: "admin@velanhospital.example.com", gstin: "33AAJFV3378N1Z4", address: "Denkanikottai Road, Hosur", city: "Hosur", state: "Tamil Nadu", type: "customer", paymentTermsDays: 30, creditLimit: 600000, notes: "Fire NOC renewal every year — keep extinguisher records ready." },
+  { name: "Velan Multispeciality Hospital", contactPerson: "Dr. A. Kumaresan (Administrator)", phone: "+91 9944781230", email: "admin@velanhospital.example.com", gstin: "33AAJFV3378N1Z4", address: "Denkanikottai Road, Hosur", city: "Hosur", state: "Tamil Nadu", type: "customer", paymentTermsDays: 30, creditLimit: 600000, notes: "Fire NOC renewal every year. Keep extinguisher records ready." },
   { name: "Green Valley Apartments Owners Association", contactPerson: "M. Rajasekar (Secretary)", phone: "+91 9790345678", email: "secretary@greenvalleyhosur.example.com", gstin: "33AAAAG4410D1ZQ", address: "Bagalur Road, Hosur", city: "Hosur", state: "Tamil Nadu", type: "customer", paymentTermsDays: 30, creditLimit: 200000 },
   { name: "Shree Ganesh Polymers", contactPerson: "Hitesh Jain (Partner)", phone: "+91 9363012987", email: "hitesh@sgpolymers.example.com", gstin: "33AAPFS9021C1Z7", address: "Kelamangalam Road, Zuzuvadi, Hosur", city: "Hosur", state: "Tamil Nadu", type: "customer", paymentTermsDays: 30, creditLimit: 400000 },
-  { name: "Kaveri MEP Consultants", contactPerson: "Er. Prakash Iyer", phone: "+91 9880412365", email: "prakash@kaverimep.example.com", gstin: "29AAKFK1156E1Z5", address: "HSR Layout Sector 2, Bengaluru", city: "Bengaluru", state: "Karnataka", type: "consultant", paymentTermsDays: 30, creditLimit: 0, notes: "Consultant — specifies BOQs for multiple industrial clients." },
+  { name: "Kaveri MEP Consultants", contactPerson: "Er. Prakash Iyer", phone: "+91 9880412365", email: "prakash@kaverimep.example.com", gstin: "29AAKFK1156E1Z5", address: "HSR Layout Sector 2, Bengaluru", city: "Bengaluru", state: "Karnataka", type: "consultant", paymentTermsDays: 30, creditLimit: 0, notes: "Consultant who specifies BOQs for multiple industrial clients." },
   { name: "Skyline Builders & Developers", contactPerson: "Mohan Reddy (Project Director)", phone: "+91 9900156742", email: "mohan@skylinebuilders.example.com", gstin: "29AAECS7745F1Z0", address: "Bommasandra Industrial Area, Bengaluru", city: "Bengaluru", state: "Karnataka", type: "builder", paymentTermsDays: 45, creditLimit: 1500000 },
   { name: "Tamil Nadu Bearings Ltd", contactPerson: "V. Ilango (Safety Officer)", phone: "+91 9443987650", email: "ilango@tnbearings.example.com", gstin: "33AACCT6603B1Z2", address: "Mathigiri Industrial Estate, Hosur", city: "Hosur", state: "Tamil Nadu", type: "customer", paymentTermsDays: 45, creditLimit: 2500000 },
 ];
@@ -29,7 +29,7 @@ export interface DemoVendor {
 }
 
 export const DEMO_VENDORS: DemoVendor[] = [
-  { key: "pipes1", name: "Sri Balaji Steel & Pipes", contactPerson: "Balaji N", phone: "+91 9443211876", email: "sales@sribalajisteel.example.com", gstin: "33AAKFS3012G1Z9", address: "Bagalur Road, Hosur", city: "Hosur", systems: ["hydrant_sprinkler", "general"], paymentTermsDays: 30, leadTimeDays: 2, priceFactor: 0.99, invoicePrefix: "SBS", notes: "Tata / Jindal GI & MS pipes. Prices change daily — call before ordering." },
+  { key: "pipes1", name: "Sri Balaji Steel & Pipes", contactPerson: "Balaji N", phone: "+91 9443211876", email: "sales@sribalajisteel.example.com", gstin: "33AAKFS3012G1Z9", address: "Bagalur Road, Hosur", city: "Hosur", systems: ["hydrant_sprinkler", "general"], paymentTermsDays: 30, leadTimeDays: 2, priceFactor: 0.99, invoicePrefix: "SBS", notes: "Tata / Jindal GI & MS pipes. Prices change daily, so call before ordering." },
   { key: "pipes2", name: "Bharath Tubes & Fittings", contactPerson: "Suresh Shetty", phone: "+91 9845190023", email: "orders@bharathtubes.example.com", gstin: "29AABFB4471K1Z3", address: "Peenya Industrial Area, Bengaluru", city: "Bengaluru", systems: ["hydrant_sprinkler"], paymentTermsDays: 45, leadTimeDays: 4, priceFactor: 1.02, invoicePrefix: "BTF" },
   { key: "valves1", name: "Kaveri Valves & Controls", contactPerson: "Ramesh Babu", phone: "+91 9842012876", email: "sales@kaverivalves.example.com", gstin: "33AAHFK8823L1Z1", address: "SIDCO Industrial Estate, Kurichi, Coimbatore", city: "Coimbatore", systems: ["hydrant_sprinkler"], paymentTermsDays: 30, leadTimeDays: 5, priceFactor: 0.98, invoicePrefix: "KVC" },
   { key: "hydrant1", name: "Annai Fire Engineering Supplies", contactPerson: "Anand Raj", phone: "+91 9884123456", email: "anand@annaifire.example.com", gstin: "33AAMFA2219Q1Z6", address: "Ambattur Industrial Estate, Chennai", city: "Chennai", systems: ["hydrant_sprinkler", "extinguisher_new", "spares"], paymentTermsDays: 30, leadTimeDays: 3, priceFactor: 1.01, invoicePrefix: "AFE" },
@@ -43,7 +43,7 @@ export const DEMO_VENDORS: DemoVendor[] = [
 
 export const COMPANY_SETTINGS = {
   name: "Linga Bhairavi Enterprise",
-  tagline: "Fire Protection Systems — Extinguishers · Hydrant · Sprinkler · Fire Alarm · PA",
+  tagline: "Fire Protection Systems: Extinguishers · Hydrant · Sprinkler · Fire Alarm · PA",
   address: "Hosur, Krishnagiri District, Tamil Nadu",
   gstin: "33XXXXXXXXXX1Z5",
   phone: "+91 90000 00000",
@@ -51,7 +51,7 @@ export const COMPANY_SETTINGS = {
   website: "",
   bank: {
     accountName: "Linga Bhairavi Enterprise",
-    bankName: "<Bank name — client to provide>",
+    bankName: "<Bank name (client to provide)>",
     accountNo: "<Account number>",
     ifsc: "<IFSC>",
     branch: "Hosur",
@@ -60,7 +60,7 @@ export const COMPANY_SETTINGS = {
     "1. Validity: This quotation is valid for 30 days from the date of issue.",
     "2. Taxes: GST @ 18% extra as applicable at the time of invoicing.",
     "3. Payment: 50% advance along with PO, 40% against material delivery, 10% after testing & commissioning.",
-    "4. Delivery: 2–3 weeks from the date of receipt of PO and advance, subject to material availability.",
+    "4. Delivery: 2 to 3 weeks from the date of receipt of PO and advance, subject to material availability.",
     "5. Warranty: 12 months from the date of commissioning against manufacturing defects (consumables excluded).",
     "6. Civil works, scaffolding beyond 6 m, water & power at site to be provided by the client unless stated.",
     "7. Any additional work beyond the BOQ will be charged extra on mutually agreed rates.",
@@ -84,26 +84,26 @@ export const AGENT_RULES: { agent: string; params: Record<string, number> }[] = 
 ];
 
 export const KICKOFF_NOTE = {
-  title: "Kickoff — Requirements Discovery",
+  title: "Kickoff: Requirements Discovery",
   meetingDate: "2026-11-20",
   attendees: "Karthick (LBE), Partner (LBE), Riyas (Sirah Digital), Sirah Digital consultant",
   summary: [
     "## Summary",
     "",
-    "Linga Bhairavi Enterprise (Hosur) is a turnkey fire-protection contractor — extinguishers, hydrant, sprinkler, fire alarm, PA / voice evacuation and spares — planning to take a fire-alarm distributorship. Key pain points and asks:",
+    "Linga Bhairavi Enterprise (Hosur) is a turnkey fire-protection contractor (extinguishers, hydrant, sprinkler, fire alarm, PA / voice evacuation and spares) planning to take a fire-alarm distributorship. Key pain points and asks:",
     "",
-    "- **Standard BOQ from the item master** — quotations built from per-system BOQ templates; only lines with a quantity are printed and nothing is skipped.",
+    "- **Standard BOQ from the item master**: quotations built from per-system BOQ templates; only lines with a quantity are printed and nothing is skipped.",
     "- **Latest price auto-picked** from supplier purchase invoices, with full **price history** per item and vendor (pipe prices change daily).",
     "- **Quotation follow-up tracker** with next follow-up dates, status pipeline and **conversion** reporting.",
-    "- **Pending delivery pop-up** for customer PO lines — today \"1 of 10 line items\" sometimes gets missed.",
+    "- **Pending delivery pop-up** for customer PO lines; today \"1 of 10 line items\" sometimes gets missed.",
     "- **Purchase invoices linked to the item & vendor masters** so procurement cost flows into quotes automatically.",
-    "- **Extinguisher refill reminders 10 days before expiry** — internal reminder only, not sent to customers.",
-    "- **Vendor master** — same item bought from 3–4 suppliers; brand-specific pricing.",
-    "- **Sales price history kept separate from purchase** price history (selling is typically 40–50% above buying).",
-    "- **Project cost centre** — materials, petrol, lodging, labour; one trip's expense can be **split across projects**.",
+    "- **Extinguisher refill reminders 10 days before expiry**: internal reminder only, not sent to customers.",
+    "- **Vendor master**: same item bought from 3 to 4 suppliers; brand-specific pricing.",
+    "- **Sales price history kept separate from purchase** price history (selling is typically 40 to 50% above buying).",
+    "- **Project cost centre**: materials, petrol, lodging, labour; one trip's expense can be **split across projects**.",
     "- **Customer & vendor outstanding** with automatic reminder e-mails through **Office 365**.",
     "- **Future distributorship**: stock, reservations / allocations for dealers.",
-    "- Must be **budget-friendly**; previous in-house CRM failed because staff did not enter data — keep data entry minimal.",
+    "- Must be **budget-friendly**; previous in-house CRM failed because staff did not enter data, so keep data entry minimal.",
   ].join("\n"),
   decisions: [
     "- Sirah Digital will build a working demo CRM around the client's own price list and sample BOQs.",
@@ -126,6 +126,6 @@ export const KICKOFF_NOTE = {
     "- Should customer payment reminder e-mails go automatically or after staff approval?",
     "- Default markup per system (40% vs 50%) and minimum acceptable margin.",
     "- Who enters purchase invoices (purchase team vs accounts) and how fast after receipt?",
-    "- \"NPC\" in the transcript — confirm it means NBC (National Building Code).",
+    "- \"NPC\" in the transcript: confirm it means NBC (National Building Code).",
   ].join("\n"),
 };

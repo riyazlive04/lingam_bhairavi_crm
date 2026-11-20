@@ -59,7 +59,7 @@ export default async function CustomerLedgerPage({ params, searchParams }: {
 
       <div className="print-area">
         <div className="mb-4 hidden print:block">
-          <h1 className="text-lg font-bold">{company.name} — Statement of account</h1>
+          <h1 className="text-lg font-bold">{company.name}: Statement of account</h1>
           <p>{c.name} · as on {fmtDate(today)}{from || to ? ` · period ${fmtDate(from) } to ${fmtDate(to ?? today)}` : ""}</p>
         </div>
 
@@ -83,7 +83,7 @@ export default async function CustomerLedgerPage({ params, searchParams }: {
                     <Td className="text-right tabular-nums">{money(o.total)}</Td>
                     <Td className="text-right font-medium tabular-nums">{money(o.outstanding)}</Td>
                     <Td>{o.daysOverdue > 0 ? <Badge tone="red">{o.daysOverdue}d overdue</Badge> : o.daysOverdue === 0 ? <Badge tone="amber">due today</Badge> : <Badge tone="blue">due in {-o.daysOverdue}d</Badge>}</Td>
-                    <Td className="text-right tabular-nums">{o.reminderCount || "—"}</Td>
+                    <Td className="text-right tabular-nums">{o.reminderCount || "-"}</Td>
                   </tr>
                 ))}
               </tbody>
@@ -107,7 +107,7 @@ export default async function CustomerLedgerPage({ params, searchParams }: {
               <thead><tr><Th>Date</Th><Th>Ref</Th><Th>Particulars</Th><Th className="text-right">Debit</Th><Th className="text-right">Credit</Th><Th className="text-right">Balance</Th></tr></thead>
               <tbody>
                 {from && (
-                  <tr><Td className="whitespace-nowrap">{fmtDate(from)}</Td><Td>—</Td><Td>Opening balance</Td><Td /><Td /><Td className="text-right tabular-nums">{money(ledger.opening)}</Td></tr>
+                  <tr><Td className="whitespace-nowrap">{fmtDate(from)}</Td><Td>-</Td><Td>Opening balance</Td><Td /><Td /><Td className="text-right tabular-nums">{money(ledger.opening)}</Td></tr>
                 )}
                 {ledger.entries.map((e) => (
                   <tr key={`${e.kind}-${e.refId}`}>

@@ -44,7 +44,7 @@ export default async function PayablesPage({ searchParams }: { searchParams: Pro
       </div>
 
       <Card
-        title={<span id="bills">Unpaid purchase bills{vendorName ? ` — ${vendorName}` : ""} ({docs.length})</span>}
+        title={<span id="bills">Unpaid purchase bills{vendorName ? `: ${vendorName}` : ""} ({docs.length})</span>}
         actions={vendorId ? <LinkButton href="/billing/payables" variant="ghost" size="sm">All vendors</LinkButton> : undefined}
         bodyClassName={docs.length ? "p-0" : undefined}
       >

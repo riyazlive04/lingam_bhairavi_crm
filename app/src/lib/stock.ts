@@ -1,5 +1,5 @@
 /**
- * Stock helpers. OWNED BY: Team A (Masters & Purchasing).
+ * Stock helpers. Maintainer: Sirah Digital.
  * On hand = Σ stock_movements.qty; reserved = Σ stock_allocations.qty where status = 'reserved'.
  */
 import "server-only";
