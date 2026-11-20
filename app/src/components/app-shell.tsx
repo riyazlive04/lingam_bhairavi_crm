@@ -50,7 +50,8 @@ export function AppShell({ user, alertCount, demo, children }: { user: { name: s
   const groups = navFor(user.role);
   const current = navMatch(path);
   const isActive = (href: string) => current?.item.href === href;
-  const initials = user.name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("") || "U";
+  // Letters only, so "Karthick (Owner)" becomes "KO", not "K(".
+  const initials = user.name.replace(/[^\p{L}\s]/gu, " ").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("") || "U";
 
   // Ctrl/Cmd + K anywhere opens quick search.
   useEffect(() => {
