@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+/* Design tokens — Linga Bhairavi Enterprise CRM. Fire-red brand accent, calm neutral surfaces. */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --muted: #f1f3f6;
+  --line: #e3e6eb;
+  --ink: #16191f;
+  --ink-soft: #5b6472;
+  --ink-faint: #9aa3af;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1116;
+    --surface: #161a21;
+    --muted: #1d222b;
+    --line: #2a313c;
+    --ink: #eef1f5;
+    --ink-soft: #a3acb9;
+    --ink-faint: #6b7584;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1116;
+  --surface: #161a21;
+  --muted: #1d222b;
+  --line: #2a313c;
+  --ink: #eef1f5;
+  --ink-soft: #a3acb9;
+  --ink-faint: #6b7584;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-brand-50: #fef2f2;
+  --color-brand-100: #fee2e2;
+  --color-brand-200: #fecaca;
+  --color-brand-300: #fca5a5;
+  --color-brand-500: #e5322d;
+  --color-brand-600: #d0221d;
+  --color-brand-700: #ad1a16;
+  --color-brand-800: #8c1714;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+html, body { background: var(--bg); color: var(--ink); }
+body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+.tabular-nums { font-variant-numeric: tabular-nums; }
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff; color: #000; }
+  .print-area { box-shadow: none !important; border: 0 !important; }
+}

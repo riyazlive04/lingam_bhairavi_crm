@@ -1,0 +1,255 @@
+import Link from "next/link";
+import { and, asc, count, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { Download, Plus } from "lucide-react";
+import { getDb } from "@/db";
+import { items, vendors } from "@/db/schema";
+import { requireUser } from "@/lib/auth";
+import { canSeeCost, canWrite } from "@/lib/rbac";
+import { SYSTEMS } from "@/lib/constants";
+import { fmtDate, money, money0, pct, todayIST, addDays } from "@/lib/format";
+import { NB_SIZES, STALE_DAYS_DEFAULT, STALE_DAYS_VOLATILE, isPriceStale, latestCostOf, normaliseNB, priceAgeDays, suggestedSupplyRate } from "@/lib/items";
+import { Badge, Button, Card, EmptyState, Flash, Input, LinkButton, PageHeader, Select, Table, Td, Th, buttonClass, cx } from "@/components/ui";
+import { LinkTabs, Pager, qs } from "./_components/tabs";
+
+const PAGE_SIZE = 100;
+
+type SP = { q?: string; system?: string; group?: string; make?: string; stale?: string; view?: string; basis?: string; page?: string; ok?: string; err?: string };
+
+export default async function ItemsPage({ searchParams }: { searchParams: Promise<SP> }) {
+  const user = await requireUser("items");
+  const sp = await searchParams;
+  const db = await getDb();
+  const seeCost = canSeeCost(user.role);
+  const write = canWrite(user.role, "items");
+  const today = todayIST();
+  const view = sp.view === "matrix" ? "matrix" : "list";
+  const system = sp.system && sp.system in SYSTEMS ? sp.system : "";
+
+  const conds: (SQL | undefined)[] = [eq(items.active, true)];
+  if (system) conds.push(eq(items.system, system));
+  if (sp.group) conds.push(eq(items.groupName, sp.group));
+  if (sp.make) conds.push(eq(items.make, sp.make));
+  if (sp.q) {
+    const like = `%${sp.q.trim()}%`;
+    conds.push(or(ilike(items.code, like), ilike(items.name, like), ilike(items.size, like), ilike(items.groupName, like), ilike(items.make, like)));
+  }
+  if (sp.stale === "1") {
+    conds.push(sql`(${items.lastPurchaseDate} is null or (${items.volatilePrice} and ${items.lastPurchaseDate} < ${addDays(today, -STALE_DAYS_VOLATILE)}) or (not ${items.volatilePrice} and ${items.lastPurchaseDate} < ${addDays(today, -STALE_DAYS_DEFAULT)}))`);
+  }
+  const where = and(...conds);
+
+  const groupConds = system ? eq(items.system, system) : undefined;
+  const [groups, makes] = await Promise.all([
+    db.selectDistinct({ g: items.groupName }).from(items).where(and(eq(items.active, true), groupConds)).orderBy(asc(items.groupName)),
+    db.selectDistinct({ m: items.make }).from(items).where(and(eq(items.active, true), groupConds, sql`${items.make} is not null`)).orderBy(asc(items.make)),
+  ]);
+
+  const base = { q: sp.q, system, group: sp.group, make: sp.make, stale: sp.stale };
+  const tabs = [
+    { href: "/items" + qs({ ...base }), label: "Item list", active: view === "list" },
+    { href: "/items" + qs({ ...base, view: "matrix" }), label: "Price master (size matrix)", active: view === "matrix" },
+  ];
+
+  return (
+    <div>
+      <PageHeader
+        title="Item & Price Master"
+        subtitle="Latest cost is picked automatically from posted supplier invoices — no manual verification per quotation."
+        actions={<>
+          <a href={"/items/export" + qs({ system, group: sp.group, make: sp.make, q: sp.q })} className={buttonClass("secondary")}><Download size={16} aria-hidden /> Export Excel</a>
+          {write && <LinkButton href="/items/new"><Plus size={16} aria-hidden /> New item</LinkButton>}
+        </>}
+      />
+      <Flash ok={sp.ok} err={sp.err} />
+      <form method="get" className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-6 lg:items-end">
+        {view === "matrix" && <input type="hidden" name="view" value="matrix" />}
+        <label className="lg:col-span-2"><span className="sr-only">Search</span>
+          <Input name="q" defaultValue={sp.q} placeholder="Search code, name, size, make…" />
+        </label>
+        <label><span className="sr-only">System</span>
+          <Select name="system" defaultValue={system}>
+            <option value="">All systems</option>
+            {Object.entries(SYSTEMS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </Select>
+        </label>
+        <label><span className="sr-only">Group</span>
+          <Select name="group" defaultValue={sp.group ?? ""}>
+            <option value="">All groups</option>
+            {groups.map((g) => <option key={g.g} value={g.g}>{g.g}</option>)}
+          </Select>
+        </label>
+        <label><span className="sr-only">Make</span>
+          <Select name="make" defaultValue={sp.make ?? ""}>
+            <option value="">All makes</option>
+            {makes.map((m) => m.m && <option key={m.m} value={m.m}>{m.m}</option>)}
+          </Select>
+        </label>
+        <div className="flex items-center gap-2">
+          {view === "list" && (
+            <label className="flex items-center gap-1.5 text-sm text-ink-soft whitespace-nowrap">
+              <input type="checkbox" name="stale" value="1" defaultChecked={sp.stale === "1"} className="h-4 w-4 accent-brand-600" /> Stale only
+            </label>
+          )}
+          <Button variant="secondary" type="submit">Filter</Button>
+        </div>
+      </form>
+      <LinkTabs tabs={tabs} />
+      {view === "list"
+        ? <ItemList where={where} sp={sp} base={base} seeCost={seeCost} today={today} />
+        : <PriceMatrix where={where} seeCost={seeCost} basis={seeCost && sp.basis !== "sell" ? "cost" : "sell"} base={base} />}
+    </div>
+  );
+}
+
+async function ItemList({ where, sp, base, seeCost, today }: { where: SQL | undefined; sp: SP; base: Record<string, string | undefined>; seeCost: boolean; today: string }) {
+  const db = await getDb();
+  const page = Math.max(1, Number(sp.page) || 1);
+  const [{ n }] = await db.select({ n: count() }).from(items).where(where);
+  const total = Number(n);
+  const rows = await db
+    .select({ it: items, vendorName: vendors.name })
+    .from(items)
+    .leftJoin(vendors, eq(vendors.id, items.lastPurchaseVendorId))
+    .where(where)
+    .orderBy(asc(items.system), asc(items.groupName), asc(items.code))
+    .limit(PAGE_SIZE).offset((page - 1) * PAGE_SIZE);
+
+  if (!rows.length) {
+    return <EmptyState title="No items match these filters">Try clearing the search or choosing another system.</EmptyState>;
+  }
+  const pages = Math.ceil(total / PAGE_SIZE);
+  return (
+    <>
+      <p className="mb-2 text-sm text-ink-soft">{total} item{total === 1 ? "" : "s"}{seeCost && <> · prices are buying cost; stale = volatile &gt; {STALE_DAYS_VOLATILE} days, others &gt; {STALE_DAYS_DEFAULT} days since last purchase</>}</p>
+      <Table>
+        <thead>
+          <tr>
+            <Th>Code</Th><Th>Item</Th><Th>Size</Th><Th>Make</Th><Th>UOM</Th>
+            {seeCost && <><Th className="text-right">Latest cost</Th><Th>Source</Th><Th className="text-right">Age</Th></>}
+            <Th className="text-right">Last sale</Th>
+            {seeCost && <Th className="text-right">Markup</Th>}
+            <Th className="text-right">Suggested sell</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ it, vendorName }) => {
+            const c = latestCostOf(it);
+            const age = priceAgeDays(it.lastPurchaseDate, today);
+            const stale = isPriceStale(it, today);
+            const sell = suggestedSupplyRate(c.rate, it.markupPct);
+            return (
+              <tr key={it.id} className="hover:bg-muted/50">
+                <Td className="font-mono text-xs"><Link href={`/items/${it.id}`} className="text-brand-700 hover:underline dark:text-brand-300">{it.code}</Link></Td>
+                <Td className="max-w-72 whitespace-normal"><Link href={`/items/${it.id}`} className="hover:underline">{it.name}</Link>
+                  <div className="text-xs text-ink-faint">{SYSTEMS[it.system as keyof typeof SYSTEMS] ?? it.system} · {it.groupName}</div></Td>
+                <Td>{it.size ?? "—"}</Td>
+                <Td>{it.make ?? "—"}</Td>
+                <Td>{it.uom}</Td>
+                {seeCost && <>
+                  <Td className="text-right tabular-nums">{money(c.rate)}</Td>
+                  <Td className="text-xs">
+                    {c.source === "purchase"
+                      ? <span title={vendorName ?? undefined}>{fmtDate(c.date)}<div className="max-w-40 truncate text-ink-faint">{vendorName ?? "—"}</div></span>
+                      : c.source === "list" ? <Badge tone="gray">list</Badge> : <Badge tone="red">no price</Badge>}
+                  </Td>
+                  <Td className="text-right">
+                    {age == null ? <span className="text-ink-faint">—</span>
+                      : <Badge tone={stale ? (it.volatilePrice ? "red" : "amber") : "green"}>{age}d{stale ? " · stale" : ""}</Badge>}
+                  </Td>
+                </>}
+                <Td className="text-right tabular-nums">{it.lastSaleRate != null ? <span title={fmtDate(it.lastSaleDate)}>{money(it.lastSaleRate)}</span> : "—"}</Td>
+                {seeCost && <Td className="text-right tabular-nums">{pct(it.markupPct, 0)}</Td>}
+                <Td className="text-right font-medium tabular-nums">{money0(sell)}</Td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </Table>
+      <Pager page={page} pages={pages} href={(p) => "/items" + qs({ ...base, page: p })} />
+    </>
+  );
+}
+
+async function PriceMatrix({ where, seeCost, basis, base }: { where: SQL | undefined; seeCost: boolean; basis: "cost" | "sell"; base: Record<string, string | undefined> }) {
+  const db = await getDb();
+  const rows = await db.select().from(items).where(where).orderBy(asc(items.system), asc(items.groupName), asc(items.make));
+  type Cell = { id: number; rate: number | null; source: string; code: string };
+  const matrix = new Map<string, { group: string; make: string | null; cells: Map<string, Cell> }>();
+  const used = new Set<string>();
+  const others: typeof rows = [];
+  for (const it of rows) {
+    const nb = normaliseNB(it.size);
+    if (!nb) { others.push(it); continue; }
+    const key = `${it.groupName}||${it.make ?? ""}`;
+    if (!matrix.has(key)) matrix.set(key, { group: it.groupName, make: it.make, cells: new Map() });
+    const c = latestCostOf(it);
+    const rate = basis === "cost" ? c.rate : suggestedSupplyRate(c.rate, it.markupPct);
+    matrix.get(key)!.cells.set(nb, { id: it.id, rate, source: c.source, code: it.code });
+    used.add(nb);
+  }
+  const sizes = NB_SIZES.filter((s) => used.has(s));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-ink-soft">
+          Rows = item group, columns = pipe size (300 NB → 25 NB), like the client price list. Showing <strong>{basis === "cost" ? "latest buying cost" : "suggested selling rate"}</strong>; <span className="italic">italic</span> = list price (not yet purchased).
+        </p>
+        {seeCost && (
+          <div className="flex gap-1" role="group" aria-label="Price basis">
+            <Link href={"/items" + qs({ ...base, view: "matrix" })} className={buttonClass(basis === "cost" ? "primary" : "secondary", "sm")}>Cost</Link>
+            <Link href={"/items" + qs({ ...base, view: "matrix", basis: "sell" })} className={buttonClass(basis === "sell" ? "primary" : "secondary", "sm")}>Selling</Link>
+          </div>
+        )}
+      </div>
+      {matrix.size === 0 ? (
+        <EmptyState title="No NB-sized items for these filters">The size matrix covers pipes, fittings and valves sized in NB. Other items are listed below and in the item list.</EmptyState>
+      ) : (
+        <Table>
+          <thead>
+            <tr>
+              <Th className="sticky left-0 z-10">Group / make</Th>
+              {sizes.map((s) => <Th key={s} className="text-right">{s.replace("NB", " NB")}</Th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {[...matrix.values()].map((r) => (
+              <tr key={r.group + (r.make ?? "")} className="hover:bg-muted/50">
+                <Td className="sticky left-0 z-10 bg-surface font-medium">{r.group}{r.make && <div className="text-xs font-normal text-ink-faint">{r.make}</div>}</Td>
+                {sizes.map((s) => {
+                  const c = r.cells.get(s);
+                  return (
+                    <Td key={s} className={cx("text-right tabular-nums", c?.source === "list" && "italic text-ink-soft")}>
+                      {c ? <Link href={`/items/${c.id}`} title={c.code} className="hover:underline">{c.rate == null ? "—" : money0(c.rate)}</Link> : <span className="text-ink-faint">·</span>}
+                    </Td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+      {others.length > 0 && (
+        <Card title={`Other items (${others.length}) — not sized in NB`} bodyClassName="p-0">
+          <Table className="rounded-none border-0 shadow-none">
+            <thead><tr><Th>Group</Th><Th>Item</Th><Th>Size</Th><Th>Make</Th><Th className="text-right">{basis === "cost" ? "Latest cost" : "Suggested sell"}</Th></tr></thead>
+            <tbody>
+              {others.map((it) => {
+                const c = latestCostOf(it);
+                const rate = basis === "cost" ? c.rate : suggestedSupplyRate(c.rate, it.markupPct);
+                return (
+                  <tr key={it.id}>
+                    <Td>{it.groupName}</Td>
+                    <Td className="max-w-72 whitespace-normal"><Link href={`/items/${it.id}`} className="hover:underline">{it.name}</Link></Td>
+                    <Td>{it.size ?? "—"}</Td><Td>{it.make ?? "—"}</Td>
+                    <Td className={cx("text-right tabular-nums", c.source === "list" && "italic text-ink-soft")}>{money0(rate)}</Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        </Card>
+      )}
+    </div>
+  );
+}

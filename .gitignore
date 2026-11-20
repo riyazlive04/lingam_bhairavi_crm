@@ -1,0 +1,11 @@
+.env*
+!.env.example
+node_modules/
+.next/
+.vercel/
+*.mp4
+.data/
+work/audio/
+work/transcript_raw.md
+*.log
+*.xlsx
