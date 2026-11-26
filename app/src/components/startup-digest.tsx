@@ -10,6 +10,7 @@ import { cookies } from "next/headers";
 import { after } from "next/server";
 import { getDb } from "@/db";
 import type { SessionUser } from "@/lib/session";
+import { pendingQtyOf } from "@/lib/orders";
 import { canApproveExpenses, canRead } from "@/lib/rbac";
 import { daysBetween, fmtDate, money0, moneyShort, qty, todayIST } from "@/lib/format";
 import { lastAgentRunAt, refreshIfStale } from "@/lib/agents";
@@ -60,7 +61,7 @@ export async function StartupDigest({ user }: { user: SessionUser }) {
         href: "/orders",
         total: lineCounts?.total,
         items: lines.map((l): DigestItem => {
-          const pending = Number(l.qty) - Number(l.deliveredQty);
+          const pending = pendingQtyOf(l);
           const late = l.expected ? daysBetween(l.expected, today) : null;
           return {
             label: `${l.poNumber ? "PO " + l.poNumber : l.orderNumber} · ${l.customer}: ${l.description}`,

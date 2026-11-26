@@ -2,6 +2,7 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import type { DB } from "@/db";
 import { settings } from "@/db/schema";
+import { parseApprovalMode, type ApprovalMode } from "@/lib/pricing";
 
 /**
  * settings key "company". `bank` is structured; `bankDetails` is the same info pre-formatted as text
@@ -19,8 +20,8 @@ export type CompanyForm = {
   quoteTerms: string;
 };
 
-export type PricingForm = { defaultMarkupPct: number; minMarginPct: number; gstPct: number; quoteValidityDays: number };
-export const PRICING_DEFAULTS: PricingForm = { defaultMarkupPct: 40, minMarginPct: 15, gstPct: 18, quoteValidityDays: 30 };
+export type PricingForm = { defaultMarkupPct: number; minMarginPct: number; gstPct: number; quoteValidityDays: number; approvalMode: ApprovalMode };
+export const PRICING_DEFAULTS: PricingForm = { defaultMarkupPct: 40, minMarginPct: 15, gstPct: 18, quoteValidityDays: 30, approvalMode: "below_margin" };
 
 const s = (v: unknown) => (typeof v === "string" ? v : Array.isArray(v) ? v.map(String).join("\n") : "");
 const n = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : Number.isFinite(Number(v)) && v !== "" && v != null ? Number(v) : d);
@@ -51,6 +52,7 @@ export function toPricingForm(o: Record<string, unknown>): PricingForm {
     minMarginPct: n(o.minMarginPct, PRICING_DEFAULTS.minMarginPct),
     gstPct: n(o.gstPct, PRICING_DEFAULTS.gstPct),
     quoteValidityDays: n(o.quoteValidityDays, PRICING_DEFAULTS.quoteValidityDays),
+    approvalMode: parseApprovalMode(o.approvalMode),
   };
 }
 

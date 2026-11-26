@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, asc, desc, eq, like, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, like, ne, or, sql } from "drizzle-orm";
 import { Copy, FileSpreadsheet, GitBranch, MessageCircle, Pencil, Phone, Printer } from "lucide-react";
 import { getDb } from "@/db";
-import { boqTemplates, customers, followUps, projects, quotationLines, quotations, salesOrders, users } from "@/db/schema";
+import { auditLog, boqTemplates, customers, followUps, items, projects, quotationLines, quotations, salesOrders, users, vendors } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canRead, canSeeCost, canWrite } from "@/lib/rbac";
 import { SYSTEMS, type SystemKey } from "@/lib/constants";
 import { addDays, daysBetween, fmtDate, fmtDateTime, money, pct, todayIST } from "@/lib/format";
-import { computeQuoteTotals, getPricingSettings, linePriceWarning } from "@/lib/pricing";
+import { approvalBlocks, approvalReasons, computeQuoteTotals, getPricingSettings, linePriceWarning, parseCostSource } from "@/lib/pricing";
 import {
   FOLLOWUP_MODE_LABEL, FOLLOWUP_OUTCOME_LABEL, isEditableStatus, istDate, telLink, whatsappLink,
 } from "@/lib/quotations";
@@ -17,6 +17,8 @@ import { SubmitButton } from "@/components/submit-button";
 import {
   deleteDraft, duplicateQuotation, emailQuotation, markNegotiation, markSent, markWon, refreshPrices, reviseQuotation,
 } from "../actions";
+import { ApprovalPanel, type ApprovalHistoryEntry } from "../_components/approval-panel";
+import { CostMeta } from "../_components/cost-meta";
 import { FollowUpForm, LostForm } from "../_components/forms";
 import { QuoteLinesTable } from "../_components/lines-table";
 
@@ -48,6 +50,27 @@ export default async function QuotationDetailPage({ params, searchParams }: { pa
       .where(and(ne(quotations.id, id), or(eq(quotations.number, base), like(quotations.number, `${base}-R%`)))).orderBy(asc(quotations.revision)),
     getPricingSettings(db),
   ]);
+  const userIds = [q.approvalRequestedBy, q.approvedBy].filter((x): x is number => x != null);
+  const vendorIds = [...new Set(lines.map((l) => l.costVendorId).filter((x): x is number => x != null))];
+  const itemIds = [...new Set(lines.map((l) => l.itemId).filter((x): x is number => x != null))];
+  const [approvers, vendorRows, itemRows, historyRows] = await Promise.all([
+    userIds.length ? db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, userIds)) : Promise.resolve([]),
+    vendorIds.length ? db.select({ id: vendors.id, name: vendors.name }).from(vendors).where(inArray(vendors.id, vendorIds)) : Promise.resolve([]),
+    itemIds.length ? db.select({ id: items.id, volatile: items.volatilePrice }).from(items).where(inArray(items.id, itemIds)) : Promise.resolve([]),
+    db.select({ id: auditLog.id, at: auditLog.at, details: auditLog.details, userName: users.name }).from(auditLog).leftJoin(users, eq(users.id, auditLog.userId))
+      .where(and(eq(auditLog.entityType, "quotation"), eq(auditLog.entityId, id), sql`${auditLog.details}->>'approval' is not null`))
+      .orderBy(desc(auditLog.at), desc(auditLog.id)).limit(20),
+  ]);
+  const userName = new Map(approvers.map((u) => [u.id, u.name]));
+  const vendorName = new Map(vendorRows.map((v) => [v.id, v.name]));
+  const volatileItem = new Map(itemRows.map((i) => [i.id, i.volatile]));
+  const history: ApprovalHistoryEntry[] = historyRows.map((h) => {
+    const d = (h.details && typeof h.details === "object" ? h.details : {}) as Record<string, unknown>;
+    return {
+      id: h.id, at: h.at, userName: h.userName, status: String(d.approval ?? ""),
+      note: typeof d.note === "string" && d.note ? d.note : null, reason: typeof d.reason === "string" ? d.reason : null,
+    };
+  });
 
   const writable = canWrite(user.role, "quotations");
   const fuWritable = canWrite(user.role, "followups");
@@ -60,6 +83,10 @@ export default async function QuotationDetailPage({ params, searchParams }: { pa
   const below = showCost ? lines.filter((l) => linePriceWarning(l, pricing.minMarginPct) === "below_cost").length : 0;
   const lowMargin = showCost ? lines.filter((l) => linePriceWarning(l, pricing.minMarginPct) === "low_margin").length : 0;
   const tmpl = tmplRows[0];
+  const reasons = isEditableStatus(q.status)
+    ? approvalReasons(lines, { mode: pricing.approvalMode, minMarginPct: pricing.minMarginPct, discountPct: q.discountPct, gstPct: q.gstPct })
+    : [];
+  const sendBlocked = approvalBlocks(reasons.length > 0, q.approvalStatus);
   const waText = `Dear ${cust?.contactPerson || cust?.name || "Sir/Madam"}, this is regarding our quotation ${q.number}${q.projectName ? ` for ${q.projectName}` : ""} (₹${Math.round(q.grandTotal).toLocaleString("en-IN")}). Please let us know if you need any clarification. Regards, ${user.name}, Linga Bhairavi Enterprise`;
   const wa = whatsappLink(cust?.phone, waText);
   const tel = telLink(cust?.phone);
@@ -108,16 +135,30 @@ export default async function QuotationDetailPage({ params, searchParams }: { pa
             ...(q.closedAt ? [["Closed", fmtDateTime(q.closedAt)] as [string, React.ReactNode]] : []),
             ...(q.lostReason ? [["Lost reason", q.lostReason] as [string, React.ReactNode]] : []),
             ...(orders.length ? [["Sales order", <span key="so" className="flex flex-wrap gap-2">{orders.map((o) => <Link key={o.id} href={`/orders/${o.id}`} className="text-brand-700 hover:underline">{o.number}</Link>)}</span>] as [string, React.ReactNode]] : []),
-            ...(projs.length ? [["Project", <span key="pr" className="flex flex-wrap gap-2">{projs.map((p) => canRead(user.role, "projects") ? <Link key={p.id} href={`/projects/${p.id}`} className="text-brand-700 hover:underline">{p.code} · {p.name}</Link> : <span key={p.id}>{p.code} Â· {p.name}</span>)}</span>] as [string, React.ReactNode]] : []),
+            ...(projs.length ? [["Project", <span key="pr" className="flex flex-wrap gap-2">{projs.map((p) => canRead(user.role, "projects") ? <Link key={p.id} href={`/projects/${p.id}`} className="text-brand-700 hover:underline">{p.code} · {p.name}</Link> : <span key={p.id}>{p.code} · {p.name}</span>)}</span>] as [string, React.ReactNode]] : []),
             ...(family.length ? [["Other revisions", <span key="rv" className="flex flex-wrap gap-2">{family.map((f) => <Link key={f.id} href={`/quotations/${f.id}`} className="text-brand-700 hover:underline">{f.number} <span className="text-ink-soft">({f.status})</span></Link>)}</span>] as [string, React.ReactNode]] : []),
           ]} />
           {q.notes && <p className="mt-4 whitespace-pre-line rounded-lg bg-muted p-3 text-sm text-ink-soft"><span className="font-medium text-ink">Internal notes: </span>{q.notes}</p>}
         </Card>
 
+        <div className="space-y-6">
+        {(isEditableStatus(q.status) && (reasons.length > 0 || q.approvalStatus !== "not_required")) && (
+          <ApprovalPanel
+            quotationId={id} approvalStatus={q.approvalStatus} approvalNote={q.approvalNote}
+            requestedAt={q.approvalRequestedAt} requestedByName={q.approvalRequestedBy ? userName.get(q.approvalRequestedBy) ?? null : null}
+            decidedAt={q.approvedAt} decidedByName={q.approvedBy ? userName.get(q.approvedBy) ?? null : null}
+            reasons={reasons} mode={pricing.approvalMode} editable={editable} canRequest={writable} isAdmin={user.role === "admin"} history={history}
+          />
+        )}
         {writable ? (
           <Card title="Actions">
             <div className="space-y-3">
-              {q.status === "draft" && (
+              {sendBlocked && (
+                <p role="status" className="rounded-lg bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                  Mark as sent, Email and Mark won unlock once an admin approves this quotation.
+                </p>
+              )}
+              {q.status === "draft" && !sendBlocked && (
                 <form action={markSent}>
                   <input type="hidden" name="id" value={id} />
                   <SubmitButton className="w-full" pendingText="Updating…">Mark as sent</SubmitButton>
@@ -130,7 +171,7 @@ export default async function QuotationDetailPage({ params, searchParams }: { pa
                   <SubmitButton variant="secondary" className="w-full" pendingText="Updating…">Mark negotiation</SubmitButton>
                 </form>
               )}
-              {editable && (
+              {editable && !sendBlocked && (
                 <details id="won" className="rounded-lg border border-line p-3" open={sp.action === "won"}>
                   <summary className="cursor-pointer text-sm font-semibold text-emerald-700 dark:text-emerald-400">Mark won → create sales order</summary>
                   <form action={markWon} className="mt-3 space-y-3">
@@ -156,7 +197,7 @@ export default async function QuotationDetailPage({ params, searchParams }: { pa
                   <div className="mt-3"><LostForm quotationId={id} back={back} idPrefix="lost" /></div>
                 </details>
               )}
-              <details className="rounded-lg border border-line p-3">
+              {!sendBlocked && <details className="rounded-lg border border-line p-3">
                 <summary className="cursor-pointer text-sm font-semibold text-ink">Email to customer</summary>
                 <form action={emailQuotation} className="mt-3 space-y-3">
                   <input type="hidden" name="id" value={id} />
@@ -165,7 +206,7 @@ export default async function QuotationDetailPage({ params, searchParams }: { pa
                   <Field label="Message" hint="Optional. A standard covering note is used if you leave this empty"><Textarea name="message" rows={3} maxLength={2000} /></Field>
                   <SubmitButton variant="secondary" className="w-full" pendingText="Queuing…">Send email{q.status === "draft" ? " & mark sent" : ""}</SubmitButton>
                 </form>
-              </details>
+              </details>}
               <div className="grid grid-cols-2 gap-2">
                 <form action={duplicateQuotation}>
                   <input type="hidden" name="id" value={id} />
@@ -185,7 +226,7 @@ export default async function QuotationDetailPage({ params, searchParams }: { pa
                 <div className="grid grid-cols-2 gap-2">
                   <form action={refreshPrices}>
                     <input type="hidden" name="id" value={id} />
-                    <SubmitButton variant="secondary" size="sm" className="w-full" pendingText="Refreshing…" confirm="Re-price all item lines from the latest purchase costs at this quotation's markup?">Refresh prices</SubmitButton>
+                    <SubmitButton variant="secondary" size="sm" className="w-full" pendingText="Refreshing…" confirm="Re-price all item lines from the latest purchase costs (with their dates and suppliers) at this quotation's markup?">Refresh prices</SubmitButton>
                   </form>
                   <form action={deleteDraft}>
                     <input type="hidden" name="id" value={id} />
@@ -200,6 +241,7 @@ export default async function QuotationDetailPage({ params, searchParams }: { pa
             <p className="text-sm text-ink-soft">You have read-only access to quotations.</p>
           </Card>
         )}
+        </div>
       </div>
 
       <section aria-labelledby="boq-h" className="mb-6">
@@ -210,7 +252,14 @@ export default async function QuotationDetailPage({ params, searchParams }: { pa
         {lines.length === 0 ? (
           <EmptyState title="No lines on this quotation" action={writable && editable && <LinkButton href={`/quotations/${id}/edit`}>Add lines</LinkButton>} />
         ) : (
-          <QuoteLinesTable lines={lines} totals={totals} discountPct={q.discountPct} gstPct={q.gstPct} />
+          <>
+          <QuoteLinesTable lines={lines} totals={totals} discountPct={q.discountPct} gstPct={q.gstPct}
+            renderMeta={(l) => (l.itemId != null || l.costSource ? (
+              <CostMeta cost={showCost ? l.costRate : null} costDate={l.costDate} vendorName={l.costVendorId ? vendorName.get(l.costVendorId) ?? null : null}
+                source={parseCostSource(l.costSource) ?? (l.itemId == null ? "manual" : null)} volatile={l.itemId != null ? volatileItem.get(l.itemId) ?? false : false} today={today} />
+            ) : null)} />
+          <p className="mt-2 text-xs text-ink-faint">Cost dates and suppliers are for internal use only. They are not printed or exported to the customer.</p>
+          </>
         )}
       </section>
 

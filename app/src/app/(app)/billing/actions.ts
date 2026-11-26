@@ -5,7 +5,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, type DB } from "@/db";
 import {
-  customers, items, payments, priceHistory, purchaseInvoices, salesInvoiceLines, salesInvoices, salesOrderLines, salesOrders,
+  amcContracts, customers, items, payments, priceHistory, projects, serviceCalls, purchaseInvoices, salesInvoiceLines, salesInvoices, salesOrderLines, salesOrders,
 } from "@/db/schema";
 import { requireWrite } from "@/lib/auth";
 import { audit } from "@/lib/audit";
@@ -14,13 +14,16 @@ import { PAYMENT_MODES } from "@/lib/constants";
 import { addDays, round2, todayIST } from "@/lib/format";
 import { nextNumber } from "@/lib/sequence";
 import {
-  PAID_TOLERANCE, buildReminderEmail, buildStatementEmail, customerLedger, getCompany, invoiceStatusFor, openSalesInvoices, outstandingOf,
+  BillingError, PAID_TOLERANCE, applyAdvanceToInvoice, buildReminderEmail, buildStatementEmail, customerLedger, getCompany, invoiceStatusFor,
+  openSalesInvoices, outstandingOf,
 } from "@/lib/billing";
+import { creditedQtyByOrderLine } from "@/lib/returns";
+import type { Tx } from "@/lib/orders";
 
 class UserError extends Error {}
 function errMsg(e: unknown): string {
   if (e instanceof z.ZodError) return e.issues[0]?.message ?? "Invalid input";
-  if (e instanceof UserError) return e.message;
+  if (e instanceof UserError || e instanceof BillingError) return e.message;
   console.error(e);
   return "Something went wrong. Please try again.";
 }
@@ -53,6 +56,10 @@ const invHeader = z.object({
   invoiceDate: isoDate,
   dueDate: optDate,
   notes: optText(4000),
+  /** set when billing a chargeable service call (links service_calls.salesInvoiceId) */
+  serviceCallId: optId,
+  /** set when billing an AMC period (validated against the customer, kept in the audit trail) */
+  amcId: optId,
 });
 
 export async function createInvoice(form: FormData) {
@@ -82,6 +89,8 @@ export async function createInvoice(form: FormData) {
       if (olIds.length && !h.orderId) throw new UserError("Order lines given without an order");
       const ols = olIds.length ? await tx.select().from(salesOrderLines).where(inArray(salesOrderLines.id, olIds)) : [];
       const olMap = new Map(ols.map((l) => [l.id, l]));
+      // qty credited back on posted credit notes can be invoiced again (replacement supplies)
+      const credited = await creditedQtyByOrderLine(tx, olIds);
       const perLine = new Map<number, number>();
       for (const l of lines) {
         if (l.orderLineId == null) continue;
@@ -91,10 +100,20 @@ export async function createInvoice(form: FormData) {
       }
       for (const [olId, q] of perLine) {
         const ol = olMap.get(olId)!;
-        const room = round2(Number(ol.qty) - Number(ol.invoicedQty));
+        const room = round2(Number(ol.qty) + (credited.get(olId) ?? 0) - Number(ol.invoicedQty));
         if (q > room + 1e-6) throw new UserError(`"${ol.description.slice(0, 60)}": only ${room} ${ol.uom} left to invoice (entered ${q})`);
       }
 
+      if (h.amcId) {
+        const [k] = await tx.select({ customerId: amcContracts.customerId }).from(amcContracts).where(eq(amcContracts.id, h.amcId));
+        if (!k || k.customerId !== h.customerId) throw new UserError("That AMC contract belongs to a different customer");
+      }
+      if (h.serviceCallId) {
+        const [sc] = await tx.select({ customerId: serviceCalls.customerId, salesInvoiceId: serviceCalls.salesInvoiceId, number: serviceCalls.number })
+          .from(serviceCalls).where(eq(serviceCalls.id, h.serviceCallId)).for("update");
+        if (!sc || sc.customerId !== h.customerId) throw new UserError("That service call belongs to a different customer");
+        if (sc.salesInvoiceId) throw new UserError(`Service call ${sc.number} is already invoiced`);
+      }
       const priced = lines.map((l) => ({ ...l, rate: round2(l.rate), amount: round2(l.qty * l.rate) }));
       const subtotal = round2(priced.reduce((s, l) => s + l.amount, 0));
       const taxAmount = round2(priced.reduce((s, l) => s + (l.amount * l.gstRate) / 100, 0));
@@ -120,15 +139,20 @@ export async function createInvoice(form: FormData) {
         await tx.update(items).set({ lastSaleRate: l.rate, lastSaleDate: h.invoiceDate })
           .where(and(eq(items.id, l.itemId), sql`(${items.lastSaleDate} is null or ${items.lastSaleDate} <= ${h.invoiceDate})`));
       }
+      if (h.serviceCallId) await tx.update(serviceCalls).set({ salesInvoiceId: inv.id }).where(eq(serviceCalls.id, h.serviceCallId));
       return { id: inv.id, number, total };
     });
-    await audit(db, user.id, "create", "sales_invoice", res.id, { number: res.number, total: res.total, orderId: h.orderId, lines: lines.length });
+    await audit(db, user.id, "create", "sales_invoice", res.id, { number: res.number, total: res.total, orderId: h.orderId, lines: lines.length, amcId: h.amcId, serviceCallId: h.serviceCallId });
+    if (h.serviceCallId) revalidatePath(`/service-calls/${h.serviceCallId}`);
+    if (h.amcId) revalidatePath(`/amc/${h.amcId}`);
     revalidatePath("/billing");
     revalidatePath("/billing/invoices");
     if (h.orderId) revalidatePath(`/orders/${h.orderId}`);
     target = withMsg(`/billing/invoices/${res.id}`, "ok", `Invoice ${res.number} issued`);
   } catch (e) {
-    target = withMsg(`/billing/invoices/new${orderIdRaw ? `?orderId=${encodeURIComponent(String(orderIdRaw))}` : ""}`, "err", errMsg(e));
+    const keep = new URLSearchParams();
+    for (const k of ["orderId", "customerId", "amcId", "serviceCallId"]) { const v = form.get(k); if (v && (k !== "customerId" || !orderIdRaw)) keep.set(k, String(v)); }
+    target = withMsg(`/billing/invoices/new${keep.toString() ? `?${keep.toString()}` : ""}`, "err", errMsg(e));
   }
   redirect(target);
 }
@@ -330,3 +354,81 @@ export async function recordVendorPayment(form: FormData) {
   redirect(target);
 }
 
+
+// ---------------------------------------------------------------- advances (rule 15)
+const advanceSchema = z.object({
+  customerId: z.coerce.number().int().positive("Select a customer"),
+  orderId: optId,
+  projectId: optId,
+  amount: money,
+  date: isoDate,
+  mode: z.enum(PAYMENT_MODES),
+  reference: optText(80),
+  notes: optText(1000),
+});
+
+export async function recordAdvance(form: FormData) {
+  const user = await requireWrite("billing");
+  const fromOrder = form.get("from") === "order";
+  const rawOrder = Number(form.get("orderId")) || 0;
+  let target: string;
+  try {
+    const d = advanceSchema.parse(Object.fromEntries(form));
+    if (d.date > todayIST(1)) throw new UserError("Payment date cannot be in the future");
+    const db = await getDb();
+    const res = await db.transaction(async (tx) => {
+      const [c] = await tx.select({ id: customers.id, name: customers.name }).from(customers).where(eq(customers.id, d.customerId));
+      if (!c) throw new UserError("Customer not found");
+      let projectId = d.projectId ?? null;
+      if (d.orderId) {
+        const [o] = await tx.select().from(salesOrders).where(eq(salesOrders.id, d.orderId));
+        if (!o) throw new UserError("Order not found");
+        if (o.customerId !== d.customerId) throw new UserError("That order belongs to a different customer");
+        if (o.status === "cancelled") throw new UserError("That order is cancelled");
+        if (projectId && o.projectId && projectId !== o.projectId) throw new UserError("The project does not match the order's project");
+        projectId = projectId ?? o.projectId;
+      }
+      if (projectId) {
+        const [p] = await tx.select({ customerId: projects.customerId }).from(projects).where(eq(projects.id, projectId));
+        if (!p) throw new UserError("Project not found");
+        if (p.customerId !== d.customerId) throw new UserError("That project belongs to a different customer");
+      }
+      const [p] = await tx.insert(payments).values({
+        direction: "in", customerId: d.customerId, isAdvance: true, orderId: d.orderId ?? null, projectId, amount: d.amount, date: d.date,
+        mode: d.mode, reference: d.reference, notes: d.notes, allocatedAmount: 0, createdBy: user.id,
+      }).returning({ id: payments.id });
+      return { paymentId: p.id, customer: c.name, projectId };
+    });
+    await audit(db, user.id, "create", "payment", res.paymentId, { direction: "in", advance: true, customerId: d.customerId, orderId: d.orderId, projectId: res.projectId, amount: d.amount, mode: d.mode });
+    revalidatePath("/billing", "layout");
+    if (d.orderId) revalidatePath(`/orders/${d.orderId}`);
+    const msg = `Advance of ${d.amount.toFixed(2)} from ${res.customer} recorded`;
+    target = fromOrder && d.orderId ? withMsg(`/orders/${d.orderId}`, "ok", msg) : withMsg(`/billing/advances?receipt=${res.paymentId}`, "ok", msg);
+  } catch (e) {
+    target = withMsg(rawOrder ? `/billing/advances?orderId=${rawOrder}${fromOrder ? "&from=order" : ""}` : "/billing/advances", "err", errMsg(e));
+  }
+  redirect(target);
+}
+
+const applySchema = z.object({
+  paymentId: z.coerce.number().int().positive("Choose an advance"),
+  invoiceId: z.coerce.number().int().positive(),
+  amount: money,
+});
+
+export async function applyAdvance(form: FormData) {
+  const user = await requireWrite("billing");
+  const invoiceId = Number(form.get("invoiceId"));
+  let target: string;
+  try {
+    const d = applySchema.parse(Object.fromEntries(form));
+    const db = await getDb();
+    const res = await db.transaction((tx) => applyAdvanceToInvoice(tx as Tx, { paymentId: d.paymentId, invoiceId: d.invoiceId, amount: d.amount, date: todayIST(), userId: user.id }));
+    await audit(db, user.id, "allocate", "payment", d.paymentId, { invoiceId: d.invoiceId, invoiceNumber: res.invoiceNumber, amount: res.amount, allocationId: res.allocationId });
+    revalidatePath("/billing", "layout");
+    target = withMsg(`/billing/invoices/${d.invoiceId}`, "ok", `Advance applied${res.status === "paid" ? ". The invoice is now fully paid" : ""}`);
+  } catch (e) {
+    target = withMsg(invoiceId ? `/billing/invoices/${invoiceId}` : "/billing/advances", "err", errMsg(e));
+  }
+  redirect(target);
+}

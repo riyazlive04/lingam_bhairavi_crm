@@ -1,19 +1,21 @@
 import Link from "next/link";
-import { and, asc, count, desc, eq, gte, ilike, lte, or, sql, type SQL } from "drizzle-orm";
-import { Plus } from "lucide-react";
+import { and, asc, count, desc, eq, gte, ilike, inArray, lte, or, sql, type SQL } from "drizzle-orm";
+import { FileSpreadsheet, Plus } from "lucide-react";
 import { getDb } from "@/db";
 import { customers, quotations, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
 import { QUOTE_STATUSES, SYSTEMS, type SystemKey } from "@/lib/constants";
 import { daysBetween, fmtDate, money, moneyShort, pct, todayIST } from "@/lib/format";
-import { istDate } from "@/lib/quotations";
-import { Button, EmptyState, Flash, Input, LinkButton, PageHeader, Select, Stat, StatusBadge, Table, Td, Th, cx } from "@/components/ui";
+import { EDITABLE_QUOTE_STATUSES, istDate } from "@/lib/quotations";
+import { Badge, Button, EmptyState, Flash, Input, LinkButton, PageHeader, Select, Stat, StatusBadge, Table, Td, Th, cx } from "@/components/ui";
 
 export const metadata = { title: "Quotations" };
 
 type SP = {
   q?: string; status?: string; system?: string; customer?: string; sp?: string; from?: string; to?: string; page?: string; ok?: string; err?: string;
+  /** "pending" = only quotations awaiting an admin's approval (rule 11) */
+  approval?: string;
 };
 const PAGE = 50;
 const isDate = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
@@ -41,14 +43,16 @@ export default async function QuotationsPage({ searchParams }: { searchParams: P
     if (c) base.push(c);
   }
   const status = sp.status && (QUOTE_STATUSES as readonly string[]).includes(sp.status) ? sp.status : null;
-  const where = and(...base, ...(status ? [eq(quotations.status, status)] : []));
+  const awaiting = sp.approval === "pending";
+  const pendingCond = and(eq(quotations.approvalStatus, "pending"), inArray(quotations.status, [...EDITABLE_QUOTE_STATUSES]));
+  const where = and(...base, ...(status ? [eq(quotations.status, status)] : []), ...(awaiting ? [pendingCond] : []));
   const page = Math.max(1, posInt(sp.page) ?? 1);
 
-  const [rows, [{ total }], byStatus, closedWon, custs, salespeople] = await Promise.all([
+  const [rows, [{ total }], byStatus, closedWon, custs, salespeople, [{ awaitingN }]] = await Promise.all([
     db.select({
       id: quotations.id, number: quotations.number, revision: quotations.revision, status: quotations.status, quoteDate: quotations.quoteDate,
       validUntil: quotations.validUntil, projectName: quotations.projectName, system: quotations.system, grandTotal: quotations.grandTotal,
-      nextFollowUpDate: quotations.nextFollowUpDate, customerName: customers.name, preparedBy: users.name,
+      nextFollowUpDate: quotations.nextFollowUpDate, customerName: customers.name, preparedBy: users.name, approvalStatus: quotations.approvalStatus,
     })
       .from(quotations)
       .leftJoin(customers, eq(customers.id, quotations.customerId))
@@ -65,6 +69,7 @@ export default async function QuotationsPage({ searchParams }: { searchParams: P
       .leftJoin(customers, eq(customers.id, quotations.customerId)).where(and(...base, eq(quotations.status, "won"))),
     db.select({ id: customers.id, name: customers.name }).from(customers).orderBy(asc(customers.name)),
     db.select({ id: users.id, name: users.name }).from(users).where(or(eq(users.role, "sales"), eq(users.role, "admin"))).orderBy(asc(users.name)),
+    db.select({ awaitingN: count() }).from(quotations).leftJoin(customers, eq(customers.id, quotations.customerId)).where(and(...base, pendingCond)),
   ]);
 
   const stat = (s: string) => byStatus.find((b) => b.status === s) ?? { n: 0, value: 0 };
@@ -88,7 +93,10 @@ export default async function QuotationsPage({ searchParams }: { searchParams: P
       <PageHeader
         title="Quotations"
         subtitle="Standard BOQ-based quotations, priced from the latest purchase cost."
-        actions={writable && <LinkButton href="/quotations/new"><Plus className="h-4 w-4" aria-hidden /> New quotation</LinkButton>}
+        actions={writable && <>
+          <LinkButton href="/boq-import" variant="secondary"><FileSpreadsheet className="h-4 w-4" aria-hidden /> Import consultant BOQ</LinkButton>
+          <LinkButton href="/quotations/new"><Plus className="h-4 w-4" aria-hidden /> New quotation</LinkButton>
+        </>}
       />
       <Flash ok={sp.ok} err={sp.err} />
 
@@ -100,14 +108,26 @@ export default async function QuotationsPage({ searchParams }: { searchParams: P
       </div>
 
       <nav aria-label="Filter by status" className="mb-4 flex gap-2 overflow-x-auto pb-1">
-        <StatusPill href={qs({ status: undefined, page: undefined })} active={!status} label="All" n={byStatus.reduce((s, b) => s + Number(b.n), 0)} />
+        <StatusPill href={qs({ status: undefined, approval: undefined, page: undefined })} active={!status && !awaiting} label="All" n={byStatus.reduce((s, b) => s + Number(b.n), 0)} />
+        <Link
+          href={qs({ status: undefined, approval: awaiting ? undefined : "pending", page: undefined })}
+          aria-current={awaiting ? "page" : undefined}
+          className={cx(
+            "shrink-0 rounded-lg border px-3 py-1.5 text-sm transition-colors",
+            awaiting ? "border-amber-500 bg-amber-50 font-medium text-amber-800 dark:bg-amber-950/60 dark:text-amber-200"
+              : Number(awaitingN) > 0 ? "border-amber-300 bg-surface text-amber-800 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/40" : "border-line bg-surface text-ink-soft hover:bg-muted",
+          )}
+        >
+          Awaiting approval <span className="tabular-nums">({Number(awaitingN)})</span>
+        </Link>
         {QUOTE_STATUSES.map((s) => (
-          <StatusPill key={s} href={qs({ status: s, page: undefined })} active={status === s} label={s} n={Number(stat(s).n)} value={stat(s).value} />
+          <StatusPill key={s} href={qs({ status: s, approval: undefined, page: undefined })} active={status === s && !awaiting} label={s} n={Number(stat(s).n)} value={stat(s).value} />
         ))}
       </nav>
 
       <form method="get" className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
         {status && <input type="hidden" name="status" value={status} />}
+        {awaiting && <input type="hidden" name="approval" value="pending" />}
         <Input name="q" defaultValue={sp.q} placeholder="Search no., customer, project…" aria-label="Search" className="lg:col-span-2" />
         <Select name="system" defaultValue={sp.system ?? ""} aria-label="System">
           <option value="">All systems</option>
@@ -133,7 +153,7 @@ export default async function QuotationsPage({ searchParams }: { searchParams: P
 
       {rows.length === 0 ? (
         <EmptyState
-          title={base.length || status ? "No quotations match these filters" : "No quotations yet"}
+          title={awaiting ? "Nothing is waiting for approval" : base.length || status ? "No quotations match these filters" : "No quotations yet"}
           action={writable && <LinkButton href="/quotations/new">Create the first quotation</LinkButton>}
         >
           Pick a standard BOQ, enter quantities and the latest prices are filled in automatically.
@@ -162,7 +182,13 @@ export default async function QuotationsPage({ searchParams }: { searchParams: P
                       {r.projectName && <div className="truncate text-xs text-ink-soft">{r.projectName}</div>}
                     </Td>
                     <Td className="whitespace-nowrap">{fmtDate(r.quoteDate)}</Td>
-                    <Td><StatusBadge status={r.status} /></Td>
+                    <Td>
+                      <div className="flex flex-col items-start gap-1">
+                        <StatusBadge status={r.status} />
+                        {r.approvalStatus === "pending" && (EDITABLE_QUOTE_STATUSES as readonly string[]).includes(r.status) && <Badge tone="amber">Awaiting approval</Badge>}
+                        {r.approvalStatus === "rejected" && (EDITABLE_QUOTE_STATUSES as readonly string[]).includes(r.status) && <Badge tone="red">Not approved</Badge>}
+                      </div>
+                    </Td>
                     <Td className="whitespace-nowrap text-right tabular-nums">{money(r.grandTotal)}</Td>
                     <Td className={cx("whitespace-nowrap", overdue && "font-medium text-red-600")}>
                       {open ? (r.nextFollowUpDate ? `${fmtDate(r.nextFollowUpDate)}${overdue ? " ⚠" : ""}` : <span className="text-amber-700 dark:text-amber-400">Not set</span>) : "-"}

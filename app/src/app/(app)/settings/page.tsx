@@ -1,6 +1,7 @@
 import { getDb } from "@/db";
 import { requireUser } from "@/lib/auth";
-import { Card, Field, Flash, Input, Textarea } from "@/components/ui";
+import { Card, Field, Flash, Input, Select, Textarea } from "@/components/ui";
+import { APPROVAL_MODES, APPROVAL_MODE_LABEL } from "@/lib/pricing";
 import { SubmitButton } from "@/components/submit-button";
 import { savePricing, saveCompany } from "./actions";
 import { readSetting, toCompanyForm, toPricingForm } from "./_lib/settings";
@@ -57,6 +58,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             </Field>
             <Field label="Quotation validity (days)">
               <Input type="number" name="quoteValidityDays" min={1} max={365} step={1} required defaultValue={p.quoteValidityDays} />
+            </Field>
+            <Field label="Approval before sending" className="sm:col-span-2"
+              hint="When a quotation needs approval, it can't be marked sent, emailed or marked won until an admin approves it. “Only below minimum margin” covers lines below cost or under the minimum margin.">
+              <Select name="approvalMode" defaultValue={p.approvalMode}>
+                {APPROVAL_MODES.map((m) => <option key={m} value={m}>{APPROVAL_MODE_LABEL[m]}{m === "below_margin" ? " (recommended)" : ""}</option>)}
+              </Select>
             </Field>
           </div>
           <div className="mt-4"><SubmitButton>Save pricing</SubmitButton></div>

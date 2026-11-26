@@ -81,6 +81,7 @@ export const AGENT_RULES: { agent: string; params: Record<string, number> }[] = 
   { agent: "low_stock", params: {} },
   { agent: "quote_expiry", params: { warnDays: 3 } },
   { agent: "project_budget", params: { warnPct: 80, criticalPct: 100 } },
+  { agent: "amc_service", params: { visitLeadDays: 7, renewalLeadDays: 30 } },
 ];
 
 export const KICKOFF_NOTE = {

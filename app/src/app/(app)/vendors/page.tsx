@@ -8,6 +8,8 @@ import { canWrite } from "@/lib/rbac";
 import { SYSTEMS } from "@/lib/constants";
 import { fmtDate, money } from "@/lib/format";
 import { vendorOutstanding } from "@/lib/purchasing";
+import { openDebitNotes } from "@/lib/returns";
+import { netDueOf } from "@/lib/billing";
 import { Badge, EmptyState, FilterBar, Flash, LinkButton, PageHeader, Select, Stat, Table, Td, Th } from "@/components/ui";
 
 export default async function VendorsPage({ searchParams }: { searchParams: Promise<{ q?: string; system?: string; status?: string; ok?: string; err?: string }> }) {
@@ -26,14 +28,20 @@ export default async function VendorsPage({ searchParams }: { searchParams: Prom
   }
   const list = await db.select().from(vendors).where(and(...conds)).orderBy(asc(vendors.name));
   const ids = list.map((v) => v.id);
-  const [outstanding, itemCounts, lastBuys] = await Promise.all([
+  const [outstanding, itemCounts, lastBuys, dns] = await Promise.all([
     vendorOutstanding(db),
     db.select({ vendorId: vendorItems.vendorId, n: count() }).from(vendorItems).groupBy(vendorItems.vendorId),
     db.select({ vendorId: purchaseInvoices.vendorId, d: max(purchaseInvoices.invoiceDate) }).from(purchaseInvoices).where(eq(purchaseInvoices.status, "posted")).groupBy(purchaseInvoices.vendorId),
+    openDebitNotes(db),
   ]);
+  // rule 14: net due = bills due − unadjusted debit notes (same as Billing > Payables)
+  const debitBy = new Map<number, number>();
+  for (const d of dns) debitBy.set(d.vendorId, (debitBy.get(d.vendorId) ?? 0) + d.balance);
+  const netOf = (id: number) => netDueOf(outstanding.get(id) ?? 0, debitBy.get(id) ?? 0);
   const itemsBy = new Map(itemCounts.map((r) => [r.vendorId, Number(r.n)]));
   const lastBy = new Map(lastBuys.map((r) => [r.vendorId, r.d]));
   const totalPayable = ids.reduce((s, id) => s + (outstanding.get(id) ?? 0), 0);
+  const totalNet = ids.reduce((s, id) => s + netOf(id), 0);
   const withDues = ids.filter((id) => (outstanding.get(id) ?? 0) > 0.5).length;
 
   return (
@@ -41,9 +49,10 @@ export default async function VendorsPage({ searchParams }: { searchParams: Prom
       <PageHeader title="Vendors" subtitle="Vendor master: who supplies what, at what rate, and what we owe them."
         actions={write && <LinkButton href="/vendors/new"><Plus size={16} aria-hidden /> New vendor</LinkButton>} />
       <Flash ok={sp.ok} err={sp.err} />
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Vendors" value={list.length} />
-        <Stat label="Outstanding payable" value={money(totalPayable)} tone={totalPayable > 0 ? "warn" : "default"} />
+        <Stat label="Bills due" value={money(totalPayable)} tone={totalPayable > 0 ? "warn" : "default"} />
+        <Stat label="Net due" value={money(totalNet)} hint="After debit notes" />
         <Stat label="Vendors with dues" value={withDues} />
       </div>
       <FilterBar q={sp.q} placeholder="Search name, city, GSTIN…">
@@ -65,10 +74,11 @@ export default async function VendorsPage({ searchParams }: { searchParams: Prom
         </EmptyState>
       ) : (
         <Table>
-          <thead><tr><Th>Vendor</Th><Th>Systems</Th><Th>Contact</Th><Th className="text-right">Items</Th><Th>Last purchase</Th><Th className="text-right">Outstanding</Th></tr></thead>
+          <thead><tr><Th>Vendor</Th><Th>Systems</Th><Th>Contact</Th><Th className="text-right">Items</Th><Th>Last purchase</Th><Th className="text-right">Bills due</Th><Th className="text-right">Net due</Th></tr></thead>
           <tbody>
             {list.map((v) => {
               const due = outstanding.get(v.id) ?? 0;
+              const net = netOf(v.id);
               return (
                 <tr key={v.id} className="hover:bg-muted/50">
                   <Td><Link href={`/vendors/${v.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{v.name}</Link>
@@ -80,6 +90,7 @@ export default async function VendorsPage({ searchParams }: { searchParams: Prom
                   <Td className="text-right tabular-nums">{itemsBy.get(v.id) ?? 0}</Td>
                   <Td>{fmtDate(lastBy.get(v.id) ?? null)}</Td>
                   <Td className="text-right tabular-nums">{due > 0.5 ? <span className="font-medium text-amber-700 dark:text-amber-300">{money(due)}</span> : <span className="text-ink-faint">-</span>}</Td>
+                  <Td className="text-right tabular-nums">{Math.abs(net) > 0.5 ? money(net) : <span className="text-ink-faint">-</span>}</Td>
                 </tr>
               );
             })}

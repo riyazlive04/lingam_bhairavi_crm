@@ -60,6 +60,21 @@ Pipe prices change daily. Each morning, open **Alerts** and look for the Stale P
 
 Tip: don't create "Pipe GI 2 inch" if *Pipe GI 50 NB* already exists. Search by NB size first.
 
+## 4. New screens for you
+
+### Purchase Orders
+Go to **Purchase Orders** to place an order with a supplier. The quickest way: open a customer order with pending lines and click **Create vendor PO**. The lines are filled in for you and the customer order line is marked as ordered.
+When the goods and the bill arrive, open the PO and create the purchase invoice from it. The quantities still to receive are filled in. When you post the bill, the PO shows how much has been received.
+
+### Return to vendor
+If goods must go back to a supplier, open the posted purchase invoice and click **Return to vendor**. Pick the lines and quantities. Once posted, it becomes a debit note, stock goes down, and accounts can adjust it against the vendor's open bills.
+
+### Price date on quotation lines
+Sales now see the date and vendor of the price on every quotation line. Entering purchase invoices on time keeps these dates fresh.
+
+### Vendor net due
+The Vendors list shows **Bills due** and **Net due** (after unadjusted debit notes).
+
 ## Quick help
 
 **I saved an invoice but the price didn't change. Why?**

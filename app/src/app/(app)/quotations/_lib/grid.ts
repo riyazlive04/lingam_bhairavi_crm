@@ -4,17 +4,29 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import type { DB } from "@/db";
 import { boqTemplateLines, extinguisherAssets, items, quotationLines } from "@/db/schema";
 import { round2 } from "@/lib/format";
-import { suggestRates } from "@/lib/pricing";
-import { itemPricing } from "./data";
+import { costSnapshot, parseCostSource, suggestRates } from "@/lib/pricing";
+import { itemPricing, vendorNames } from "./data";
 import type { GridLine } from "../_components/quote-editor";
 
 const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
+
+type ItemRow = typeof items.$inferSelect;
+const NO_COST = { costDate: null, costVendorName: null, costSource: null, volatile: false } as const;
+
+/** Rule 10 cost-source fields of a grid line built from an item right now. */
+function snapFields(it: ItemRow | undefined, names: Map<number, string>): Pick<GridLine, "costDate" | "costVendorName" | "costSource" | "volatile"> {
+  if (!it) return { ...NO_COST };
+  const s = costSnapshot(it);
+  return { costDate: s.costDate, costVendorName: s.costVendorId != null ? names.get(s.costVendorId) ?? null : null, costSource: s.costSource, volatile: it.volatilePrice };
+}
+const vendorIdsOf = (m: Map<number, ItemRow>) => [...m.values()].map((i) => i.lastPurchaseVendorId);
 
 /** Template lines → grid lines priced at `markupPct` (rule 2), qty = template default qty. */
 export async function templateGridLines(db: DB, templateId: number, markupPct: number, showCost: boolean): Promise<GridLine[]> {
   const tl = await db.select().from(boqTemplateLines).where(eq(boqTemplateLines.templateId, templateId))
     .orderBy(asc(boqTemplateLines.sortOrder), asc(boqTemplateLines.id));
   const map = await itemPricing(db, tl.map((l) => l.itemId).filter((x): x is number => x != null));
+  const names = await vendorNames(db, vendorIdsOf(map));
   return tl.map((l) => {
     const it = l.itemId != null ? map.get(l.itemId) : undefined;
     const r = it ? suggestRates(it, markupPct) : { costRate: 0, supplyRate: 0, erectionRate: 0 };
@@ -22,6 +34,7 @@ export async function templateGridLines(db: DB, templateId: number, markupPct: n
       key: `t${l.id}`, lineId: null, section: l.section ?? "", boqRef: l.boqRef ?? "", itemId: it ? l.itemId : null,
       description: l.description, uom: l.uom, qty: Number(l.defaultQty) || 0,
       costRate: showCost ? r.costRate : null, supplyRate: r.supplyRate, erectionRate: r.erectionRate, remarks: "", manual: !it,
+      ...(it ? snapFields(it, names) : { ...NO_COST, costSource: "manual" as const }),
     };
   });
 }
@@ -53,6 +66,7 @@ export async function refillGridLines(db: DB, customerId: number, assetIds: numb
     return cands.find((i) => norm(i.make) === norm(make)) ?? cands[0];
   };
   const priced = await itemPricing(db, refillItems.map((i) => i.id));
+  const names = await vendorNames(db, vendorIdsOf(priced));
   return [...groups.values()].map((g, idx) => {
     const it = match(g.extType, g.make);
     const p = it ? priced.get(it.id) : undefined;
@@ -62,6 +76,7 @@ export async function refillGridLines(db: DB, customerId: number, assetIds: numb
       key: `rf${idx}`, lineId: null, section: "Extinguisher Refilling", boqRef: String(idx + 1), itemId: it && p ? it.id : null,
       description: `Refilling of ${g.extType} fire extinguisher${g.make ? `, ${g.make}` : ""}${where}`, uom: it?.uom ?? "Nos", qty: g.qty,
       costRate: showCost ? r.costRate : null, supplyRate: r.supplyRate, erectionRate: r.erectionRate, remarks: "", manual: !(it && p),
+      ...(p ? snapFields(p, names) : { ...NO_COST, costSource: "manual" as const }),
     };
   });
 }
@@ -72,11 +87,19 @@ export async function refillGridLines(db: DB, customerId: number, assetIds: numb
  */
 export async function quotationGridLines(db: DB, q: { id: number; templateId: number | null; markupPct: number }, showCost: boolean): Promise<GridLine[]> {
   const saved = await db.select().from(quotationLines).where(eq(quotationLines.quotationId, q.id)).orderBy(asc(quotationLines.sortOrder), asc(quotationLines.id));
+  const [names, savedItems] = await Promise.all([
+    vendorNames(db, saved.map((l) => l.costVendorId)),
+    itemPricing(db, saved.map((l) => l.itemId).filter((x): x is number => x != null)),
+  ]);
   const savedLines: GridLine[] = saved.map((l) => ({
     key: `q${l.id}`, lineId: l.id, section: l.section ?? "", boqRef: l.boqRef ?? "", itemId: l.itemId, description: l.description,
     uom: l.uom, qty: l.qty, costRate: showCost ? l.costRate : null, supplyRate: l.supplyRate, erectionRate: l.erectionRate,
     remarks: l.remarks ?? "",
     manual: l.itemId == null || Math.abs(l.supplyRate - round2(l.costRate * (1 + q.markupPct / 100))) > 0.01,
+    costDate: l.costDate ?? null,
+    costVendorName: l.costVendorId != null ? names.get(l.costVendorId) ?? null : null,
+    costSource: parseCostSource(l.costSource) ?? (l.itemId == null ? "manual" : null),
+    volatile: l.itemId != null ? savedItems.get(l.itemId)?.volatilePrice ?? false : false,
   }));
   if (!q.templateId) return savedLines;
   const tmpl = await templateGridLines(db, q.templateId, q.markupPct, showCost);

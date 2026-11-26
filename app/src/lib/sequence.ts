@@ -6,6 +6,7 @@ import { financialYear, todayIST } from "./format";
 
 const PREFIX: Record<string, string> = {
   quotation: "LBE/Q", sales_order: "LBE/SO", sales_invoice: "LBE/INV", delivery: "LBE/DC",
+  purchase_order: "LBE/PO", sales_return: "LBE/CN", purchase_return: "LBE/DN", amc: "LBE/AMC", service_call: "LBE/SC", receipt: "LBE/RCPT",
 };
 
 export async function nextSeq(db: DB, key: string): Promise<number> {

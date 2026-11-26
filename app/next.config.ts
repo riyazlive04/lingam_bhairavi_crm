@@ -27,6 +27,8 @@ const nextConfig: NextConfig = {
     "/**": ["./node_modules/@electric-sql/pglite/dist/**/*.{wasm,data}"],
   },
   poweredByHeader: false,
+  // BOQ Excel uploads go through server actions (default limit is 1 MB).
+  experimental: { serverActions: { bodySizeLimit: "8mb" } },
   async headers() {
     return [{
       source: "/:path*",

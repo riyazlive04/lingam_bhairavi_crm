@@ -61,6 +61,23 @@ To stop reminders for a customer (for example, during a dispute or a special arr
 
 The most important rule: **record payments the same day**, because reminder emails go out automatically every morning.
 
+## 4. New screens for you
+
+### Advances
+When a customer pays before you invoice, go to **Billing > Advances** (or **Record advance** on the order) and record it. Later, use **Apply advance** (on the Advances page or on the invoice) to set it against an invoice. You can never apply more than the invoice balance or the unused advance.
+
+### Credit notes and debit notes
+**Returns** shows goods coming back from customers (credit notes) and goods going back to vendors (debit notes). After a credit note is posted, use **Adjust against invoice** to reduce an open invoice. Debit notes can be adjusted against open vendor bills in the same way.
+
+### Net due
+Receivables, the Customers list and each customer page show **Invoices due** and **Net due** (invoices due, less unadjusted credit notes and unused advances). For vendors, **Net due** is bills due less unadjusted debit notes.
+
+### Profit & Reports
+**Profit & Reports** gives the monthly profit: sales after credit notes, cost of goods, expenses, gross and net profit. You can export it to Excel.
+
+### AMC billing
+**AMC Contracts** shows each contract's value and billing frequency, so you know when to raise the AMC invoice.
+
 ## Quick help
 
 **A customer says they already paid but still got a reminder. What happened?**

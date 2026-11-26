@@ -7,6 +7,7 @@ const TABS = [
   { href: "/billing/receivables", label: "Receivables" },
   { href: "/billing/payables", label: "Payables" },
   { href: "/billing/payments", label: "Payments" },
+  { href: "/billing/advances", label: "Advances" },
 ];
 
 /** Section tabs for the billing module (horizontally scrollable on phones). */

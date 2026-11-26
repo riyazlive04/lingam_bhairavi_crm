@@ -5,9 +5,10 @@ import { Mail } from "lucide-react";
 import { getDb } from "@/db";
 import { customers } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { canWrite } from "@/lib/rbac";
+import { canRead, canWrite } from "@/lib/rbac";
 import { fmtDate, money, todayIST } from "@/lib/format";
-import { customerLedger, getCompany, openSalesInvoices } from "@/lib/billing";
+import { customerAdvances, customerLedger, getCompany, openSalesInvoices, receiptNumber } from "@/lib/billing";
+import { openCreditNotes } from "@/lib/returns";
 import { Badge, Button, Card, EmptyState, Field, Flash, Input, LinkButton, PageHeader, Table, Td, Th, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { emailStatement } from "../../actions";
@@ -31,7 +32,12 @@ export default async function CustomerLedgerPage({ params, searchParams }: {
   const today = todayIST();
   const from = isDate(sp.from) ? sp.from : undefined;
   const to = isDate(sp.to) ? sp.to : undefined;
-  const [ledger, open, company] = await Promise.all([customerLedger(db, customerId, { from, to }), openSalesInvoices(db, { customerId, today }), getCompany(db)]);
+  const [ledger, open, company, cns, advs] = await Promise.all([
+    customerLedger(db, customerId, { from, to }), openSalesInvoices(db, { customerId, today }), getCompany(db),
+    openCreditNotes(db, { customerId }), customerAdvances(db, { customerId, openOnly: true }),
+  ]);
+  const returnsLink = canRead(user.role, "returns");
+  const creditTotal = cns.reduce((s, c) => s + c.balance, 0) + advs.reduce((s, a) => s + a.balance, 0);
   const write = canWrite(user.role, "billing");
   const overdue = open.filter((o) => o.daysOverdue > 0).reduce((s, o) => s + o.outstanding, 0);
 
@@ -64,7 +70,7 @@ export default async function CustomerLedgerPage({ params, searchParams }: {
         </div>
 
         <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <div className="rounded-xl border border-line bg-surface p-4"><div className="text-xs uppercase tracking-wide text-ink-soft">Balance</div><div className="mt-1 text-xl font-semibold tabular-nums">{money(ledger.closing)}</div></div>
+          <div className="rounded-xl border border-line bg-surface p-4"><div className="text-xs uppercase tracking-wide text-ink-soft">Balance</div><div className="mt-1 text-xl font-semibold tabular-nums">{money(ledger.closing)}</div>{creditTotal > 0.005 && <div className="text-xs text-ink-soft">after {money(creditTotal)} unused credits</div>}</div>
           <div className="rounded-xl border border-line bg-surface p-4"><div className="text-xs uppercase tracking-wide text-ink-soft">Overdue</div><div className={cx("mt-1 text-xl font-semibold tabular-nums", overdue > 0 && "text-red-600")}>{money(overdue)}</div></div>
           <div className="rounded-xl border border-line bg-surface p-4"><div className="text-xs uppercase tracking-wide text-ink-soft">Invoiced (period)</div><div className="mt-1 text-xl font-semibold tabular-nums">{money(ledger.debit)}</div></div>
           <div className="rounded-xl border border-line bg-surface p-4"><div className="text-xs uppercase tracking-wide text-ink-soft">Received (period)</div><div className="mt-1 text-xl font-semibold tabular-nums text-emerald-600">{money(ledger.credit)}</div></div>
@@ -91,6 +97,34 @@ export default async function CustomerLedgerPage({ params, searchParams }: {
           </Card>
         )}
 
+        {(cns.length > 0 || advs.length > 0) && (
+          <Card title={`Credits not yet used (${cns.length + advs.length})`} subtitle="Adjust these against open invoices" className="mb-4" bodyClassName="p-0">
+            <Table className="rounded-none border-0 shadow-none">
+              <thead><tr><Th>Type</Th><Th>Ref</Th><Th>Date</Th><Th className="text-right">Amount</Th><Th className="text-right">Used</Th><Th className="text-right">Balance</Th></tr></thead>
+              <tbody>
+                {cns.map((c) => (
+                  <tr key={`cn-${c.id}`}>
+                    <Td><Badge tone="violet">Credit note</Badge></Td>
+                    <Td>{returnsLink ? <Link href={`/returns/${c.id}`} className="text-brand-700 hover:underline dark:text-brand-300">{c.number}</Link> : c.number}</Td>
+                    <Td className="whitespace-nowrap">{fmtDate(c.date)}</Td>
+                    <Td className="text-right tabular-nums">{money(c.total)}</Td><Td className="text-right tabular-nums">{money(c.adjustedAmount)}</Td>
+                    <Td className="text-right font-medium tabular-nums">{money(c.balance)}</Td>
+                  </tr>
+                ))}
+                {advs.map((a) => (
+                  <tr key={`adv-${a.id}`}>
+                    <Td><Badge tone="blue">Advance</Badge></Td>
+                    <Td><Link href={`/billing/receipts/${a.id}`} className="text-brand-700 hover:underline dark:text-brand-300">{a.reference || receiptNumber(a)}</Link>{a.orderNumber && <div className="text-xs text-ink-soft">{a.orderNumber}</div>}</Td>
+                    <Td className="whitespace-nowrap">{fmtDate(a.date)}</Td>
+                    <Td className="text-right tabular-nums">{money(a.amount)}</Td><Td className="text-right tabular-nums">{money(a.allocatedAmount)}</Td>
+                    <Td className="text-right font-medium tabular-nums">{money(a.balance)}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </Card>
+        )}
+
         <Card title="Ledger" bodyClassName="p-0">
           <form method="get" className="no-print flex flex-col gap-2 border-b border-line p-3 sm:flex-row sm:items-end">
             <Field label="From"><Input type="date" name="from" defaultValue={from} /></Field>
@@ -101,7 +135,7 @@ export default async function CustomerLedgerPage({ params, searchParams }: {
             </div>
           </form>
           {ledger.entries.length === 0 && !ledger.opening ? (
-            <div className="p-4"><EmptyState title="No transactions">No invoices or payments for this customer{from || to ? " in this period" : ""}.</EmptyState></div>
+            <div className="p-4"><EmptyState title="No transactions">No invoices, payments or credit notes for this customer{from || to ? " in this period" : ""}.</EmptyState></div>
           ) : (
             <Table className="rounded-none border-0 shadow-none">
               <thead><tr><Th>Date</Th><Th>Ref</Th><Th>Particulars</Th><Th className="text-right">Debit</Th><Th className="text-right">Credit</Th><Th className="text-right">Balance</Th></tr></thead>
@@ -112,7 +146,9 @@ export default async function CustomerLedgerPage({ params, searchParams }: {
                 {ledger.entries.map((e) => (
                   <tr key={`${e.kind}-${e.refId}`}>
                     <Td className="whitespace-nowrap">{fmtDate(e.date)}</Td>
-                    <Td>{e.kind === "invoice" ? <Link href={`/billing/invoices/${e.refId}`} className="text-brand-700 hover:underline dark:text-brand-300">{e.ref}</Link> : e.ref}</Td>
+                    <Td>{e.kind === "invoice" ? <Link href={`/billing/invoices/${e.refId}`} className="text-brand-700 hover:underline dark:text-brand-300">{e.ref}</Link>
+                      : e.kind === "credit_note" ? (returnsLink ? <Link href={`/returns/${e.refId}`} className="text-brand-700 hover:underline dark:text-brand-300">{e.ref}</Link> : e.ref)
+                        : <Link href={`/billing/receipts/${e.refId}`} className="text-brand-700 hover:underline dark:text-brand-300">{e.ref}</Link>}</Td>
                     <Td className="max-w-80 whitespace-normal">{e.description}</Td>
                     <Td className="text-right tabular-nums">{e.debit ? money(e.debit) : ""}</Td>
                     <Td className="text-right tabular-nums text-emerald-700 dark:text-emerald-400">{e.credit ? money(e.credit) : ""}</Td>

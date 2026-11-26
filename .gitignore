@@ -11,3 +11,5 @@ work/transcript_raw.md
 *.xlsx
 .data/
 deliverables/
+*.pdf
+work/proposal.txt

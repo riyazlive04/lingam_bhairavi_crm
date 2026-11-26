@@ -17,17 +17,17 @@ export default async function ReceivablesPage({ searchParams }: { searchParams: 
   const t = sumAgeing(rows);
   return (
     <>
-      <PageHeader title="Customer outstanding" subtitle="Receivables by customer with ageing (days past due)"
+      <PageHeader title="Customer outstanding" subtitle="Receivables by customer with ageing (days past due). Net due takes off credit notes and advances not yet used."
         actions={<a href="/billing/export/receivables" className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink hover:bg-muted"><Download className="h-4 w-4" aria-hidden /> Export Excel</a>} />
       <BillingNav active="/billing/receivables" />
       <Flash ok={sp.ok} err={sp.err} />
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Outstanding" value={moneyShort(t.outstanding)} />
+        <Stat label="Net due" value={moneyShort(t.netDue)} hint={`Invoices ${moneyShort(t.outstanding)} · credits ${moneyShort(t.creditNotes)} · advances ${moneyShort(t.advances)}`} />
         <Stat label="Overdue" value={moneyShort(t.overdue)} tone={t.overdue ? "bad" : "good"} />
         <Stat label="Due in 7 days" value={moneyShort(t.dueNext7)} tone="warn" />
         <Stat label="90+ days" value={moneyShort(t.d90p)} tone={t.d90p ? "bad" : "default"} />
       </div>
-      <AgeingTable rows={rows} hrefFor={(id) => `/billing/receivables/${id}`} emptyTitle="Nothing outstanding. All customer invoices are paid." />
+      <AgeingTable kind="customer" rows={rows} hrefFor={(id) => `/billing/receivables/${id}`} emptyTitle="Nothing outstanding. All customer invoices are paid." />
     </>
   );
 }

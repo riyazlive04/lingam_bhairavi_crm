@@ -7,6 +7,7 @@ import { EXPENSE_CATEGORIES } from "@/lib/constants";
 import { todayIST } from "@/lib/format";
 import { projectAccess } from "../../_lib/access";
 import { loadCostingSheet } from "../../_lib/sheet";
+import { projectBuyVsSell } from "@/lib/reports";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,6 +58,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   ws.addRow([]);
   kv("Materials issued", c.materials);
   kv("Less: materials returned", -c.returns);
+  if (c.customerReturns) kv("Less: customer returns put back in stock", -c.customerReturns);
   for (const [k, v] of Object.entries(c.expensesByCategory)) kv(`Expense: ${catLabel(k)}`, v);
   kv("Actual cost", c.actualCost, true);
   kv("Expenses awaiting approval (not counted)", c.pendingExpenses);
@@ -67,9 +69,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const bu = ws.addRow(["Budget used %", c.budget ? c.budgetUsedPct / 100 : ""]);
   bu.getCell(2).numFmt = "0.0%";
   ws.addRow([]);
-  kv("Invoiced (excl. GST)", c.invoiced);
-  kv("Received", c.received);
-  kv("Standing (to collect)", Math.round((c.invoiced - c.received) * 100) / 100, true);
+  kv("Invoiced (excl. GST)", c.invoicedGross);
+  kv("Less: credit notes (excl. GST)", -c.creditNotes);
+  kv("Net invoiced (excl. GST)", c.invoiced, true);
+  kv("Received (incl. advances, excl. credit-note adjustments)", c.received);
+  kv("Of which advances", c.advances);
+  kv("Net due from customer (incl. GST)", c.netDue, true);
 
   // ---- Detail sheets
   const table = (name: string, headers: string[], rows: (string | number | null)[][], moneyCols: number[], qtyCols: number[] = []) => {
@@ -97,7 +102,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   table("Sales invoices", ["Invoice", "Date", "Due", "Status", "Excl. GST", "Total", "Paid"],
     s.invoices.map((i) => [i.number, i.invoiceDate, i.dueDate, i.status, Number(i.subtotal), Number(i.total), Number(i.paidAmount)]), [4, 5, 6]);
   table("Receipts", ["Date", "Invoice", "Mode", "Reference", "Amount"],
-    s.receipts.map((r) => [r.date, r.invoiceNumber, r.mode, r.reference, Number(r.amount)]), [4]);
+    s.receipts.map((r) => [r.date, r.invoiceNumber ?? (r.isAdvance ? "Advance" : ""), r.mode, r.reference, Number(r.amount)]), [4]);
+  table("Credit notes", ["Credit note", "Date", "Reason", "Status", "Excl. GST", "Total", "Adjusted"],
+    s.creditNotes.map((cn) => [cn.number, cn.date, cn.reason, cn.status, Number(cn.subtotal), Number(cn.total), Number(cn.adjustedAmount)]), [4, 5, 6]);
+
+  const bvs = await projectBuyVsSell(db, { projectId: p.id });
+  table("Buy vs sell", ["Item code", "Item", "UOM", "Qty issued", "Qty back", "Net qty", "Avg buying rate", "Selling rate", "Rate from", "Margin per unit", "Margin total", "Margin %", "Below cost"],
+    bvs.map((r) => [r.code, r.name, r.uom, r.qtyIssued, r.qtyBack, r.netQty, r.buyRate, r.sellRate, r.sellSource ?? "not sold yet", r.marginPerUnit, r.marginTotal, r.marginPct, r.belowCost ? "YES" : ""]),
+    [6, 7, 9, 10], [3, 4, 5]);
 
   const buf = await wb.xlsx.writeBuffer();
   await audit(db, user.id, "export", "project", p.id, { format: "xlsx" });

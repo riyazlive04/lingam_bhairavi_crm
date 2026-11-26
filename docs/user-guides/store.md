@@ -52,6 +52,20 @@ When the company starts holding stock (for example, fire-alarm panels), you will
 
 The rule: **nothing leaves the store without a delivery entry.**
 
+## 4. New screens for you
+
+### Customer returns
+When material comes back from a customer, open the order and click **Record return**. Tick **restock** if the goods can go back on the shelf. Restocked goods show in stock as **Customer return**.
+
+### Return to vendor
+Goods sent back to a supplier are recorded from the purchase invoice with **Return to vendor**. They show in stock as **Returned to vendor** and reduce stock on hand.
+
+### Purchase Orders
+**Purchase Orders** shows what has been ordered from suppliers and how much has arrived, so you know what to expect at the store.
+
+### Pending deliveries after a return
+If a customer returns goods, that quantity counts as pending again on the order, so a replacement can be dispatched.
+
 ## Quick help
 
 **I delivered something but it still shows as pending. Why?**

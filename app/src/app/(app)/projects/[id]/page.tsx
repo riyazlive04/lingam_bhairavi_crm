@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Download, Pencil, Receipt } from "lucide-react";
+import { Download, History, Pencil, Receipt, Scale } from "lucide-react";
 import { getDb } from "@/db";
 import { requireUser } from "@/lib/auth";
 import { canApproveExpenses, canRead } from "@/lib/rbac";
@@ -11,11 +11,18 @@ import { SubmitButton } from "@/components/submit-button";
 import { BudgetBar } from "../_components/budget-bar";
 import { projectAccess } from "../_lib/access";
 import { loadCostingSheet } from "../_lib/sheet";
+import { loadProjectHistory } from "../_lib/history";
+import { HistoryFeed, HistoryFilters, applyHistoryFilter, historyFilter, type HistorySP } from "../_components/history-feed";
+import { BuyVsSellTable } from "../_components/buy-vs-sell";
+import { projectBuyVsSell } from "@/lib/reports";
+import { LinkedPosCard } from "../../purchase-orders/_components/linked-pos-card";
 import { addProjectNote, setProjectStatus } from "../actions";
 
 const catLabel = (k: string) => EXPENSE_CATEGORIES[k as keyof typeof EXPENSE_CATEGORIES] ?? k;
 
-export default async function ProjectSheetPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
+type SP = HistorySP & { ok?: string; err?: string; tab?: string };
+
+export default async function ProjectSheetPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<SP> }) {
   const user = await requireUser("projects");
   const { id } = await params;
   const sp = await searchParams;
@@ -28,9 +35,15 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
   const acc = projectAccess(user, p);
   // only render links the viewer can open (avoid landing on /forbidden)
   const canPurchases = canRead(user.role, "purchases"), canBilling = canRead(user.role, "billing"), canQuotes = canRead(user.role, "quotations");
+  const canReturns = canRead(user.role, "returns");
   const canOpenExpense = (ownerId: number | null) => canApproveExpenses(user.role) || ownerId === user.id;
-  const standing = round(c.invoiced - c.received);
   const remainingBudget = round(c.budget - c.actualCost);
+  const tab = sp.tab === "history" && acc.spend ? "history" : "costing";
+  const filter = historyFilter(sp);
+  const [buyVsSell, history] = await Promise.all([
+    tab === "costing" && acc.full ? projectBuyVsSell(db, { projectId: p.id }) : Promise.resolve([]),
+    tab === "history" ? loadProjectHistory(db, p, user, acc.full) : Promise.resolve([]),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -59,6 +72,24 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
       />
       <Flash ok={sp.ok} err={sp.err} />
 
+      {acc.spend && (
+        <nav aria-label="Project views" className="flex items-center gap-1 overflow-x-auto border-b border-line">
+          <TabLink href={`/projects/${p.id}`} active={tab === "costing"}>Costing</TabLink>
+          <TabLink href={`/projects/${p.id}?tab=history`} active={tab === "history"}><History className="h-4 w-4" aria-hidden /> History</TabLink>
+        </nav>
+      )}
+
+      {tab === "history" ? (
+        <section aria-label="Project history">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-ink-soft">Everything that happened on this project, from the first quote to the last service call.</p>
+            <LinkButton variant="secondary" size="sm" href={`/projects/${p.id}/history${filter.types.length || filter.oldestFirst ? `?${new URLSearchParams([...filter.types.map((t) => ["t", t]), ...(filter.oldestFirst ? [["order", "oldest"]] : [])]).toString()}` : ""}`}>Printable view</LinkButton>
+          </div>
+          <HistoryFilters action={`/projects/${p.id}`} events={history} filter={filter} hidden={{ tab: "history" }} />
+          <HistoryFeed events={applyHistoryFilter(history, filter)} />
+        </section>
+      ) : (
+      <>
       {acc.spend ? (
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -93,6 +124,7 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
                 <tbody>
                   <BreakRow label="Materials issued to site" value={c.materials} />
                   <BreakRow label="Less: materials returned" value={-c.returns} />
+                  {c.customerReturns > 0 && <BreakRow label="Less: customer returns put back in stock" value={-c.customerReturns} />}
                   {Object.entries(c.expensesByCategory).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
                     <BreakRow key={k} label={`Expense: ${catLabel(k)}`} value={v} />
                   ))}
@@ -118,11 +150,13 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
               <Card title="Billed · received · standing" bodyClassName="p-0">
                 <table className="w-full text-sm">
                   <tbody>
-                    <BreakRow label="Invoiced to customer (excl. GST)" value={c.invoiced} />
-                    <BreakRow label="Received from customer" value={c.received} />
-                    <tr className={cx("font-semibold", standing > 0 ? "text-amber-700 dark:text-amber-400" : "text-ink")}>
-                      <td className="px-4 py-2">Standing (to collect)</td>
-                      <td className="px-4 py-2 text-right tabular-nums">{money(standing)}</td>
+                    <BreakRow label="Invoiced to customer (excl. GST)" value={c.invoicedGross} />
+                    {c.creditNotes > 0 && <BreakRow label="Less: credit notes (excl. GST)" value={-c.creditNotes} />}
+                    <BreakRow label="Received from customer (incl. GST)" value={c.received} />
+                    {c.advances > 0 && <BreakRow label="Of which advances" value={c.advances} />}
+                    <tr className={cx("font-semibold", c.netDue > 0.5 ? "text-amber-700 dark:text-amber-400" : "text-ink")}>
+                      <td className="px-4 py-2">Net due from customer (incl. GST)</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{money(c.netDue)}</td>
                     </tr>
                     <BreakRow label="Yet to invoice (contract − invoiced)" value={Math.max(0, round(c.contractValue - c.invoiced))} />
                     <tr className={cx("font-semibold", c.received - c.actualCost < 0 ? "text-red-600" : "text-emerald-700 dark:text-emerald-400")}>
@@ -131,7 +165,7 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
                     </tr>
                   </tbody>
                 </table>
-                <p className="border-t border-line px-4 py-2 text-xs text-ink-soft">Invoice totals here exclude GST; outstanding on the Billing page includes GST.</p>
+                <p className="border-t border-line px-4 py-2 text-xs text-ink-soft">Invoiced amounts exclude GST. Received and net due include GST, count advances as cash and leave out credit-note adjustments.</p>
               </Card>
             ) : (
               <Card title="Project details"><ProjectInfo s={s} canQuotes={canQuotes} /></Card>
@@ -158,6 +192,12 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
               </Table>
             )}
           </Section>
+
+          {acc.full && (
+            <Card title="Buy vs sell" icon={Scale} subtitle="Average buying rate of what went to site against the rate we sell it at" bodyClassName="p-0">
+              <BuyVsSellTable rows={buyVsSell} />
+            </Card>
+          )}
 
           {s.returns.length > 0 && (
             <Section title={`Materials returned (${s.returns.length})`}>
@@ -200,6 +240,8 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
               )}
             </Section>
           )}
+
+          {acc.full && <LinkedPosCard role={user.role} projectId={p.id} hideWhenEmpty />}
 
           <Section title={`Expense vouchers (${s.expenses.length})`} empty="No expense vouchers allocated to this project yet." hint="Only approved vouchers count in actual cost.">
             {s.expenses.length > 0 && (
@@ -255,7 +297,7 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
                       {s.receipts.map((r) => (
                         <tr key={r.id}>
                           <Td className="whitespace-nowrap">{fmtDate(r.date)}</Td>
-                          <Td>{r.invoiceNumber}</Td>
+                          <Td>{r.isAdvance ? <span className="text-ink-soft">Advance{Number(r.allocatedAmount) > 0 ? `, ${money0(r.allocatedAmount)} applied` : ""}</span> : r.invoiceNumber}</Td>
                           <Td className="uppercase">{r.mode}{r.reference ? <span className="normal-case text-ink-soft"> · {r.reference}</span> : null}</Td>
                           <Td className="text-right tabular-nums">{money(r.amount)}</Td>
                         </tr>
@@ -265,6 +307,26 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
                 )}
               </Section>
             </div>
+          )}
+
+          {acc.full && s.creditNotes.length > 0 && (
+            <Section title={`Credit notes (${s.creditNotes.length})`} hint="Posted credit notes reduce what was invoiced. Restocked goods also come off the actual cost.">
+              <Table>
+                <thead><tr><Th>Credit note</Th><Th>Date</Th><Th>Reason</Th><Th>Status</Th><Th className="text-right">Excl. GST</Th><Th className="text-right">Adjusted</Th></tr></thead>
+                <tbody>
+                  {s.creditNotes.map((cn) => (
+                    <tr key={cn.id}>
+                      <Td>{canReturns ? <Link className="text-brand-700 hover:underline dark:text-brand-300" href={`/returns/${cn.id}`}>{cn.number}</Link> : cn.number}</Td>
+                      <Td className="whitespace-nowrap">{fmtDate(cn.date)}</Td>
+                      <Td className="capitalize">{cn.reason.replace(/_/g, " ")}</Td>
+                      <Td><StatusBadge status={cn.status} /></Td>
+                      <Td className="text-right tabular-nums">{money(cn.subtotal)}</Td>
+                      <Td className="text-right tabular-nums">{money(cn.adjustedAmount)}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </Section>
           )}
         </>
       ) : (
@@ -323,7 +385,19 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
           )}
         </Card>
       </div>
+      </>
+      )}
     </div>
+  );
+}
+
+function TabLink({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
+  return (
+    <Link href={href} aria-current={active ? "page" : undefined}
+      className={cx("-mb-px inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium",
+        active ? "border-brand-600 text-brand-700 dark:text-brand-300" : "border-transparent text-ink-soft hover:text-ink")}>
+      {children}
+    </Link>
   );
 }
 

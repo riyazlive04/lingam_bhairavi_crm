@@ -11,14 +11,20 @@ export type PFItem = {
   id: number; code: string; name: string; size: string | null; make: string | null; uom: string; gstRate: number;
   latestRate: number | null; latestDate: string | null; latestVendor: string | null;
 };
-export type PFLine = { itemId: number; description: string; qty: number; rate: number; gstRate: number };
+export type PFLine = {
+  itemId: number; description: string; qty: number; rate: number; gstRate: number;
+  /** vendor PO line this bill line receives (rule 16) */
+  poLineId?: number | null;
+  /** e.g. "PO qty 100, received 40" (display only) */
+  poInfo?: string;
+};
 export type PFInitial = {
   vendorId: number | null; invoiceNo: string; invoiceDate: string; dueDate: string; projectId: number | null; notes: string; lines: PFLine[];
 };
 
 const JUMP_PCT = 5;
 
-export function PurchaseForm({ action, vendors, projects, items, vendorRates, initial, editing }: {
+export function PurchaseForm({ action, vendors, projects, items, vendorRates, initial, editing, po }: {
   action: (fd: FormData) => Promise<void>;
   vendors: PFVendor[];
   projects: PFProject[];
@@ -27,6 +33,8 @@ export function PurchaseForm({ action, vendors, projects, items, vendorRates, in
   vendorRates: Record<string, Record<string, { rate: number | null; date: string | null }>>;
   initial: PFInitial;
   editing?: boolean;
+  /** bill raised against this vendor PO: vendor is fixed and lines keep their PO link */
+  po?: { id: number; number: string } | null;
 }) {
   const [vendorId, setVendorId] = useState<string>(initial.vendorId ? String(initial.vendorId) : "");
   const [invoiceDate, setInvoiceDate] = useState(initial.invoiceDate);
@@ -80,11 +88,20 @@ export function PurchaseForm({ action, vendors, projects, items, vendorRates, in
 
   return (
     <form action={action} className="space-y-4">
-      <input type="hidden" name="lines" value={JSON.stringify(validLines)} />
+      <input type="hidden" name="lines" value={JSON.stringify(validLines.map((l) => ({ itemId: l.itemId, description: l.description, qty: l.qty, rate: l.rate, gstRate: l.gstRate, poLineId: l.poLineId ?? null })))} />
+      {po && <input type="hidden" name="purchaseOrderId" value={po.id} />}
+      {po && (
+        <div role="note" className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-200">
+          Bill against purchase order <strong>{po.number}</strong>. Quantities are what is still to be received; change them to match the supplier&apos;s bill.
+          Posting the bill updates the received quantity on the PO.
+        </div>
+      )}
       <Card title="Invoice">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Vendor" required className="lg:col-span-2">
-            <Select name="vendorId" required value={vendorId} onChange={(e) => { setVendorId(e.target.value); recomputeDue(e.target.value, invoiceDate); }}>
+            {po && <input type="hidden" name="vendorId" value={vendorId} />}
+            <Select name={po ? undefined : "vendorId"} required value={vendorId} disabled={!!po} title={po ? "Fixed by the purchase order" : undefined}
+              onChange={(e) => { setVendorId(e.target.value); recomputeDue(e.target.value, invoiceDate); }}>
               <option value="" disabled>Choose vendor…</option>
               {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
             </Select>
@@ -158,6 +175,7 @@ export function PurchaseForm({ action, vendors, projects, items, vendorRates, in
                     <div className="min-w-0">
                       <div className="text-sm font-medium text-ink">{it.name}</div>
                       <div className="font-mono text-xs text-ink-faint">{it.code} · {it.uom}{it.make ? ` · ${it.make}` : ""}</div>
+                      {l.poLineId != null && <div className="mt-0.5 text-xs text-blue-700 dark:text-blue-300">PO line{l.poInfo ? `: ${l.poInfo}` : ""}</div>}
                     </div>
                     <button type="button" onClick={() => remove(idx)} className="rounded p-1 text-ink-soft hover:bg-muted hover:text-red-600" aria-label={`Remove ${it.code}`}><Trash2 size={16} aria-hidden /></button>
                   </div>

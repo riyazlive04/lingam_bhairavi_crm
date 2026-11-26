@@ -4,7 +4,7 @@ import type { Role } from "./constants";
 export type Module =
   | "dashboard" | "quotations" | "followups" | "boq" | "orders" | "projects" | "expenses" | "purchases"
   | "items" | "vendors" | "customers" | "stock" | "refills" | "billing" | "agents" | "emails"
-  | "meetings" | "settings" | "users";
+  | "meetings" | "settings" | "users" | "purchaseOrders" | "returns" | "amc" | "reports";
 
 type Access = { read: Role[]; write: Role[] };
 const ALL: Role[] = ["admin", "sales", "purchase", "accounts", "engineer", "store"];
@@ -30,6 +30,11 @@ export const ACCESS: Record<Module, Access> = {
   meetings: { read: ["admin", "sales"], write: ["admin"] },
   settings: { read: ["admin"], write: ["admin"] },
   users: { read: ["admin"], write: ["admin"] },
+  purchaseOrders: { read: ["admin", "purchase", "accounts", "store", "sales"], write: ["admin", "purchase"] },
+  // customer returns / credit notes and vendor returns / debit notes
+  returns: { read: ["admin", "sales", "accounts", "store", "purchase"], write: ["admin", "sales", "accounts", "store", "purchase"] },
+  amc: { read: ["admin", "sales", "engineer", "accounts"], write: ["admin", "sales", "engineer"] },
+  reports: { read: ["admin", "accounts"], write: ["admin"] },
 };
 
 export const canRead = (role: Role | undefined, m: Module) => !!role && ACCESS[m].read.includes(role);
@@ -45,6 +50,8 @@ export const ROUTE_MODULES: [string, Module][] = [
   ["/vendors", "vendors"], ["/customers", "customers"], ["/stock", "stock"], ["/refills", "refills"],
   ["/billing", "billing"], ["/agents", "agents"], ["/alerts", "agents"], ["/emails", "emails"],
   ["/meeting-notes", "meetings"], ["/settings", "settings"],
+  ["/purchase-orders", "purchaseOrders"], ["/returns", "returns"], ["/amc", "amc"], ["/service-calls", "amc"], ["/reports", "reports"],
+  ["/boq-import", "quotations"],
 ];
 export function moduleForPath(path: string): Module | null {
   for (const [p, m] of ROUTE_MODULES) if (path === p || path.startsWith(p + "/")) return m;

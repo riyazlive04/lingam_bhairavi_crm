@@ -6,7 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
 import { PAYMENT_MODES } from "@/lib/constants";
 import { fmtDate, money, round2, todayIST } from "@/lib/format";
-import { openPurchaseInvoices } from "@/lib/billing";
+import { openPurchaseInvoices, receiptNumber } from "@/lib/billing";
 import { Badge, Button, Card, EmptyState, Field, Flash, Input, LinkButton, PageHeader, Select, Table, Td, Th } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { recordVendorPayment } from "../actions";
@@ -50,7 +50,8 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <PageHeader title="Payments" subtitle="Receipts from customers and payments to vendors" />
+      <PageHeader title="Payments" subtitle="Receipts from customers and payments to vendors"
+        actions={write && <LinkButton href="/billing/advances" variant="secondary">Record advance</LinkButton>} />
       <BillingNav active="/billing/payments" />
       <Flash ok={sp.ok} err={sp.err} />
 
@@ -72,7 +73,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
               <div className="sm:col-span-2 lg:col-span-6"><SubmitButton variant="success" pendingText="Saving…">Record vendor payment</SubmitButton></div>
             </form>
           )}
-          <p className="mt-2 text-xs text-ink-soft">Customer receipts are recorded on the invoice page (Invoices → open invoice → Record payment).</p>
+          <p className="mt-2 text-xs text-ink-soft">Customer receipts are recorded on the invoice page (Invoices → open invoice → Record payment). Money received before invoicing goes under Advances.</p>
         </Card>
       )}
 
@@ -106,14 +107,14 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
             {rows.map(({ p, customerName, vendorName, siNumber, piNumber }) => (
               <tr key={p.id}>
                 <Td className="whitespace-nowrap">{fmtDate(p.date)}</Td>
-                <Td>{p.direction === "in" ? <Badge tone="green">Received</Badge> : <Badge tone="blue">Paid</Badge>}</Td>
+                <Td>{p.direction === "in" ? (p.isAdvance ? <Badge tone="violet">Advance</Badge> : <Badge tone="green">Received</Badge>) : <Badge tone="blue">Paid</Badge>}</Td>
                 <Td className="max-w-56 truncate">
                   {p.direction === "in" && p.customerId ? <Link href={`/billing/receivables/${p.customerId}`} className="hover:underline">{customerName ?? "-"}</Link>
                     : p.vendorId ? <Link href={`/billing/payables?vendor=${p.vendorId}`} className="hover:underline">{vendorName ?? "-"}</Link> : "-"}
                 </Td>
-                <Td>{p.salesInvoiceId ? <Link href={`/billing/invoices/${p.salesInvoiceId}`} className="text-brand-700 hover:underline dark:text-brand-300">{siNumber}</Link> : piNumber ?? "-"}</Td>
+                <Td>{p.salesInvoiceId ? <Link href={`/billing/invoices/${p.salesInvoiceId}`} className="text-brand-700 hover:underline dark:text-brand-300">{siNumber}</Link> : piNumber ?? (p.isAdvance ? (p.allocatedAmount ? `${money(p.allocatedAmount)} applied` : "Not applied yet") : "-")}</Td>
                 <Td className="uppercase">{p.mode}</Td>
-                <Td>{p.reference || "-"}</Td>
+                <Td>{p.direction === "in" ? <Link href={`/billing/receipts/${p.id}`} className="text-brand-700 hover:underline dark:text-brand-300">{p.reference || receiptNumber(p)}</Link> : p.reference || "-"}</Td>
                 <Td className={`text-right tabular-nums ${p.direction === "in" ? "text-emerald-700 dark:text-emerald-400" : ""}`}>{money(p.amount)}</Td>
               </tr>
             ))}

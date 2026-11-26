@@ -17,6 +17,7 @@ import { KICKOFF_TRANSCRIPT } from "./seed-data/meeting-transcript";
 import {
   AGENT_RULES, COMPANY_SETTINGS, DEMO_CUSTOMERS, DEMO_VENDORS, KICKOFF_NOTE, PRICING_SETTINGS,
 } from "./seed-data/demo";
+import { seedV2Demo } from "./seed-v2";
 
 // ------------------------------------------------------------------ helpers
 function mulberry32(seed: number) {
@@ -856,4 +857,11 @@ export async function seed(db: DB): Promise<void> {
   for (const k of ["quotation", "sales_order", "sales_invoice", "delivery"]) if (!seq.has(`${k}:${curFy}`)) seq.set(`${k}:${curFy}`, 0);
   if (!seq.has(`project:${T0.getFullYear()}`)) seq.set(`project:${T0.getFullYear()}`, 0);
   await db.insert(s.sequences).values([...seq.entries()].map(([key, value]) => ({ key, value })));
+
+  // ---------------------------------------------------------------- version 2 demo data (POs, cost dates, returns, advances, AMC)
+  await seedV2Demo(db);
+  await db.insert(s.settings).values([
+    { key: "migrations.v2_backfill_done", value: true },
+    { key: "migrations.v2_demo_seeded", value: true },
+  ]).onConflictDoNothing();
 }

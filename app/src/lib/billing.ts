@@ -4,11 +4,17 @@
  *
  * `buildReminderEmail` is a pure function; the Automation Agents team imports it for automatic dunning,
  * so its signature must stay stable.
+ *
+ * Version 2 (rules 13 to 15): customer net due = invoices outstanding − unadjusted credit notes − unallocated advances;
+ * vendor net due = bills outstanding − unadjusted debit notes. `outstanding` on PartyOutstanding stays the invoice
+ * figure (it is what the ageing buckets add up to); the new fields carry the credits and the net.
  */
-import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, ne, sql } from "drizzle-orm";
 import type { DB } from "@/db";
-import { customers, payments, purchaseInvoices, salesInvoices, settings, vendors } from "@/db/schema";
-import { addDays, daysBetween, fmtDate, money, round2, todayIST } from "./format";
+import { customers, paymentAllocations, payments, purchaseInvoices, salesInvoices, salesOrders, salesReturns, settings, vendors } from "@/db/schema";
+import { addDays, daysBetween, financialYear, fmtDate, money, round2, todayIST } from "./format";
+import { openCreditNotes, openDebitNotes } from "./returns";
+import type { Tx } from "./orders";
 
 type DbLike = Pick<DB, "select">;
 
@@ -62,7 +68,22 @@ export type PartyOutstanding = {
   maxDaysOverdue: number;
   oldestDueDate: string | null;
   autoReminders?: boolean;
+  /** same as `outstanding`: sum of open invoice (total − paid) */
+  invoicesDue: number;
+  /** customers: posted credit notes not yet adjusted against an invoice */
+  creditNotes: number;
+  /** vendors: posted debit notes not yet adjusted against a bill */
+  debitNotes: number;
+  /** customers: advances received and not yet applied to an invoice */
+  advances: number;
+  /** invoicesDue − creditNotes − debitNotes − advances (negative = the party is in credit) */
+  netDue: number;
 };
+
+/** Net due of a party. Customers: invoices − credit notes − advances. Vendors: bills − debit notes. */
+export function netDueOf(invoicesDue: number, credits = 0, advances = 0): number {
+  return round2(Number(invoicesDue) - Number(credits) - Number(advances));
+}
 
 export type OpenDoc = {
   id: number;
@@ -90,7 +111,7 @@ function aggregate(docs: OpenDoc[], parties: Map<number, { name: string; email: 
       p = {
         partyId: d.partyId, name: info?.name ?? d.partyName, email: info?.email ?? null, phone: info?.phone ?? null,
         invoiceCount: 0, outstanding: 0, overdue: 0, dueNext7: 0, ageing: emptyAgeing(), maxDaysOverdue: 0, oldestDueDate: null,
-        autoReminders: info?.autoReminders,
+        autoReminders: info?.autoReminders, invoicesDue: 0, creditNotes: 0, debitNotes: 0, advances: 0, netDue: 0,
       };
       by.set(d.partyId, p);
     }
@@ -103,7 +124,39 @@ function aggregate(docs: OpenDoc[], parties: Map<number, { name: string; email: 
     p.maxDaysOverdue = Math.max(p.maxDaysOverdue, d.daysOverdue);
     if (!p.oldestDueDate || d.dueDate < p.oldestDueDate) p.oldestDueDate = d.dueDate;
   }
+  for (const p of by.values()) { p.invoicesDue = p.outstanding; p.netDue = p.outstanding; }
   return [...by.values()].sort((a, b) => b.overdue - a.overdue || b.outstanding - a.outstanding);
+}
+
+type PartyInfo = { name: string; email: string | null; phone: string | null; autoReminders?: boolean };
+
+/**
+ * Folds credits (credit/debit notes, advances) into the party rows. Parties that only have credits get a row with
+ * no invoices so their credit balance is visible. Pure; exported for tests.
+ */
+export function applyCredits(
+  rows: PartyOutstanding[],
+  credits: { partyId: number; creditNotes?: number; debitNotes?: number; advances?: number }[],
+  parties: Map<number, PartyInfo>,
+): PartyOutstanding[] {
+  const by = new Map(rows.map((r) => [r.partyId, r]));
+  for (const c of credits) {
+    let p = by.get(c.partyId);
+    if (!p) {
+      const info = parties.get(c.partyId);
+      p = {
+        partyId: c.partyId, name: info?.name ?? "-", email: info?.email ?? null, phone: info?.phone ?? null, invoiceCount: 0, outstanding: 0,
+        overdue: 0, dueNext7: 0, ageing: emptyAgeing(), maxDaysOverdue: 0, oldestDueDate: null, autoReminders: info?.autoReminders,
+        invoicesDue: 0, creditNotes: 0, debitNotes: 0, advances: 0, netDue: 0,
+      };
+      by.set(c.partyId, p);
+    }
+    p.creditNotes = round2(p.creditNotes + Number(c.creditNotes ?? 0));
+    p.debitNotes = round2(p.debitNotes + Number(c.debitNotes ?? 0));
+    p.advances = round2(p.advances + Number(c.advances ?? 0));
+  }
+  for (const p of by.values()) p.netDue = netDueOf(p.invoicesDue, p.creditNotes + p.debitNotes, p.advances);
+  return [...by.values()].sort((a, b) => b.overdue - a.overdue || b.outstanding - a.outstanding || b.netDue - a.netDue);
 }
 
 /** Open (unpaid / part-paid) sales invoices with outstanding, oldest due first. */
@@ -160,31 +213,77 @@ export async function openPurchaseInvoices(db: DbLike, opts: { vendorId?: number
     .sort((a, b) => (a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0));
 }
 
-/** Per-customer receivables with ageing (by days past due), most overdue first. */
+// ---------------------------------------------------------------- advances (rule 15)
+
+export type AdvanceRow = {
+  id: number; customerId: number; customerName: string; date: string; amount: number; allocatedAmount: number; balance: number;
+  mode: string; reference: string | null; orderId: number | null; orderNumber: string | null; projectId: number | null; notes: string | null;
+};
+
+/** Customer advances (payments in, isAdvance). `openOnly` keeps those with an unallocated balance. */
+export async function customerAdvances(db: DbLike, opts: { customerId?: number; orderId?: number; projectId?: number; openOnly?: boolean } = {}): Promise<AdvanceRow[]> {
+  const rows = await db
+    .select({
+      id: payments.id, customerId: payments.customerId, customerName: customers.name, date: payments.date, amount: payments.amount,
+      allocatedAmount: payments.allocatedAmount, mode: payments.mode, reference: payments.reference, orderId: payments.orderId,
+      orderNumber: salesOrders.number, projectId: payments.projectId, notes: payments.notes,
+    })
+    .from(payments)
+    .leftJoin(customers, eq(customers.id, payments.customerId))
+    .leftJoin(salesOrders, eq(salesOrders.id, payments.orderId))
+    .where(and(
+      eq(payments.direction, "in"), eq(payments.isAdvance, true),
+      opts.customerId ? eq(payments.customerId, opts.customerId) : undefined,
+      opts.orderId ? eq(payments.orderId, opts.orderId) : undefined,
+      opts.projectId ? eq(payments.projectId, opts.projectId) : undefined,
+      opts.openOnly ? gt(sql`${payments.amount} - ${payments.allocatedAmount}`, 0.005) : undefined,
+    ))
+    .orderBy(asc(payments.date), asc(payments.id));
+  return rows.map((r) => {
+    const amount = Number(r.amount), allocatedAmount = Number(r.allocatedAmount);
+    return { ...r, customerId: Number(r.customerId), customerName: r.customerName ?? "-", amount, allocatedAmount, balance: Math.max(0, round2(amount - allocatedAmount)) };
+  });
+}
+
+/** Receipt number for a payment in, computed from its id and date (no stored sequence): LBE/RCPT/2026-27/0042. */
+export function receiptNumber(p: { id: number; date: string }): string {
+  return `LBE/RCPT/${financialYear(p.date)}/${String(p.id).padStart(4, "0")}`;
+}
+
+/** Per-customer receivables with ageing (by days past due), most overdue first. Includes credit notes and advances. */
 export async function customerOutstanding(db: DbLike, today = todayIST()): Promise<PartyOutstanding[]> {
-  const docs = await openSalesInvoices(db, { today });
-  const ids = [...new Set(docs.map((d) => d.partyId))];
+  const [docs, cns, advs] = await Promise.all([openSalesInvoices(db, { today }), openCreditNotes(db), customerAdvances(db, { openOnly: true })]);
+  const ids = [...new Set([...docs.map((d) => d.partyId), ...cns.map((c) => c.customerId), ...advs.map((a) => a.customerId)])];
   const info = ids.length
     ? await db.select({ id: customers.id, name: customers.name, email: customers.email, phone: customers.phone, autoReminders: customers.autoReminders })
       .from(customers).where(inArray(customers.id, ids))
     : [];
-  return aggregate(docs, new Map(info.map((c) => [c.id, c])), today);
+  const parties = new Map(info.map((c) => [c.id, c]));
+  return applyCredits(aggregate(docs, parties, today), [
+    ...cns.map((c) => ({ partyId: c.customerId, creditNotes: c.balance })),
+    ...advs.map((a) => ({ partyId: a.customerId, advances: a.balance })),
+  ], parties);
 }
 
-/** Per-vendor payables with ageing (by days past due), most overdue first. */
+/** Per-vendor payables with ageing (by days past due), most overdue first. Includes unadjusted debit notes. */
 export async function vendorOutstanding(db: DbLike, today = todayIST()): Promise<PartyOutstanding[]> {
-  const docs = await openPurchaseInvoices(db, { today });
-  const ids = [...new Set(docs.map((d) => d.partyId))];
+  const [docs, dns] = await Promise.all([openPurchaseInvoices(db, { today }), openDebitNotes(db)]);
+  const ids = [...new Set([...docs.map((d) => d.partyId), ...dns.map((d) => d.vendorId)])];
   const info = ids.length
     ? await db.select({ id: vendors.id, name: vendors.name, email: vendors.email, phone: vendors.phone }).from(vendors).where(inArray(vendors.id, ids))
     : [];
-  return aggregate(docs, new Map(info.map((v) => [v.id, v])), today);
+  const parties = new Map(info.map((v) => [v.id, v]));
+  return applyCredits(aggregate(docs, parties, today), dns.map((d) => ({ partyId: d.vendorId, debitNotes: d.balance })), parties);
 }
 
-export function sumAgeing(rows: PartyOutstanding[]): Ageing & { outstanding: number; overdue: number; dueNext7: number } {
-  const t = { ...emptyAgeing(), outstanding: 0, overdue: 0, dueNext7: 0 };
+export function sumAgeing(rows: PartyOutstanding[]): Ageing & {
+  outstanding: number; overdue: number; dueNext7: number; invoicesDue: number; creditNotes: number; debitNotes: number; advances: number; netDue: number;
+} {
+  const t = { ...emptyAgeing(), outstanding: 0, overdue: 0, dueNext7: 0, invoicesDue: 0, creditNotes: 0, debitNotes: 0, advances: 0, netDue: 0 };
   for (const r of rows) {
     t.outstanding += r.outstanding; t.overdue += r.overdue; t.dueNext7 += r.dueNext7;
+    t.invoicesDue += r.invoicesDue ?? r.outstanding; t.creditNotes += r.creditNotes ?? 0; t.debitNotes += r.debitNotes ?? 0;
+    t.advances += r.advances ?? 0; t.netDue += r.netDue ?? r.outstanding;
     for (const [k] of AGEING_LABELS) t[k] += r.ageing[k];
   }
   for (const k of Object.keys(t) as (keyof typeof t)[]) t[k] = round2(t[k]);
@@ -195,7 +294,8 @@ export function sumAgeing(rows: PartyOutstanding[]): Ageing & { outstanding: num
 
 export type LedgerEntry = {
   date: string;
-  kind: "invoice" | "payment";
+  /** credit_note and advance were added in version 2; both are credits */
+  kind: "invoice" | "payment" | "advance" | "credit_note";
   ref: string;
   refId: number;
   description: string;
@@ -204,26 +304,45 @@ export type LedgerEntry = {
   balance: number;
 };
 
-/** Customer statement: issued invoices (debit) and receipts (credit) with running balance. */
+/** Customer statement: issued invoices (debit); receipts, advances and posted credit notes (credit) with running balance. */
 export async function customerLedger(db: DbLike, customerId: number, opts: { from?: string; to?: string } = {}) {
   const inv = await db
     .select({ id: salesInvoices.id, number: salesInvoices.number, date: salesInvoices.invoiceDate, dueDate: salesInvoices.dueDate, total: salesInvoices.total })
     .from(salesInvoices)
     .where(and(eq(salesInvoices.customerId, customerId), ne(salesInvoices.status, "cancelled"), ne(salesInvoices.status, "draft")));
   const pay = await db
-    .select({ id: payments.id, date: payments.date, amount: payments.amount, mode: payments.mode, reference: payments.reference, invNo: salesInvoices.number })
+    .select({
+      id: payments.id, date: payments.date, amount: payments.amount, mode: payments.mode, reference: payments.reference, invNo: salesInvoices.number,
+      isAdvance: payments.isAdvance, orderNo: salesOrders.number,
+    })
     .from(payments)
     .leftJoin(salesInvoices, eq(salesInvoices.id, payments.salesInvoiceId))
+    .leftJoin(salesOrders, eq(salesOrders.id, payments.orderId))
     .where(and(eq(payments.direction, "in"), eq(payments.customerId, customerId)));
+  const cns = await db
+    .select({ id: salesReturns.id, number: salesReturns.number, date: salesReturns.date, total: salesReturns.total, invNo: salesInvoices.number })
+    .from(salesReturns)
+    .leftJoin(salesInvoices, eq(salesInvoices.id, salesReturns.salesInvoiceId))
+    .where(and(eq(salesReturns.customerId, customerId), eq(salesReturns.status, "posted")));
+  const rank: Record<LedgerEntry["kind"], number> = { invoice: 0, payment: 1, advance: 1, credit_note: 2 };
 
   type Raw = Omit<LedgerEntry, "balance">;
   const raw: Raw[] = [
     ...inv.map((i): Raw => ({ date: i.date, kind: "invoice", ref: i.number, refId: i.id, description: `Invoice (due ${fmtDate(i.dueDate)})`, debit: Number(i.total), credit: 0 })),
-    ...pay.map((p): Raw => ({
-      date: p.date, kind: "payment", ref: p.reference || `RCPT-${p.id}`, refId: p.id,
-      description: `Payment received (${p.mode})${p.invNo ? ` against ${p.invNo}` : ""}`, debit: 0, credit: Number(p.amount),
+    ...pay.map((p): Raw => (p.isAdvance
+      ? {
+        date: p.date, kind: "advance", ref: p.reference || receiptNumber(p), refId: p.id,
+        description: `Advance received (${p.mode})${p.orderNo ? ` against order ${p.orderNo}` : ""}`, debit: 0, credit: Number(p.amount),
+      }
+      : {
+        date: p.date, kind: "payment", ref: p.reference || `RCPT-${p.id}`, refId: p.id,
+        description: `Payment received (${p.mode})${p.invNo ? ` against ${p.invNo}` : ""}`, debit: 0, credit: Number(p.amount),
+      })),
+    ...cns.map((c): Raw => ({
+      date: c.date, kind: "credit_note", ref: c.number, refId: c.id,
+      description: `Credit note (goods returned)${c.invNo ? ` against ${c.invNo}` : ""}`, debit: 0, credit: Number(c.total),
     })),
-  ].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.kind === b.kind ? a.refId - b.refId : a.kind === "invoice" ? -1 : 1));
+  ].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : rank[a.kind] !== rank[b.kind] ? rank[a.kind] - rank[b.kind] : a.refId - b.refId));
 
   let opening = 0;
   const visible: Raw[] = [];
@@ -448,4 +567,80 @@ export async function paymentTotals(db: DbLike, from: string, to: string) {
     .groupBy(payments.direction);
   const get = (d: string) => rows.find((r) => r.direction === d) ?? { total: 0, n: 0 };
   return { in: { total: round2(get("in").total), count: get("in").n }, out: { total: round2(get("out").total), count: get("out").n } };
+}
+
+// ---------------------------------------------------------------- apply advance (rule 15)
+
+/** Thrown for problems the user can fix (message is safe to show). */
+export class BillingError extends Error {}
+
+/**
+ * Applies part of an advance to an invoice of the same customer: inserts payment_allocations, raises
+ * payments.allocatedAmount and sales_invoices.paidAmount. Never above the invoice outstanding or the unallocated advance.
+ * Call inside db.transaction.
+ */
+export async function applyAdvanceToInvoice(
+  tx: Tx, input: { paymentId: number; invoiceId: number; amount: number; date: string; userId: number | null },
+) {
+  const amt = round2(input.amount);
+  if (!(amt > 0)) throw new BillingError("Amount must be greater than 0");
+  const [p] = await tx.select().from(payments).where(eq(payments.id, input.paymentId)).for("update");
+  if (!p || p.direction !== "in" || !p.isAdvance) throw new BillingError("Advance not found");
+  const [inv] = await tx.select().from(salesInvoices).where(eq(salesInvoices.id, input.invoiceId)).for("update");
+  if (!inv) throw new BillingError("Invoice not found");
+  if (inv.customerId !== p.customerId) throw new BillingError("That advance was received from a different customer");
+  if (!(OPEN_INVOICE_STATUSES as readonly string[]).includes(inv.status)) throw new BillingError(`Invoice ${inv.number} is ${inv.status.replace("_", " ")}`);
+  const advBal = Math.max(0, round2(Number(p.amount) - Number(p.allocatedAmount)));
+  const due = outstandingOf(inv.total, inv.paidAmount);
+  const max = round2(Math.min(advBal, due));
+  if (max <= 0) throw new BillingError(advBal <= 0 ? "This advance is fully used" : "Nothing is outstanding on this invoice");
+  if (amt > max + 0.005) throw new BillingError(`You can apply at most ${max.toFixed(2)} (advance balance ${advBal.toFixed(2)}, invoice outstanding ${due.toFixed(2)})`);
+  const [a] = await tx.insert(paymentAllocations).values({
+    paymentId: p.id, salesInvoiceId: inv.id, amount: amt, date: input.date, createdBy: input.userId,
+  }).returning({ id: paymentAllocations.id });
+  await tx.update(payments).set({ allocatedAmount: round2(Number(p.allocatedAmount) + amt) }).where(eq(payments.id, p.id));
+  const paid = round2(Number(inv.paidAmount) + amt);
+  const status = invoiceStatusFor(Number(inv.total), paid, inv.status);
+  await tx.update(salesInvoices).set({ paidAmount: paid, status }).where(eq(salesInvoices.id, inv.id));
+  return { allocationId: a.id, invoiceNumber: inv.number, status, amount: amt };
+}
+
+// ---------------------------------------------------------------- project cash position
+
+export type ProjectCash = {
+  invoiced: number;
+  /** direct receipts against the project's invoices + advances for the project + other advances applied to its invoices */
+  received: number;
+  advances: number;
+  /** posted credit notes for the project */
+  creditNotes: number;
+  /** invoiced − received − credit notes */
+  netDue: number;
+  invoiceCount: number;
+};
+
+/** Cash position of a project: invoiced, received (including advances), credit notes and net due. */
+export async function projectCash(db: DbLike, projectId: number): Promise<ProjectCash> {
+  const invs = await db.select({ id: salesInvoices.id, total: salesInvoices.total }).from(salesInvoices)
+    .where(and(eq(salesInvoices.projectId, projectId), ne(salesInvoices.status, "cancelled"), ne(salesInvoices.status, "draft")));
+  const invIds = invs.map((i) => i.id);
+  const invoiced = round2(invs.reduce((s, i) => s + Number(i.total), 0));
+  const [direct] = invIds.length
+    ? await db.select({ v: sql<number>`coalesce(sum(${payments.amount}),0)`.mapWith(Number) }).from(payments)
+      .where(and(eq(payments.direction, "in"), eq(payments.isAdvance, false), inArray(payments.salesInvoiceId, invIds)))
+    : [{ v: 0 }];
+  const [adv] = await db.select({ v: sql<number>`coalesce(sum(${payments.amount}),0)`.mapWith(Number) }).from(payments)
+    .where(and(eq(payments.direction, "in"), eq(payments.isAdvance, true), eq(payments.projectId, projectId)));
+  // advances recorded without this project but applied to its invoices
+  const [foreign] = invIds.length
+    ? await db.select({ v: sql<number>`coalesce(sum(${paymentAllocations.amount}),0)`.mapWith(Number) }).from(paymentAllocations)
+      .innerJoin(payments, eq(payments.id, paymentAllocations.paymentId))
+      .where(and(inArray(paymentAllocations.salesInvoiceId, invIds), sql`${payments.projectId} is distinct from ${projectId}`))
+    : [{ v: 0 }];
+  const [cn] = await db.select({ v: sql<number>`coalesce(sum(${salesReturns.total}),0)`.mapWith(Number) }).from(salesReturns)
+    .where(and(eq(salesReturns.projectId, projectId), eq(salesReturns.status, "posted")));
+  const advances = round2(Number(adv?.v ?? 0));
+  const received = round2(Number(direct?.v ?? 0) + advances + Number(foreign?.v ?? 0));
+  const creditNotes = round2(Number(cn?.v ?? 0));
+  return { invoiced, received, advances, creditNotes, netDue: round2(invoiced - received - creditNotes), invoiceCount: invs.length };
 }

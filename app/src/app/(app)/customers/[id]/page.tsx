@@ -8,6 +8,8 @@ import { requireUser } from "@/lib/auth";
 import { canRead, canWrite } from "@/lib/rbac";
 import { fmtDate, money, qty, round2, todayIST } from "@/lib/format";
 import { Badge, Card, DL, EmptyState, Flash, LinkButton, PageHeader, Stat, StatusBadge, Table, Td, Th, cx } from "@/components/ui";
+import { customerAdvances, netDueOf } from "@/lib/billing";
+import { openCreditNotes } from "@/lib/returns";
 import { CUSTOMER_TYPES } from "../_components/customer-form";
 import { LinkTabs } from "../../items/_components/tabs";
 
@@ -28,7 +30,7 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
   const today = todayIST();
   const r = user.role;
 
-  const [quotes, orders, invoices, assets, projs, qPrices, sPrices] = await Promise.all([
+  const [quotes, orders, invoices, assets, projs, qPrices, sPrices, cns, advs] = await Promise.all([
     db.select().from(quotations).where(eq(quotations.customerId, customerId)).orderBy(desc(quotations.quoteDate), desc(quotations.id)),
     db.select().from(salesOrders).where(eq(salesOrders.customerId, customerId)).orderBy(desc(salesOrders.orderDate), desc(salesOrders.id)),
     db.select().from(salesInvoices).where(eq(salesInvoices.customerId, customerId)).orderBy(desc(salesInvoices.invoiceDate), desc(salesInvoices.id)),
@@ -40,11 +42,18 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
     db.select({ itemId: priceHistory.itemId, rate: priceHistory.rate, date: priceHistory.date, refId: priceHistory.refId, refType: priceHistory.refType, code: items.code, name: items.name, uom: items.uom })
       .from(priceHistory).innerJoin(items, eq(items.id, priceHistory.itemId))
       .where(and(eq(priceHistory.customerId, customerId), inArray(priceHistory.kind, ["sale"]))).orderBy(desc(priceHistory.date), desc(priceHistory.id)),
+    openCreditNotes(db, { customerId }),
+    customerAdvances(db, { customerId, openOnly: true }),
   ]);
 
   const openInv = invoices.filter((i) => OPEN_SI.includes(i.status));
   const outstanding = round2(openInv.reduce((s, i) => s + Math.max(0, i.total - i.paidAmount), 0));
   const overdue = round2(openInv.filter((i) => i.dueDate < today).reduce((s, i) => s + Math.max(0, i.total - i.paidAmount), 0));
+  // same as Billing > Receivables (rules 13, 15): invoices due − unadjusted credit notes − unapplied advances
+  const credits = round2(cns.reduce((s, n) => s + n.balance, 0));
+  const advanceBal = round2(advs.reduce((s, a) => s + a.balance, 0));
+  const netDue = netDueOf(outstanding, credits, advanceBal);
+  const lessText = [credits > 0.005 && `${money(credits)} credit notes`, advanceBal > 0.005 && `${money(advanceBal)} advances`].filter(Boolean).join(" and ");
   const activeAssets = assets.filter((a) => a.status === "active");
   const assetQty = activeAssets.reduce((s, a) => s + a.qty, 0);
   const nextDue = activeAssets.map((a) => a.nextDueDate).sort()[0] ?? null;
@@ -118,8 +127,8 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
       />
       <Flash ok={sp.ok} err={sp.err} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Outstanding" value={money(outstanding)} tone={overdue > 0 ? "bad" : outstanding > 0 ? "warn" : "default"}
-          hint={overdue > 0 ? `${money(overdue)} overdue` : c.creditLimit > 0 ? `Credit limit ${money(c.creditLimit)}` : `${c.paymentTermsDays}-day terms`} />
+        <Stat label="Net due" value={money(netDue)} tone={overdue > 0 ? "bad" : netDue > 0.5 ? "warn" : "default"}
+          hint={`Invoices due ${money(outstanding)}${lessText ? `, less ${lessText}` : ""}${overdue > 0 ? ` · ${money(overdue)} overdue` : ""}`} />
         <Stat label="Quotations" value={quotes.length} hint={`${openQuotes.length} open · ${won.length} won (${money(won.reduce((s, q) => s + q.grandTotal, 0))})`} />
         <Stat label="Extinguishers" value={qty(assetQty)} tone={dueSoon > 0 ? "warn" : "default"} hint={nextDue ? `Next refill due ${fmtDate(nextDue)}${dueSoon ? ` · ${dueSoon} due now` : ""}` : "No assets tracked"} />
         <Stat label="Projects" value={projs.length} hint={`${projs.filter((p) => p.status === "active").length} active`} />
@@ -171,7 +180,7 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
       ))}
       {tab === "invoices" && (
         <div className="space-y-3">
-          <p className="text-sm text-ink-soft">Outstanding {money(outstanding)}{overdue > 0 && <> · <span className="font-medium text-red-600">{money(overdue)} overdue</span></>}</p>
+          <p className="text-sm text-ink-soft">Invoices due {money(outstanding)}{lessText && <> · less {lessText}</>} · <span className="font-medium text-ink">Net due {money(netDue)}</span>{overdue > 0 && <> · <span className="font-medium text-red-600">{money(overdue)} overdue</span></>}</p>
           {invoicesTable(invoices)}
         </div>
       )}

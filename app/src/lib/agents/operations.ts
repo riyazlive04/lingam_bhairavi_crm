@@ -6,6 +6,7 @@ import {
   salesOrderLines, salesOrders, stockAllocations, stockMovements,
 } from "@/db/schema";
 import { addDays, daysBetween, fmtDate, qty } from "@/lib/format";
+import { netDeliveredQty, pendingQtyOf } from "@/lib/orders";
 import { defineAgent, numericParams } from "./define";
 import { describeDue, groupBy, listPreview, plural, shortHash, truncate } from "./rules";
 import type { AlertDraft, Severity } from "./types";
@@ -20,7 +21,8 @@ const pdMeta = {
 export const PENDING_LINE_WHERE = and(
   inArray(salesOrders.status, ["open", "partial"]),
   notInArray(salesOrderLines.deliveryStatus, ["delivered", "cancelled"]),
-  sql`${salesOrderLines.qty} - ${salesOrderLines.deliveredQty} > 0.0001`,
+  // rule 13: returned goods are owed again, so compare against net delivered (delivered − returned)
+  sql`${salesOrderLines.qty} - (${salesOrderLines.deliveredQty} - ${salesOrderLines.returnedQty}) > 0.0001`,
 );
 
 export const pendingDeliveryAgent = defineAgent({
@@ -36,7 +38,7 @@ export const pendingDeliveryAgent = defineAgent({
     const rows = await db
       .select({
         lineId: salesOrderLines.id, description: salesOrderLines.description, qty: salesOrderLines.qty,
-        deliveredQty: salesOrderLines.deliveredQty, uom: salesOrderLines.uom, lineExpected: salesOrderLines.expectedDate,
+        deliveredQty: salesOrderLines.deliveredQty, returnedQty: salesOrderLines.returnedQty, uom: salesOrderLines.uom, lineExpected: salesOrderLines.expectedDate,
         lineStatus: salesOrderLines.deliveryStatus,
         orderId: salesOrders.id, orderNumber: salesOrders.number, poNumber: salesOrders.customerPoNumber,
         orderDate: salesOrders.orderDate, orderExpected: salesOrders.expectedDelivery, createdBy: salesOrders.createdBy,
@@ -52,9 +54,9 @@ export const pendingDeliveryAgent = defineAgent({
     const upcomingCutoff = addDays(today, params.upcomingDays);
     for (const r of rows) {
       const expected = r.lineExpected ?? r.orderExpected;
-      const pending = Number(r.qty) - Number(r.deliveredQty);
+      const pending = pendingQtyOf(r);
       const po = r.poNumber ? `PO ${r.poNumber}` : r.orderNumber;
-      const what = `${truncate(r.description, 60)}: ${qty(pending)}${Number(r.deliveredQty) > 0 ? ` of ${qty(r.qty)}` : ""} ${r.uom} pending`;
+      const what = `${truncate(r.description, 60)}: ${qty(pending)}${netDeliveredQty(r.deliveredQty, r.returnedQty) > 0 || Number(r.returnedQty) > 0 ? ` of ${qty(r.qty)}` : ""} ${r.uom} pending`;
       let severity: Severity, when: string;
       if (expected && expected < today) {
         severity = expected < graceCutoff ? "critical" : "warning";

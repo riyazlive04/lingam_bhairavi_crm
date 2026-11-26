@@ -10,6 +10,7 @@ import type { DB } from "@/db";
 import { items, payments, priceHistory, purchaseInvoiceLines, purchaseInvoices, stockMovements, vendorItems } from "@/db/schema";
 import { round2 } from "./format";
 import type { Executor } from "./items";
+import { applyPoReceipts, type PoReceiptResult } from "./purchase-orders";
 
 /** Price change threshold (%) reported after posting. */
 export const PRICE_JUMP_PCT = 5;
@@ -34,7 +35,11 @@ export function computePurchaseTotals(lines: { qty: number; rate: number; gstRat
 }
 
 export type PriceChange = { itemId: number; oldRate: number; newRate: number; changePct: number };
-export type PostResult = { invoiceId: number; lines: number; itemsUpdated: number; priceChanges: PriceChange[] };
+export type PostResult = {
+  invoiceId: number; lines: number; itemsUpdated: number; priceChanges: PriceChange[];
+  /** vendor POs whose received qty was updated by this invoice (rule 16) */
+  purchaseOrders: PoReceiptResult[];
+};
 
 export class PurchaseError extends Error {}
 
@@ -44,6 +49,7 @@ export class PurchaseError extends Error {}
  *  - vendor_items upsert (lastRate/lastDate only move forward in time)
  *  - stock_movements purchase_in (+qty); if invoice.projectId also issue_project (−qty) to that project
  *  - items.lastPurchaseRate/Date/VendorId when invoice date ≥ item's current lastPurchaseDate
+ *  - rule 16: lines with poLineId add their qty to purchase_order_lines.receivedQty and the PO becomes partial / received
  * Throws PurchaseError when the invoice is missing, not a draft, or has no lines.
  */
 export async function postPurchaseInvoice(db: DB, invoiceId: number, userId: number | null): Promise<PostResult> {
@@ -115,13 +121,17 @@ export async function postPurchaseInvoice(db: DB, invoiceId: number, userId: num
         }
       }
     }
-    return { invoiceId, lines: lines.length, itemsUpdated, priceChanges };
+    const purchaseOrders = await applyPoReceipts(tx, lines);
+    return { invoiceId, lines: lines.length, itemsUpdated, priceChanges, purchaseOrders };
   });
 }
 
 /** Human summary for the flash after posting. */
-export function postSummary(r: PostResult) {
-  return `Invoice posted. Updated latest price for ${r.itemsUpdated} item${r.itemsUpdated === 1 ? "" : "s"} (${r.priceChanges.length} price change${r.priceChanges.length === 1 ? "" : "s"} ≥${PRICE_JUMP_PCT}%).`;
+export function postSummary(r: Pick<PostResult, "itemsUpdated" | "priceChanges"> & { purchaseOrders?: PoReceiptResult[] }) {
+  const po = r.purchaseOrders?.length
+    ? ` Received against ${r.purchaseOrders.length === 1 ? "the purchase order" : `${r.purchaseOrders.length} purchase orders`}${r.purchaseOrders.every((p) => p.status === "received") ? ", now fully received" : ""}.`
+    : "";
+  return `Invoice posted. Updated latest price for ${r.itemsUpdated} item${r.itemsUpdated === 1 ? "" : "s"} (${r.priceChanges.length} price change${r.priceChanges.length === 1 ? "" : "s"} ≥${PRICE_JUMP_PCT}%).${po}`;
 }
 
 /** Outstanding of a purchase invoice. */

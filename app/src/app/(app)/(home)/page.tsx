@@ -2,11 +2,11 @@
 import Link from "next/link";
 import { and, desc, eq, gte, inArray, ne, notInArray, sql } from "drizzle-orm";
 import {
-  AlertTriangle, BarChart3, Bell, CalendarDays, CheckCircle2, Clock, FileText, FireExtinguisher, FolderKanban, Info, OctagonAlert,
-  PhoneCall, Plus, ShoppingCart, Tags, TrendingUp, Truck, Wallet, Warehouse,
+  AlertTriangle, BarChart3, Bell, CalendarDays, CheckCircle2, ClipboardCheck, Clock, FileText, FireExtinguisher, FolderKanban, Info, LineChart,
+  OctagonAlert, PhoneCall, Plus, ShoppingCart, Tags, TrendingUp, Truck, Wallet, Warehouse, Wrench,
 } from "lucide-react";
 import { getDb, type DB } from "@/db";
-import { agentRuns, alerts, customers, extinguisherAssets, projects, purchaseInvoices, quotations, salesInvoices, vendors } from "@/db/schema";
+import { agentRuns, alerts, amcContracts, amcVisits, customers, extinguisherAssets, projects, purchaseInvoices, quotations, salesInvoices, vendors } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canRead, canSeeCost, canWrite } from "@/lib/rbac";
 import { ROLES, type Role } from "@/lib/constants";
@@ -14,6 +14,8 @@ import { addDays, addMonths, daysBetween, fmtDate, money0, moneyShort, pct, qty,
 import { lastMonths, istDayStart, monthStart, describeDue } from "@/lib/agents/rules";
 import { pendingDeliveryCounts, pendingDeliveryLines, refillsDueByCustomer, topAlerts } from "@/lib/agents/queries";
 import { projectCosts } from "@/lib/agents/hygiene";
+import { monthlyPnl } from "@/lib/reports";
+import { pendingQtyOf } from "@/lib/orders";
 import { Card, CardLink, EmptyState, Stat, StatusBadge, Table, Td, Th, cx } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -86,6 +88,30 @@ async function projectKpis(db: DB) {
   return { active: rows.length, avgMargin: margins.length ? margins.reduce((s, m) => s + m, 0) / margins.length : null };
 }
 
+/** This month's business P&L so far (rule 18). */
+async function profitKpi(db: DB, today: string) {
+  const r = await monthlyPnl(db, { from: monthStart(today), to: today });
+  return r.total;
+}
+
+async function approvalKpi(db: DB) {
+  const [r] = await db.select({ c: sql<number>`count(*)`.mapWith(Number) }).from(quotations).where(eq(quotations.approvalStatus, "pending"));
+  return r?.c ?? 0;
+}
+
+/** Preventive AMC visits still scheduled up to 7 days ahead (overdue ones included) on live contracts. */
+async function amcKpi(db: DB, today: string) {
+  const [r] = await db
+    .select({
+      due: sql<number>`count(*)`.mapWith(Number),
+      overdue: sql<number>`count(*) filter (where ${amcVisits.scheduledDate} < ${today}::date)`.mapWith(Number),
+    })
+    .from(amcVisits)
+    .innerJoin(amcContracts, eq(amcContracts.id, amcVisits.contractId))
+    .where(and(eq(amcVisits.status, "scheduled"), eq(amcContracts.status, "active"), sql`${amcVisits.scheduledDate} <= ${addDays(today, 7)}::date`));
+  return r ?? { due: 0, overdue: 0 };
+}
+
 async function openAlertCount(db: DB, agent: string) {
   const [r] = await db.select({ c: sql<number>`count(*)`.mapWith(Number) }).from(alerts).where(and(eq(alerts.agent, agent), eq(alerts.status, "open")));
   return r?.c ?? 0;
@@ -121,10 +147,13 @@ export default async function Dashboard() {
     stale: ["admin", "purchase", "sales"].includes(role),
     lowStock: ["admin", "purchase", "store"].includes(role),
     chart: money && canRead(role, "quotations"),
+    profit: money && canRead(role, "reports"),
+    approval: role === "admin",
+    amc: ["admin", "sales", "engineer"].includes(role),
   };
   const none = Promise.resolve(null);
 
-  const [qk, pd, rk, pk, rf, pj, stale, low, saved, attention, lines, refills, recent, series] = await Promise.all([
+  const [qk, pd, rk, pk, rf, pj, stale, low, saved, attention, lines, refills, recent, series, profit, approvals, amc] = await Promise.all([
     show.quotes || show.followups ? quoteKpis(db, today) : none,
     show.deliveries ? pendingDeliveryCounts(db, today) : none,
     show.receivables ? receivableKpis(db, today) : none,
@@ -142,6 +171,9 @@ export default async function Dashboard() {
         .from(quotations).innerJoin(customers, eq(customers.id, quotations.customerId)).orderBy(desc(quotations.createdAt), desc(quotations.id)).limit(6)
       : Promise.resolve([]),
     show.chart ? monthlySeries(db, today) : Promise.resolve([]),
+    show.profit ? profitKpi(db, today) : none,
+    show.approval ? approvalKpi(db) : none,
+    show.amc ? amcKpi(db, today) : none,
   ]);
   const hoursSaved = n(saved[0]?.m) / 60;
   const firstName = user.name.split(" ")[0];
@@ -183,6 +215,19 @@ export default async function Dashboard() {
 
       <h2 className="sr-only">Key numbers</h2>
       <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+        {show.profit && profit && (
+          <Stat icon={LineChart} label="This month's profit" value={moneyShort(profit.netProfit)}
+            hint={`${moneyShort(profit.sales)} sales · gross ${moneyShort(profit.grossProfit)}${profit.sales ? ` (${pct(profit.grossMarginPct, 0)})` : ""}`}
+            tone={profit.netProfit < 0 ? "bad" : profit.sales ? "good" : "default"} href="/reports?tab=pnl" />
+        )}
+        {show.approval && approvals != null && (
+          <Stat icon={ClipboardCheck} label="Awaiting approval" value={qty(approvals)} hint={approvals ? "Quotes waiting for you before they can be sent" : "No quotes waiting"}
+            tone={approvals ? "warn" : "good"} href="/quotations?approval=pending" />
+        )}
+        {show.amc && amc && (
+          <Stat icon={Wrench} label="AMC visits due this week" value={qty(amc.due)} hint={amc.overdue ? `${amc.overdue} overdue` : "Next 7 days"}
+            tone={amc.overdue ? "bad" : amc.due ? "warn" : "good"} href="/amc" />
+        )}
         {show.quotes && qk && (
           <>
             <Stat icon={TrendingUp} label="Open pipeline" value={moneyShort(qk.pipeline)} hint={`${qk.pipelineCount} quotes sent or in negotiation`} href="/quotations?status=sent" />
@@ -258,7 +303,7 @@ export default async function Dashboard() {
                           <span className="block truncate text-xs text-ink-soft">{l.poNumber ? `PO ${l.poNumber}` : l.orderNumber} · {l.customer}</span>
                         </span>
                         <span className="shrink-0 text-right">
-                          <span className="block text-sm font-medium tabular-nums text-ink">{qty(n(l.qty) - n(l.deliveredQty))} {l.uom}</span>
+                          <span className="block text-sm font-medium tabular-nums text-ink">{qty(pendingQtyOf(l))} {l.uom}</span>
                           <span className={cx("block text-xs", late != null && late > 0 ? "font-medium text-red-700 dark:text-red-400" : "text-ink-soft")}>
                             {l.expected ? describeDue(l.expected, today) : "no date set"}
                           </span>

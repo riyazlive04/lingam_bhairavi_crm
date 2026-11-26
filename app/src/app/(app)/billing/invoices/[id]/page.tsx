@@ -1,17 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, asc, desc, eq } from "drizzle-orm";
-import { Mail, Printer } from "lucide-react";
+import type { ReactNode } from "react";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { Mail, Printer, Undo2 } from "lucide-react";
 import { getDb } from "@/db";
-import { customers, emailOutbox, payments, projects, salesInvoiceLines, salesInvoices, salesOrders } from "@/db/schema";
+import { auditLog, customers, emailOutbox, paymentAllocations, payments, projects, salesInvoiceLines, salesInvoices, salesOrders, salesReturns } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canRead, canWrite } from "@/lib/rbac";
 import { PAYMENT_MODES } from "@/lib/constants";
-import { daysBetween, fmtDate, fmtDateTime, money, qty, todayIST } from "@/lib/format";
-import { OPEN_INVOICE_STATUSES, outstandingOf } from "@/lib/billing";
+import { daysBetween, fmtDate, fmtDateTime, money, qty, round2, todayIST } from "@/lib/format";
+import { OPEN_INVOICE_STATUSES, customerAdvances, outstandingOf, receiptNumber } from "@/lib/billing";
+import { reasonLabel } from "@/lib/returns";
 import { Badge, Card, DL, EmptyState, Field, Flash, Input, LinkButton, PageHeader, Select, StatusBadge, Table, Td, Th } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
-import { cancelInvoice, recordPayment, sendReminderNow } from "../../actions";
+import { applyAdvance, cancelInvoice, recordPayment, sendReminderNow } from "../../actions";
 
 export const metadata = { title: "Invoice" };
 
@@ -32,11 +34,18 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
     .where(eq(salesInvoices.id, invoiceId));
   if (!row) notFound();
   const { inv, c } = row;
-  const [lines, pays, mails] = await Promise.all([
+  const [lines, pays, mails, allocs, cnAdj, cns] = await Promise.all([
     db.select().from(salesInvoiceLines).where(eq(salesInvoiceLines.invoiceId, invoiceId)).orderBy(asc(salesInvoiceLines.id)),
     db.select().from(payments).where(and(eq(payments.direction, "in"), eq(payments.salesInvoiceId, invoiceId))).orderBy(desc(payments.date), desc(payments.id)),
     db.select({ id: emailOutbox.id, to: emailOutbox.to, subject: emailOutbox.subject, status: emailOutbox.status, agent: emailOutbox.agent, createdAt: emailOutbox.createdAt })
       .from(emailOutbox).where(and(eq(emailOutbox.entityType, "sales_invoice"), eq(emailOutbox.entityId, invoiceId))).orderBy(desc(emailOutbox.createdAt)).limit(20),
+    db.select({ id: paymentAllocations.id, amount: paymentAllocations.amount, date: paymentAllocations.date, paymentId: paymentAllocations.paymentId, payDate: payments.date })
+      .from(paymentAllocations).innerJoin(payments, eq(payments.id, paymentAllocations.paymentId))
+      .where(eq(paymentAllocations.salesInvoiceId, invoiceId)).orderBy(desc(paymentAllocations.date), desc(paymentAllocations.id)),
+    db.select({ at: auditLog.at, details: auditLog.details }).from(auditLog)
+      .where(and(eq(auditLog.entityType, "sales_invoice"), eq(auditLog.entityId, invoiceId), eq(auditLog.action, "credit_adjust"))).orderBy(desc(auditLog.at)),
+    db.select({ id: salesReturns.id, number: salesReturns.number, date: salesReturns.date, total: salesReturns.total, status: salesReturns.status, reason: salesReturns.reason })
+      .from(salesReturns).where(and(eq(salesReturns.salesInvoiceId, invoiceId), sql`${salesReturns.status} <> 'cancelled'`)).orderBy(desc(salesReturns.date)),
   ]);
 
   const outstanding = inv.status === "cancelled" ? 0 : outstandingOf(inv.total, inv.paidAmount);
@@ -44,6 +53,29 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
   const od = isOpen ? daysBetween(inv.dueDate, today) : 0;
   const write = canWrite(user.role, "billing");
   const showEmails = canRead(user.role, "emails");
+  const returnsRead = canRead(user.role, "returns");
+  const returnsWrite = canWrite(user.role, "returns");
+  const advances = write && isOpen ? await customerAdvances(db, { customerId: c.id, openOnly: true }) : [];
+  const bestAdvance = advances.find((a) => a.orderId && a.orderId === inv.orderId) ?? advances.find((a) => a.projectId && a.projectId === inv.projectId) ?? advances[0];
+  const lnk = "text-brand-700 hover:underline dark:text-brand-300";
+  type Receipt = { key: string; date: string; label: string; ref: ReactNode; amount: number };
+  const receipts: Receipt[] = [
+    ...pays.map((p): Receipt => ({
+      key: `p${p.id}`, date: p.date, label: p.mode.toUpperCase(), amount: Number(p.amount),
+      ref: <Link href={`/billing/receipts/${p.id}`} className={lnk}>{p.reference || receiptNumber(p)}</Link>,
+    })),
+    ...allocs.map((a): Receipt => ({
+      key: `a${a.id}`, date: a.date, label: "Advance applied", amount: Number(a.amount),
+      ref: <Link href={`/billing/receipts/${a.paymentId}`} className={lnk}>{receiptNumber({ id: a.paymentId, date: a.payDate })}</Link>,
+    })),
+    ...cnAdj.map((h, i): Receipt => {
+      const d = (h.details ?? {}) as { returnId?: number; number?: string; amount?: number };
+      return {
+        key: `c${i}`, date: new Date(h.at).toISOString().slice(0, 10), label: "Credit note", amount: Number(d.amount ?? 0),
+        ref: d.returnId && returnsRead ? <Link href={`/returns/${d.returnId}`} className={lnk}>{d.number ?? "Credit note"}</Link> : d.number ?? "-",
+      };
+    }),
+  ].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 
   return (
     <>
@@ -54,6 +86,9 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
         actions={
           <>
             <LinkButton href={`/billing/invoices/${inv.id}/print`} variant="secondary"><Printer className="h-4 w-4" aria-hidden /> Tax invoice</LinkButton>
+            {returnsWrite && inv.status !== "cancelled" && inv.status !== "draft" && (
+              <LinkButton href={`/returns/new?invoiceId=${inv.id}`} variant="secondary"><Undo2 className="h-4 w-4" aria-hidden /> Record return</LinkButton>
+            )}
             {write && isOpen && (
               <form action={sendReminderNow}>
                 <input type="hidden" name="invoiceId" value={inv.id} />
@@ -116,6 +151,23 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
         )}
       </div>
 
+      {advances.length > 0 && bestAdvance && (
+        <Card title="Apply advance" subtitle={`${c.name} has ${money(round2(advances.reduce((s, a) => s + a.balance, 0)))} in advances not yet used`} className="mb-4">
+          <form action={applyAdvance} className="grid gap-3 sm:grid-cols-3 sm:items-end">
+            <input type="hidden" name="invoiceId" value={inv.id} />
+            <Field label="Advance" required>
+              <Select name="paymentId" required defaultValue={String(bestAdvance.id)}>
+                {advances.map((a) => <option key={a.id} value={a.id}>{receiptNumber(a)} · {fmtDate(a.date)}{a.orderNumber ? ` · ${a.orderNumber}` : ""} · balance {money(a.balance)}</option>)}
+              </Select>
+            </Field>
+            <Field label="Amount (₹)" required hint="Up to the advance balance or this invoice's outstanding, whichever is lower">
+              <Input name="amount" type="number" inputMode="decimal" step="0.01" min="0.01" max={outstanding} defaultValue={round2(Math.min(bestAdvance.balance, outstanding))} required />
+            </Field>
+            <div><SubmitButton variant="success" pendingText="Applying…">Apply advance</SubmitButton></div>
+          </form>
+        </Card>
+      )}
+
       <Card title="Lines" className="mb-4" bodyClassName="p-0">
         <Table className="rounded-none border-0 shadow-none">
           <thead><tr><Th>#</Th><Th>Description</Th><Th className="text-right">Qty</Th><Th className="text-right">Rate</Th><Th className="text-right">Taxable</Th><Th className="text-right">GST</Th><Th className="text-right">Total</Th></tr></thead>
@@ -142,16 +194,29 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card title={`Payments received (${pays.length})`} bodyClassName={pays.length ? "p-0" : undefined}>
-          {pays.length === 0 ? <EmptyState title="No payments yet" /> : (
+        <Card title={`Payments and credits (${receipts.length})`} bodyClassName={receipts.length || cns.length ? "p-0" : undefined}>
+          {receipts.length === 0 ? <div className={cns.length ? "p-4" : undefined}><EmptyState title="No payments yet" /></div> : (
             <Table className="rounded-none border-0 shadow-none">
-              <thead><tr><Th>Date</Th><Th>Mode</Th><Th>Reference</Th><Th className="text-right">Amount</Th></tr></thead>
+              <thead><tr><Th>Date</Th><Th>Type</Th><Th>Receipt / ref</Th><Th className="text-right">Amount</Th></tr></thead>
               <tbody>
-                {pays.map((p) => (
-                  <tr key={p.id}><Td className="whitespace-nowrap">{fmtDate(p.date)}</Td><Td className="uppercase">{p.mode}</Td><Td>{p.reference || "-"}</Td><Td className="text-right tabular-nums">{money(p.amount)}</Td></tr>
+                {receipts.map((p) => (
+                  <tr key={p.key}><Td className="whitespace-nowrap">{fmtDate(p.date)}</Td><Td>{p.label}</Td><Td>{p.ref}</Td><Td className="text-right tabular-nums">{money(p.amount)}</Td></tr>
                 ))}
               </tbody>
             </Table>
+          )}
+          {cns.length > 0 && (
+            <div className="border-t border-line px-4 py-3 text-sm">
+              <p className="mb-1 text-xs font-medium text-ink-soft">Credit notes against this invoice</p>
+              <ul className="space-y-0.5">
+                {cns.map((r) => (
+                  <li key={r.id} className="flex justify-between gap-2">
+                    <span>{returnsRead ? <Link href={`/returns/${r.id}`} className={lnk}>{r.status === "draft" ? "Draft" : r.number}</Link> : r.number} · {fmtDate(r.date)} · {reasonLabel(r.reason)}</span>
+                    <span className="tabular-nums">{money(r.total)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </Card>
         <Card title={`E-mails (${mails.length})`} bodyClassName={mails.length ? "p-0" : undefined}>

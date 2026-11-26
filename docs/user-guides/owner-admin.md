@@ -72,6 +72,28 @@ After a big round of data entry, use **Automation Agents → Run now** to refres
 
 Open **Meeting Notes** to record decisions from customer and vendor meetings and from internal reviews, with action items linked to a customer or project.
 
+## 7. New in version 2
+
+### Quote approval
+Choose how approvals work in **Settings > Pricing**: off, only for quotes below the minimum margin (the default), or for every quote. When a quote has waited for your approval for more than a day, you get the alert "Quote X awaiting your approval". Open the quote, then approve or reject it with a short note.
+
+### Profit & Reports
+**Profit & Reports** shows the business profit month by month: sales after credit notes, cost of goods delivered or issued, expenses, gross profit and net profit. Each customer order also has a **Profit on this order** card.
+
+### Project History tab
+Every project now has a **History** tab: quotes, orders, deliveries, material issued, expenses, invoices and payments in one timeline. Use **Printable view** to print it.
+
+### Import BOQ from Excel
+Sales can upload a consultant's BOQ in **Quotations > Import BOQ**. Rows are matched to your items with the latest price and its date, and a draft quotation is created after they check it.
+
+### Purchase Orders, Returns, Advances and AMC
+- **Purchase Orders**: purchase can raise a vendor PO straight from a customer order's pending lines and track what has been received.
+- **Returns**: goods coming back from customers (credit notes) and goods going back to vendors (debit notes).
+- **Advances**: accounts can record an advance against a customer order and apply it to invoices later.
+- **AMC Contracts** and **Service Calls**: maintenance contracts with planned visits, and breakdown calls with a response deadline.
+
+The automation agents now include the **AMC Service** agent, which reminds the team about visits, renewals and late service calls.
+
 ## Quick help
 
 **I forgot my password. What do I do?**

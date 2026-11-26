@@ -10,8 +10,10 @@ export type TableLine = {
   supplyRate: number; erectionRate: number; remarks: string | null;
 };
 
-export function QuoteLinesTable({ lines, totals, discountPct, gstPct, print }: {
-  lines: TableLine[]; totals: QuoteTotals; discountPct: number; gstPct: number; print?: boolean;
+export function QuoteLinesTable<T extends TableLine>({ lines, totals, discountPct, gstPct, print, renderMeta }: {
+  lines: T[]; totals: QuoteTotals; discountPct: number; gstPct: number; print?: boolean;
+  /** internal extra under each description (e.g. cost source); never used on print / customer copies */
+  renderMeta?: (line: T) => React.ReactNode;
 }) {
   const cell = print ? "border border-gray-400 px-1.5 py-1 align-top" : "border border-line px-2 py-1.5 align-top";
   const head = print ? "border border-gray-400 bg-gray-100 px-1.5 py-1 text-[11px] font-semibold uppercase" : "border border-line bg-muted px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-ink-soft";
@@ -69,7 +71,10 @@ export function QuoteLinesTable({ lines, totals, discountPct, gstPct, print }: {
                 {g.lines.map((l) => (
                   <tr key={l.id} className="break-inside-avoid">
                     <td className={cx(cell, "whitespace-nowrap")}>{l.boqRef}</td>
-                    <td className={cx(cell, "whitespace-pre-line")}>{l.description}</td>
+                    <td className={cx(cell, "whitespace-pre-line")}>
+                      {l.description}
+                      {!print && renderMeta && <div className="mt-1 whitespace-normal">{renderMeta(l)}</div>}
+                    </td>
                     <td className={cx(cell, num)}>{qty(l.qty)}</td>
                     <td className={cell}>{l.uom}</td>
                     <td className={cx(cell, num)}>{money(l.supplyRate)}</td>

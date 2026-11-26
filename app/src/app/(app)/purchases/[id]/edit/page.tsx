@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { purchaseInvoiceLines, purchaseInvoices } from "@/db/schema";
+import { purchaseInvoiceLines, purchaseInvoices, purchaseOrders } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
 import { Flash, PageHeader } from "@/components/ui";
@@ -22,6 +22,9 @@ export default async function EditPurchasePage({ params, searchParams }: { param
   if (inv.status !== "draft") redirect(`/purchases/${inv.id}?err=` + encodeURIComponent("Only draft invoices can be edited"));
   const lines = await db.select().from(purchaseInvoiceLines).where(eq(purchaseInvoiceLines.invoiceId, invoiceId)).orderBy(asc(purchaseInvoiceLines.id));
   const data = await purchaseFormData(db, lines.map((l) => l.itemId));
+  const [po] = inv.purchaseOrderId
+    ? await db.select({ id: purchaseOrders.id, number: purchaseOrders.number }).from(purchaseOrders).where(eq(purchaseOrders.id, inv.purchaseOrderId))
+    : [];
   return (
     <div className="max-w-5xl">
       <PageHeader title={`Edit draft ${inv.invoiceNo}`} back={{ href: `/purchases/${inv.id}`, label: inv.invoiceNo }} />
@@ -33,9 +36,10 @@ export default async function EditPurchasePage({ params, searchParams }: { param
         projects={data.projects}
         items={data.items}
         vendorRates={data.vendorRates}
+        po={po ?? null}
         initial={{
           vendorId: inv.vendorId, invoiceNo: inv.invoiceNo, invoiceDate: inv.invoiceDate, dueDate: inv.dueDate ?? "", projectId: inv.projectId, notes: inv.notes ?? "",
-          lines: lines.map((l) => ({ itemId: l.itemId, description: l.description ?? "", qty: l.qty, rate: l.rate, gstRate: l.gstRate })),
+          lines: lines.map((l) => ({ itemId: l.itemId, description: l.description ?? "", qty: l.qty, rate: l.rate, gstRate: l.gstRate, poLineId: po ? l.poLineId : null })),
         }}
       />
     </div>

@@ -14,6 +14,8 @@ export const MOVEMENT_TYPES = {
   return: "Returned from project",
   sale_out: "Sale / dispatch",
   adjust: "Adjustment",
+  sales_return: "Customer return",
+  purchase_return: "Returned to vendor",
 } as const;
 export type MovementType = keyof typeof MOVEMENT_TYPES;
 

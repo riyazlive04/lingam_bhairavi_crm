@@ -72,6 +72,27 @@ async function migrate(exec: RawExec, query: RawQuery) {
   }
 }
 
+/** One-off version 2 steps for databases created before v2. Guarded by settings keys; never blocks boot. */
+async function upgradeExisting(db: DB) {
+  try {
+    const { eq } = await import("drizzle-orm");
+    const flag = async (key: string) => (await db.select().from(schema.settings).where(eq(schema.settings.key, key)).limit(1))[0]?.value === true;
+    const mark = (key: string) => db.insert(schema.settings).values({ key, value: true })
+      .onConflictDoUpdate({ target: schema.settings.key, set: { value: true } });
+    const { backfillV2, seedV2Demo } = await import("./seed-v2");
+    if (!(await flag("migrations.v2_backfill_done"))) {
+      await backfillV2(db);
+      await mark("migrations.v2_backfill_done");
+    }
+    if (process.env.SEED_V2_DEMO === "1" && !(await flag("migrations.v2_demo_seeded"))) {
+      await seedV2Demo(db);
+      await mark("migrations.v2_demo_seeded");
+    }
+  } catch (e) {
+    console.error("[db] version 2 upgrade step failed (boot continues):", e);
+  }
+}
+
 async function init(): Promise<DB> {
   const { db, exec, query } = await connect();
   await migrate(exec, query);
@@ -79,6 +100,8 @@ async function init(): Promise<DB> {
   if (Number(rows[0]?.n ?? 0) === 0) {
     const { seed } = await import("./seed");
     await seed(db);
+  } else {
+    await upgradeExisting(db);
   }
   return db;
 }

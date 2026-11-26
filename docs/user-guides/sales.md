@@ -79,6 +79,29 @@ Click **Mark lost** and give a reason (price, competitor, project dropped or oth
 
 A simple rule: **if it happened today, enter it today.**
 
+## 4. New screens for you
+
+### Import a consultant's BOQ from Excel
+Got the BOQ as an Excel file? Go to **Quotations > Import BOQ** (or **Import BOQ** in the menu, or the **Import consultant BOQ** button on the Quotations list).
+1. Choose the customer and upload the Excel file.
+2. Check the matches. Each row is matched to an item in the master with its latest price and the date of that price. Fix any row that is wrong, or untick rows you don't want.
+3. Click **Create the quotation**. A draft quotation opens with the consultant's quantities filled in. Lines with zero quantity are left out.
+
+### Price date on every line
+Each quotation line now shows where its cost came from, for example "Rs 1,250 · 12 Nov 2026 · Vendor name". If the date is old, ask purchase to reconfirm the price before you send.
+
+### Quote approval
+Some quotes need the owner's approval before they go out (for example when a line is below the minimum margin or below cost). On such a quote, **Mark sent** and **Email** stay locked. Click **Request approval**. The owner approves or rejects it with a note, and you can send it once it is approved. If you edit an approved quote and it still needs approval, it goes back for approval.
+
+### Customer returns
+If a customer sends material back, open the order and click **Record return**. Pick the lines, quantities and reason. Once posted, it becomes a credit note and the customer's **Net due** goes down.
+
+### AMC contracts and service calls
+Under **Service**, **AMC Contracts** lists annual maintenance contracts with their visit schedule. You get a reminder 30 days before a contract ends so you can send a renewal quote. Breakdown complaints go in **Service Calls**.
+
+### Net due on customers
+The Customers list now shows **Invoices due** and **Net due**. Net due is what the customer really owes after credit notes and advances.
+
 ## Quick help
 
 **The rate on a line looks wrong. What should I do?**

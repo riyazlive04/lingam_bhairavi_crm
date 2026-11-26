@@ -4,12 +4,12 @@ import { redirect } from "next/navigation";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, type DB } from "@/db";
-import { customers, deliveries, deliveryLines, projects, salesInvoices, salesOrderLines, salesOrders } from "@/db/schema";
+import { customers, deliveries, deliveryLines, items, projects, salesInvoices, salesOrderLines, salesOrders } from "@/db/schema";
 import { requireWrite } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { round2, todayIST } from "@/lib/format";
 import { nextNumber } from "@/lib/sequence";
-import { MANUAL_LINE_STATUSES, OPEN_ORDER_STATUSES, lineStatusFor, recomputeOrderStatus, recomputeOrderTotal } from "@/lib/orders";
+import { MANUAL_LINE_STATUSES, OPEN_ORDER_STATUSES, lineStatusFor, netDeliveredQty, pendingQtyOf, recomputeOrderStatus, recomputeOrderTotal } from "@/lib/orders";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date");
 const optDate = z.preprocess((v) => (v === "" || v == null ? undefined : v), isoDate.optional());
@@ -113,7 +113,7 @@ export async function updateOrderLine(form: FormData) {
       const [l] = await tx.select().from(salesOrderLines).where(and(eq(salesOrderLines.id, d.lineId), eq(salesOrderLines.orderId, d.orderId)));
       if (!l) throw new UserError("Line not found");
       if (l.deliveryStatus === "delivered") throw new UserError("This line is already fully delivered");
-      const delivered = Number(l.deliveredQty);
+      const delivered = netDeliveredQty(l.deliveredQty, l.returnedQty);
       // "pending" on a part-delivered line stays "partial" (rule 7); ordered/in_transit describe the remaining qty
       const status = d.status === "pending" && delivered > 0 ? "partial" : d.status;
       await tx.update(salesOrderLines).set({ deliveryStatus: status, expectedDate: d.expectedDate ?? null, remarks: d.remarks || null })
@@ -168,19 +168,28 @@ export async function recordDelivery(form: FormData) {
         const l = byId.get(q.lineId);
         if (!l) throw new UserError("A line does not belong to this order");
         if (l.deliveryStatus === "cancelled") throw new UserError(`"${l.description}" is cancelled`);
-        const pending = round2(Number(l.qty) - Number(l.deliveredQty));
+        const pending = pendingQtyOf(l);
         if (q.qty > pending + 1e-6) throw new UserError(`"${l.description.slice(0, 60)}": only ${pending} ${l.uom} pending (entered ${q.qty})`);
       }
       const number = await nextNumber(tx as unknown as DB, "delivery", h.date);
       const [dl] = await tx.insert(deliveries).values({
         number, orderId: h.orderId, date: h.date, vehicleNo: h.vehicleNo, receivedBy: h.receivedBy, notes: h.notes, createdBy: user.id,
       }).returning({ id: deliveries.id });
-      await tx.insert(deliveryLines).values(qtys.map((q) => ({ deliveryId: dl.id, orderLineId: q.lineId, qty: q.qty })));
+      // rule 12: snapshot the latest cost (rule 1) of each item at the moment of delivery, for order P&L
+      const itemIds = [...new Set(lines.map((l) => l.itemId).filter((v): v is number => v != null))];
+      const costs = itemIds.length
+        ? await tx.select({ id: items.id, lastPurchaseRate: items.lastPurchaseRate, listPrice: items.listPrice }).from(items).where(inArray(items.id, itemIds))
+        : [];
+      const costOf = new Map(costs.map((c) => [c.id, round2(Number(c.lastPurchaseRate ?? c.listPrice ?? 0))]));
+      await tx.insert(deliveryLines).values(qtys.map((q) => {
+        const itemId = byId.get(q.lineId)!.itemId;
+        return { deliveryId: dl.id, orderLineId: q.lineId, qty: q.qty, costRate: itemId ? costOf.get(itemId) ?? 0 : 0 };
+      }));
       for (const q of qtys) {
         const l = byId.get(q.lineId)!;
         const delivered = round2(Number(l.deliveredQty) + q.qty);
         await tx.update(salesOrderLines)
-          .set({ deliveredQty: delivered, deliveryStatus: lineStatusFor(Number(l.qty), delivered, l.deliveryStatus) })
+          .set({ deliveredQty: delivered, deliveryStatus: lineStatusFor(Number(l.qty), netDeliveredQty(delivered, l.returnedQty), l.deliveryStatus) })
           .where(eq(salesOrderLines.id, q.lineId));
       }
       const orderStatus = await recomputeOrderStatus(tx, h.orderId);

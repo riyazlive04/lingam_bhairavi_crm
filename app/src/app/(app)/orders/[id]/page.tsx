@@ -1,17 +1,22 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { asc, desc, eq, inArray, sql } from "drizzle-orm";
-import { AlertTriangle, FileText, Truck } from "lucide-react";
+import { AlertTriangle, FileText, Truck, Undo2, Wallet } from "lucide-react";
 import { getDb } from "@/db";
 import { customers, deliveries, deliveryLines, items, projects, quotations, salesInvoices, salesOrderLines, salesOrders } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canRead, canWrite } from "@/lib/rbac";
-import { fmtDate, money, money0, qty, round2, todayIST } from "@/lib/format";
-import { LINE_STATUS_LABEL, MANUAL_LINE_STATUSES, OPEN_ORDER_STATUSES } from "@/lib/orders";
+import { fmtDate, money, money0, qty, todayIST } from "@/lib/format";
+import { LINE_STATUS_LABEL, MANUAL_LINE_STATUSES, OPEN_ORDER_STATUSES, netDeliveredQty, pendingQtyOf } from "@/lib/orders";
+import { noteBalance, reasonLabel, returnsForOrder } from "@/lib/returns";
+import { customerAdvances, receiptNumber } from "@/lib/billing";
 import { Badge, Card, DL, EmptyState, Field, Flash, Input, LinkButton, PageHeader, Select, StatusBadge, Table, Td, Th, Textarea, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { changeOrderStatus, recordDelivery, updateOrderLine } from "../actions";
 import { LineProgress } from "../_components/progress";
+import { CreateVendorPoButton } from "../../purchase-orders/_components/create-po-button";
+import { LinkedPosCard } from "../../purchase-orders/_components/linked-pos-card";
+import { OrderPnlCard } from "../../reports/_components/order-pnl-card";
 
 export const metadata = { title: "Customer order" };
 
@@ -84,13 +89,23 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
 
   const active = lines.filter((l) => l.deliveryStatus !== "cancelled");
   const deliveredLines = active.filter((l) => l.deliveryStatus === "delivered").length;
-  const pendingLines = active.filter((l) => Number(l.deliveredQty) < Number(l.qty) - 1e-6);
+  // rule 13: returned goods no longer count as delivered
+  const pendingLines = active.filter((l) => pendingQtyOf(l) > 1e-6);
   const overdue = pendingLines.filter((l) => { const e = effectiveExpected(l, o.expectedDelivery); return e && e < today; });
   const isOpen = (OPEN_ORDER_STATUSES as readonly string[]).includes(o.status);
   const write = canWrite(user.role, "orders");
   const billingWrite = canWrite(user.role, "billing");
-  const uninvoiced = active.some((l) => Number(l.deliveredQty) > Number(l.invoicedQty) + 1e-6);
+  const uninvoiced = active.some((l) => netDeliveredQty(l.deliveredQty, l.returnedQty) > Number(l.invoicedQty) + 1e-6);
   const delivTotalQty = new Map(delCounts.map((d) => [d.deliveryId, d]));
+  const returnsRead = canRead(user.role, "returns");
+  const returnsWrite = canWrite(user.role, "returns");
+  const billingRead = canRead(user.role, "billing");
+  const [creditNotes, advances] = await Promise.all([
+    returnsRead ? returnsForOrder(db, orderId) : Promise.resolve([]),
+    billingRead ? customerAdvances(db, { orderId }) : Promise.resolve([]),
+  ]);
+  const canReturn = o.status !== "cancelled" && lines.some((l) => netDeliveredQty(l.deliveredQty, l.returnedQty) > 1e-6);
+  const anyReturned = lines.some((l) => Number(l.returnedQty) > 1e-6);
 
   return (
     <>
@@ -103,6 +118,17 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
             {billingWrite && o.status !== "cancelled" && (
               <LinkButton href={`/billing/invoices/new?orderId=${o.id}`} variant={uninvoiced ? "primary" : "secondary"}>
                 <FileText className="h-4 w-4" aria-hidden /> Create invoice
+              </LinkButton>
+            )}
+            {billingWrite && o.status !== "cancelled" && o.status !== "closed" && (
+              <LinkButton href={`/billing/advances?orderId=${o.id}&from=order`} variant="secondary">
+                <Wallet className="h-4 w-4" aria-hidden /> Record advance
+              </LinkButton>
+            )}
+            {canWrite(user.role, "purchaseOrders") && isOpen && pendingLines.length > 0 && <CreateVendorPoButton salesOrderId={o.id} />}
+            {returnsWrite && canReturn && (
+              <LinkButton href={`/returns/new?orderId=${o.id}`} variant="secondary">
+                <Undo2 className="h-4 w-4" aria-hidden /> Record return
               </LinkButton>
             )}
             {write && isOpen && (
@@ -169,13 +195,13 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
         <Table className="rounded-none border-0 shadow-none">
           <thead>
             <tr>
-              <Th>#</Th><Th>Item</Th><Th className="text-right">Ordered</Th><Th className="text-right">Delivered</Th><Th className="text-right">Invoiced</Th>
+              <Th>#</Th><Th>Item</Th><Th className="text-right">Ordered</Th><Th className="text-right">Delivered</Th>{anyReturned && <Th className="text-right">Returned</Th>}<Th className="text-right">Invoiced</Th>
               <Th className="text-right">Pending</Th><Th className="text-right">Rate</Th><Th>Status</Th><Th>Expected</Th><Th>Remarks</Th>{write && isOpen && <Th><span className="sr-only">Actions</span></Th>}
             </tr>
           </thead>
           <tbody>
             {lines.map((l, i) => {
-              const pend = round2(Number(l.qty) - Number(l.deliveredQty));
+              const pend = pendingQtyOf(l);
               const exp = effectiveExpected(l, o.expectedDelivery);
               const late = isOpen && l.deliveryStatus !== "delivered" && l.deliveryStatus !== "cancelled" && exp && exp < today;
               return (
@@ -184,6 +210,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
                   <Td className="max-w-72 whitespace-normal">{l.description}{l.itemCode && <div className="text-xs text-ink-faint">{l.itemCode}</div>}</Td>
                   <Td className="text-right tabular-nums">{qty(l.qty)} <span className="text-xs text-ink-soft">{l.uom}</span></Td>
                   <Td className="text-right tabular-nums">{qty(l.deliveredQty)}</Td>
+                  {anyReturned && <Td className={cx("text-right tabular-nums", Number(l.returnedQty) > 0 && "text-red-600 dark:text-red-400")}>{Number(l.returnedQty) > 0 ? qty(l.returnedQty) : "-"}</Td>}
                   <Td className="text-right tabular-nums">{qty(l.invoicedQty)}</Td>
                   <Td className={cx("text-right font-medium tabular-nums", pend > 0 && l.deliveryStatus !== "cancelled" && "text-amber-700 dark:text-amber-300")}>{l.deliveryStatus === "cancelled" ? "-" : qty(pend)}</Td>
                   <Td className="text-right tabular-nums">{money(l.rate)}</Td>
@@ -197,6 +224,11 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
           </tbody>
         </Table>
       </Card>
+
+      <div className="mb-4 grid gap-4 empty:hidden lg:grid-cols-2">
+        <OrderPnlCard orderId={o.id} />
+        <LinkedPosCard role={user.role} salesOrderId={o.id} hideWhenEmpty={!(canWrite(user.role, "purchaseOrders") && isOpen && pendingLines.length > 0)} />
+      </div>
 
       {write && isOpen && pendingLines.length > 0 && (
         <Card title={<span className="inline-flex items-center gap-2"><Truck className="h-4 w-4" aria-hidden /> Record delivery (challan)</span>} className="mb-4">
@@ -212,12 +244,12 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
               <legend className="mb-2 text-sm font-medium text-ink">Quantity delivered now <span className="font-normal text-ink-soft">(defaults to the full pending qty; set 0 to skip a line)</span></legend>
               <ul className="divide-y divide-line rounded-lg border border-line">
                 {pendingLines.map((l) => {
-                  const pend = round2(Number(l.qty) - Number(l.deliveredQty));
+                  const pend = pendingQtyOf(l);
                   return (
                     <li key={l.id} className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
                       <label htmlFor={`qty_${l.id}`} className="min-w-0 text-sm">
                         <span className="block font-medium text-ink">{l.description}</span>
-                        <span className="text-xs text-ink-soft">Pending {qty(pend)} {l.uom} of {qty(l.qty)} · {LINE_STATUS_LABEL[l.deliveryStatus]}</span>
+                        <span className="text-xs text-ink-soft">Pending {qty(pend)} {l.uom} of {qty(l.qty)} · {LINE_STATUS_LABEL[l.deliveryStatus]}{Number(l.returnedQty) > 0 ? ` · ${qty(l.returnedQty)} returned, replacement due` : ""}</span>
                       </label>
                       <div className="flex items-center gap-2">
                         <Input id={`qty_${l.id}`} name={`qty_${l.id}`} type="number" inputMode="decimal" step="any" min={0} max={pend} defaultValue={pend} className="w-28 text-right" />
@@ -277,6 +309,54 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
           )}
         </Card>
       </div>
+
+      {(returnsRead || billingRead) && (
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          {returnsRead && (
+            <Card title={`Credit notes (${creditNotes.length})`} icon={Undo2} bodyClassName={creditNotes.length ? "p-0" : undefined}>
+              {creditNotes.length === 0 ? (
+                <EmptyState title="No returns on this order">{returnsWrite && canReturn ? "If the customer sends material back, use \u201cRecord return\u201d." : "Customer returns against this order appear here."}</EmptyState>
+              ) : (
+                <Table className="rounded-none border-0 shadow-none">
+                  <thead><tr><Th>Credit note</Th><Th>Date</Th><Th>Reason</Th><Th className="text-right">Total</Th><Th>Status</Th></tr></thead>
+                  <tbody>
+                    {creditNotes.map((r) => (
+                      <tr key={r.id}>
+                        <Td><Link href={`/returns/${r.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{r.status === "draft" ? "Draft" : r.number}</Link></Td>
+                        <Td className="whitespace-nowrap">{fmtDate(r.date)}</Td>
+                        <Td>{reasonLabel(r.reason)}</Td>
+                        <Td className="text-right tabular-nums">{money0(r.total)}{r.status === "posted" && noteBalance(r.total, r.adjustedAmount) > 0.005 && <div className="text-xs text-ink-soft">{money0(noteBalance(r.total, r.adjustedAmount))} unadjusted</div>}</Td>
+                        <Td><StatusBadge status={r.status} /></Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              )}
+            </Card>
+          )}
+          {billingRead && (
+            <Card title={`Advances received (${advances.length})`} icon={Wallet} bodyClassName={advances.length ? "p-0" : undefined}>
+              {advances.length === 0 ? (
+                <EmptyState title="No advance recorded">{billingWrite && o.status !== "cancelled" ? "If the customer paid an advance against this PO, use \u201cRecord advance\u201d." : "Advances against this order appear here."}</EmptyState>
+              ) : (
+                <Table className="rounded-none border-0 shadow-none">
+                  <thead><tr><Th>Receipt</Th><Th>Date</Th><Th className="text-right">Amount</Th><Th className="text-right">Not yet applied</Th></tr></thead>
+                  <tbody>
+                    {advances.map((a) => (
+                      <tr key={a.id}>
+                        <Td><Link href={`/billing/receipts/${a.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{receiptNumber(a)}</Link></Td>
+                        <Td className="whitespace-nowrap">{fmtDate(a.date)}</Td>
+                        <Td className="text-right tabular-nums">{money0(a.amount)}</Td>
+                        <Td className="text-right tabular-nums">{a.balance > 0.005 ? money0(a.balance) : "-"}</Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              )}
+            </Card>
+          )}
+        </div>
+      )}
     </>
   );
 }

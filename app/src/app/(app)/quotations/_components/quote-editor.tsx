@@ -9,8 +9,9 @@ import { Button, Card, Field, Input, Select, Textarea, cx, inputClass } from "@/
 import { SubmitButton } from "@/components/submit-button";
 import { SYSTEMS } from "@/lib/constants";
 import { money, pct, round2 } from "@/lib/format";
-import { computeQuoteTotals, lineMarginPct, linePriceWarning } from "@/lib/pricing";
+import { approvalReasons, computeQuoteTotals, isCostStale, lineMarginPct, linePriceWarning, type ApprovalMode, type CostSource } from "@/lib/pricing";
 import { groupBySection, numberToIndianWords } from "@/lib/quotations";
+import { CostMeta } from "./cost-meta";
 import { ItemPicker } from "./item-picker";
 import type { CatalogItem } from "../_lib/data";
 
@@ -30,6 +31,14 @@ export type GridLine = {
   remarks: string;
   /** supply rate typed by hand → not re-priced when markup changes */
   manual: boolean;
+  /** rule 10: when and from whom the cost was bought (date/vendor null for list or manual costs) */
+  costDate: string | null;
+  costVendorName: string | null;
+  costSource: CostSource | null;
+  /** fast-moving item (7-day stale window) */
+  volatile: boolean;
+  /** user picked "Use latest price": the server takes a fresh cost snapshot on save */
+  repriced?: boolean;
 };
 
 export type QuoteHeader = {
@@ -60,7 +69,7 @@ const n = (v: string) => {
 const priceFor = (cost: number, markup: number) => round2(cost * (1 + markup / 100));
 
 export function QuoteEditor({
-  action, header, initialLines, catalog, showCost, minMarginPct, back, canChangeMarkup,
+  action, header, initialLines, catalog, showCost, minMarginPct, back, canChangeMarkup, today, approvalMode = "below_margin",
 }: {
   action: (f: FormData) => Promise<void>;
   header: QuoteHeader;
@@ -70,6 +79,9 @@ export function QuoteEditor({
   minMarginPct: number;
   back: string;
   canChangeMarkup: boolean;
+  /** today (IST, YYYY-MM-DD) for the stale-price check */
+  today: string;
+  approvalMode?: ApprovalMode;
 }) {
   const [lines, setLines] = useState<GridLine[]>(initialLines);
   const [markup, setMarkup] = useState(header.markupPct);
@@ -87,6 +99,15 @@ export function QuoteEditor({
   const warnings = useMemo(
     () => (showCost ? lines.filter((l) => l.qty > 0 && linePriceWarning({ supplyRate: l.supplyRate, costRate: l.costRate }, minMarginPct)) : []),
     [lines, showCost, minMarginPct],
+  );
+  const approvalNeeded = useMemo(
+    () => approvalReasons(lines.map((l) => ({ qty: l.qty, supplyRate: l.supplyRate, erectionRate: l.erectionRate, costRate: l.costRate ?? 0 })),
+      { mode: approvalMode, minMarginPct, discountPct: discount, gstPct: gst }),
+    [lines, approvalMode, minMarginPct, discount, gst],
+  );
+  const staleCount = useMemo(
+    () => lines.filter((l) => l.qty > 0 && l.costSource === "purchase" && isCostStale(l.costDate, l.volatile, today)).length,
+    [lines, today],
   );
   const sections = useMemo(() => [...new Set(lines.map((l) => l.section).filter(Boolean))], [lines]);
   const visible = useMemo(() => {
@@ -116,6 +137,7 @@ export function QuoteEditor({
     const cost = c.cost;
     update(l.key, {
       costRate: cost, supplyRate: cost != null ? priceFor(cost, markup) : c.supply, erectionRate: c.erectionRate, manual: false,
+      costDate: c.costDate, costVendorName: c.costVendorName, costSource: c.costSource, volatile: c.volatile, repriced: true,
     });
   }
   function addItem(c: CatalogItem) {
@@ -123,6 +145,7 @@ export function QuoteEditor({
       key: newKey(), lineId: null, section: targetSection, boqRef: "", itemId: c.id,
       description: [c.name, c.make ? `(Make: ${c.make})` : ""].filter(Boolean).join(" "), uom: c.uom, qty: 1,
       costRate: c.cost, supplyRate: c.cost != null ? priceFor(c.cost, markup) : c.supply, erectionRate: c.erectionRate, remarks: "", manual: false,
+      costDate: c.costDate, costVendorName: c.costVendorName, costSource: c.costSource, volatile: c.volatile, repriced: true,
     }]);
     setOnlyQty(false);
   }
@@ -130,6 +153,7 @@ export function QuoteEditor({
     setLines((ls) => [...ls, {
       key: newKey(), lineId: null, section: targetSection, boqRef: "", itemId: null, description: "", uom: "Nos", qty: 1,
       costRate: showCost ? 0 : null, supplyRate: 0, erectionRate: 0, remarks: "", manual: true,
+      costDate: null, costVendorName: null, costSource: "manual", volatile: false,
     }]);
     setOnlyQty(false);
   }
@@ -137,7 +161,7 @@ export function QuoteEditor({
   const payload = JSON.stringify(lines.filter((l) => l.qty > 0).map((l) => ({
     lineId: l.lineId, section: l.section || null, boqRef: l.boqRef || null, itemId: l.itemId, description: l.description,
     uom: l.uom || "Nos", qty: l.qty, supplyRate: l.supplyRate, erectionRate: l.erectionRate,
-    costRate: l.itemId == null && showCost ? l.costRate ?? 0 : null, remarks: l.remarks || null,
+    costRate: l.itemId == null && showCost ? l.costRate ?? 0 : null, remarks: l.remarks || null, repriced: l.repriced ? true : undefined,
   })));
   const colCount = showCost ? 12 : 10;
 
@@ -198,7 +222,20 @@ export function QuoteEditor({
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>
             {warnings.length} line{warnings.length === 1 ? " is" : "s are"} priced below cost or under the minimum margin of {minMarginPct}%. Check the highlighted rows before saving.
+            {approvalNeeded.length > 0 && " An admin will need to approve this quotation before it can be sent."}
           </span>
+        </div>
+      )}
+      {approvalNeeded.length > 0 && warnings.length === 0 && (
+        <div role="status" className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-200">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span>Approval needed before sending: {approvalNeeded.join("; ")}. After saving, use “Request approval” on the quotation page.</span>
+        </div>
+      )}
+      {staleCount > 0 && (
+        <div role="status" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span>{staleCount} line{staleCount === 1 ? " has" : "s have"} an old purchase price (marked “Stale”). Check with the supplier before sending, or use “Use latest price” after a new purchase is posted.</span>
         </div>
       )}
 
@@ -289,6 +326,10 @@ export function QuoteEditor({
                                 {c ? (
                                   <span className="inline-flex items-center gap-1"><Link2 className="h-3 w-3" aria-hidden />{c.code}{c.make ? ` · ${c.make}` : ""}</span>
                                 ) : l.itemId != null ? <span>Item #{l.itemId}</span> : <span className="text-amber-700 dark:text-amber-400">Free text, enter rates</span>}
+                                {(l.itemId != null || l.costSource === "manual") && (
+                                  <CostMeta cost={showCost ? l.costRate : null} costDate={l.costDate} vendorName={l.costVendorName}
+                                    source={l.costSource} volatile={l.volatile} today={today} />
+                                )}
                                 {c?.lastSaleRate != null && <span>Last quoted/sold {money(c.lastSaleRate)}</span>}
                                 {c && l.manual && (
                                   <button type="button" className="text-brand-700 hover:underline" onClick={() => resetLinePrice(l)}>Use latest price</button>
@@ -320,7 +361,7 @@ export function QuoteEditor({
                               <td className="border-l border-line px-2 py-2 text-right tabular-nums">
                                 {l.itemId == null ? (
                                   <input aria-label="Cost rate" type="number" min={0} step="0.01" className={inputClass + " px-2 text-right tabular-nums"}
-                                    value={l.costRate ?? 0} onChange={(e) => update(l.key, { costRate: n(e.target.value) })} />
+                                    value={l.costRate ?? 0} onChange={(e) => update(l.key, { costRate: n(e.target.value), costSource: "manual", costDate: today })} />
                                 ) : <span className="inline-block pt-2">{money(l.costRate)}</span>}
                               </td>
                             )}

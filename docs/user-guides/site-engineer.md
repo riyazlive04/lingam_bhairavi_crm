@@ -55,6 +55,17 @@ Your project page shows the site address, the customer contact, materials delive
 
 Tip: enter the expense **before you leave the petrol pump or the lodge counter**. It takes less than a minute, and you won't lose the bill.
 
+## 4. New screens for you
+
+### AMC visits
+**AMC Contracts** lists the maintenance contracts and their planned visits. Open a visit, fill in the checklist for each system and save your remarks. If you cannot go, use **Reschedule** or **Mark missed** so the office knows.
+
+### Service calls
+Breakdown complaints are logged in **Service Calls**. Each call has a response deadline. Open the call, record what you did and click **Resolve call**. You get an alert if a call passes its deadline.
+
+### Project History tab
+Your projects now have a **History** tab that shows everything that happened on the site in date order: material issued, returns, expenses and more.
+
 ## Quick help
 
 **Can I attach a photo of the bill?**

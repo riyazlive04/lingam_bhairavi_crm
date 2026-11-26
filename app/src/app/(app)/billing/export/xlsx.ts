@@ -13,8 +13,13 @@ function styleHeader(ws: ExcelJS.Worksheet) {
   ws.views = [{ state: "frozen", ySplit: 1 }];
 }
 
-/** Two-sheet workbook: party-wise ageing summary + open documents. */
-export async function outstandingWorkbook(kind: "Receivables" | "Payables", parties: PartyOutstanding[], docs: OpenDoc[], companyName: string) {
+export type CreditDoc = { party: string; number: string; date: string; kind: string; total: number; used: number; balance: number };
+
+/**
+ * Workbook: party-wise ageing summary (with credit notes / advances / debit notes and net due), open documents,
+ * and, when given, the open credits (credit notes and advances, or debit notes).
+ */
+export async function outstandingWorkbook(kind: "Receivables" | "Payables", parties: PartyOutstanding[], docs: OpenDoc[], companyName: string, credits: CreditDoc[] = []) {
   const wb = new ExcelJS.Workbook();
   wb.creator = companyName;
   wb.created = new Date();
@@ -24,7 +29,11 @@ export async function outstandingWorkbook(kind: "Receivables" | "Payables", part
   s.columns = [
     { header: partyLabel, key: "name", width: 38 },
     { header: "Invoices", key: "n", width: 10 },
-    { header: "Outstanding", key: "out", width: 16, style: { numFmt: INR } },
+    { header: kind === "Receivables" ? "Invoices due" : "Bills due", key: "out", width: 16, style: { numFmt: INR } },
+    ...(kind === "Receivables"
+      ? [{ header: "Credit notes", key: "cn", width: 15, style: { numFmt: INR } }, { header: "Advances", key: "adv", width: 15, style: { numFmt: INR } }]
+      : [{ header: "Debit notes", key: "dn", width: 15, style: { numFmt: INR } }]),
+    { header: "Net due", key: "net", width: 16, style: { numFmt: INR } },
     { header: "Overdue", key: "od", width: 16, style: { numFmt: INR } },
     ...AGEING_LABELS.map(([k, l]) => ({ header: `${l}${k === "notDue" ? "" : " days"}`, key: k, width: 14, style: { numFmt: INR } })),
     { header: "Max days overdue", key: "maxd", width: 16 },
@@ -32,10 +41,13 @@ export async function outstandingWorkbook(kind: "Receivables" | "Payables", part
     { header: "Phone", key: "phone", width: 16 },
   ];
   for (const p of parties) {
-    s.addRow({ name: p.name, n: p.invoiceCount, out: p.outstanding, od: p.overdue, ...p.ageing, maxd: Math.max(0, p.maxDaysOverdue), email: p.email ?? "", phone: p.phone ?? "" });
+    s.addRow({
+      name: p.name, n: p.invoiceCount, out: p.outstanding, cn: p.creditNotes, adv: p.advances, dn: p.debitNotes, net: p.netDue, od: p.overdue,
+      ...p.ageing, maxd: Math.max(0, p.maxDaysOverdue), email: p.email ?? "", phone: p.phone ?? "",
+    });
   }
   const t = sumAgeing(parties);
-  const tr = s.addRow({ name: "TOTAL", n: parties.reduce((a, p) => a + p.invoiceCount, 0), out: t.outstanding, od: t.overdue, notDue: t.notDue, d0_30: t.d0_30, d31_60: t.d31_60, d61_90: t.d61_90, d90p: t.d90p });
+  const tr = s.addRow({ name: "TOTAL", n: parties.reduce((a, p) => a + p.invoiceCount, 0), out: t.outstanding, cn: t.creditNotes, adv: t.advances, dn: t.debitNotes, net: t.netDue, od: t.overdue, notDue: t.notDue, d0_30: t.d0_30, d31_60: t.d31_60, d61_90: t.d61_90, d90p: t.d90p });
   tr.font = { bold: true };
   styleHeader(s);
 
@@ -59,6 +71,22 @@ export async function outstandingWorkbook(kind: "Receivables" | "Payables", part
   d.getColumn("invoiceDate").numFmt = "dd-mmm-yyyy";
   d.getColumn("dueDate").numFmt = "dd-mmm-yyyy";
   styleHeader(d);
+
+  if (credits.length) {
+    const c = wb.addWorksheet(kind === "Receivables" ? "Credit notes and advances" : "Debit notes");
+    c.columns = [
+      { header: partyLabel, key: "party", width: 36 },
+      { header: "Type", key: "kind", width: 14 },
+      { header: "Number", key: "number", width: 24 },
+      { header: "Date", key: "date", width: 13 },
+      { header: "Amount", key: "total", width: 15, style: { numFmt: INR } },
+      { header: "Used", key: "used", width: 15, style: { numFmt: INR } },
+      { header: "Balance", key: "balance", width: 15, style: { numFmt: INR } },
+    ];
+    for (const x of credits) c.addRow({ ...x, date: new Date(x.date + "T00:00:00Z") });
+    c.getColumn("date").numFmt = "dd-mmm-yyyy";
+    styleHeader(c);
+  }
 
   const buf = await wb.xlsx.writeBuffer();
   const filename = `${kind.toLowerCase()}-${todayIST()}.xlsx`;

@@ -68,7 +68,7 @@ describe("linePriceWarning / lineMarginPct", () => {
 
 describe("parsePricingSettings", () => {
   it("defaults 40/15/18/30 and rejects junk", () => {
-    expect(parsePricingSettings(null)).toEqual({ defaultMarkupPct: 40, minMarginPct: 15, gstPct: 18, quoteValidityDays: 30 });
-    expect(parsePricingSettings({ defaultMarkupPct: "35", gstPct: 500, quoteValidityDays: 0 })).toEqual({ defaultMarkupPct: 35, minMarginPct: 15, gstPct: 18, quoteValidityDays: 30 });
+    expect(parsePricingSettings(null)).toEqual({ defaultMarkupPct: 40, minMarginPct: 15, gstPct: 18, quoteValidityDays: 30, approvalMode: "below_margin" });
+    expect(parsePricingSettings({ defaultMarkupPct: "35", gstPct: 500, quoteValidityDays: 0 })).toEqual({ defaultMarkupPct: 35, minMarginPct: 15, gstPct: 18, quoteValidityDays: 30, approvalMode: "below_margin" });
   });
 });

@@ -193,6 +193,13 @@ export const quotations = pgTable("quotations", {
   lostReason: text("lost_reason"),
   sentAt: timestamp("sent_at", { withTimezone: true }),
   closedAt: timestamp("closed_at", { withTimezone: true }),
+  /** Internal approval before sending: not_required | pending | approved | rejected */
+  approvalStatus: varchar("approval_status", { length: 20 }).default("not_required").notNull(),
+  approvalRequestedAt: timestamp("approval_requested_at", { withTimezone: true }),
+  approvalRequestedBy: integer("approval_requested_by"),
+  approvedBy: integer("approved_by"),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  approvalNote: text("approval_note"),
   createdAt: ts(),
 }, (t) => [uniqueIndex("quotations_number_uq").on(t.number), index("quotations_status_idx").on(t.status)]);
 
@@ -208,6 +215,11 @@ export const quotationLines = pgTable("quotation_lines", {
   uom: varchar("uom", { length: 20 }).default("Nos").notNull(),
   /** snapshot of latest purchase cost at the time of quoting */
   costRate: doublePrecision("cost_rate").default(0).notNull(),
+  /** date and supplier of that cost snapshot (from items.lastPurchaseDate / lastPurchaseVendorId) */
+  costDate: date("cost_date"),
+  costVendorId: integer("cost_vendor_id"),
+  /** purchase | list | manual: where the cost came from */
+  costSource: varchar("cost_source", { length: 10 }),
   supplyRate: doublePrecision("supply_rate").default(0).notNull(),
   erectionRate: doublePrecision("erection_rate").default(0).notNull(),
   remarks: text("remarks"),
@@ -279,6 +291,8 @@ export const salesOrderLines = pgTable("sales_order_lines", {
   /** pending | ordered | in_transit | partial | delivered | cancelled */
   deliveryStatus: varchar("delivery_status", { length: 20 }).default("pending").notNull(),
   expectedDate: date("expected_date"),
+  /** qty the customer sent back (sales returns). Net delivered = deliveredQty − returnedQty */
+  returnedQty: doublePrecision("returned_qty").default(0).notNull(),
   remarks: text("remarks"),
 });
 
@@ -299,6 +313,8 @@ export const deliveryLines = pgTable("delivery_lines", {
   deliveryId: integer("delivery_id").notNull(),
   orderLineId: integer("order_line_id").notNull(),
   qty: doublePrecision("qty").notNull(),
+  /** cost of goods per unit at delivery (latest purchase cost then), used for order P&L */
+  costRate: doublePrecision("cost_rate").default(0).notNull(),
 });
 
 // ---------------------------------------------------------------- purchasing
@@ -310,6 +326,8 @@ export const purchaseInvoices = pgTable("purchase_invoices", {
   dueDate: date("due_date"),
   /** if set, materials go to this project's cost center; else into stock */
   projectId: integer("project_id"),
+  /** vendor purchase order this bill was raised against (optional) */
+  purchaseOrderId: integer("purchase_order_id"),
   subtotal: doublePrecision("subtotal").default(0).notNull(),
   taxAmount: doublePrecision("tax_amount").default(0).notNull(),
   total: doublePrecision("total").default(0).notNull(),
@@ -326,6 +344,73 @@ export const purchaseInvoiceLines = pgTable("purchase_invoice_lines", {
   invoiceId: integer("invoice_id").notNull(),
   itemId: integer("item_id").notNull(),
   description: text("description"),
+  qty: doublePrecision("qty").notNull(),
+  rate: doublePrecision("rate").notNull(),
+  gstRate: doublePrecision("gst_rate").default(18).notNull(),
+  amount: doublePrecision("amount").notNull(),
+  /** vendor PO line received by this bill line (optional) */
+  poLineId: integer("po_line_id"),
+});
+
+/** Vendor purchase orders, optionally raised against a customer sales order / project. */
+export const purchaseOrders = pgTable("purchase_orders", {
+  id: serial("id").primaryKey(),
+  number: varchar("number", { length: 40 }).notNull(),
+  vendorId: integer("vendor_id").notNull(),
+  salesOrderId: integer("sales_order_id"),
+  projectId: integer("project_id"),
+  poDate: date("po_date").notNull(),
+  expectedDate: date("expected_date"),
+  /** draft | sent | partial | received | closed | cancelled */
+  status: varchar("status", { length: 20 }).default("draft").notNull(),
+  subtotal: doublePrecision("subtotal").default(0).notNull(),
+  taxAmount: doublePrecision("tax_amount").default(0).notNull(),
+  total: doublePrecision("total").default(0).notNull(),
+  terms: text("terms"),
+  notes: text("notes"),
+  createdBy: integer("created_by"),
+  createdAt: ts(),
+}, (t) => [uniqueIndex("po_number_uq").on(t.number), index("po_status_idx").on(t.status)]);
+
+export const purchaseOrderLines = pgTable("purchase_order_lines", {
+  id: serial("id").primaryKey(),
+  poId: integer("po_id").notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  itemId: integer("item_id").notNull(),
+  description: text("description"),
+  qty: doublePrecision("qty").notNull(),
+  receivedQty: doublePrecision("received_qty").default(0).notNull(),
+  rate: doublePrecision("rate").notNull(),
+  gstRate: doublePrecision("gst_rate").default(18).notNull(),
+  amount: doublePrecision("amount").notNull(),
+  /** customer PO line this was bought for (optional) */
+  salesOrderLineId: integer("sales_order_line_id"),
+});
+
+/** Goods sent back to a vendor (debit note). Posting moves stock out and reduces what we owe. */
+export const purchaseReturns = pgTable("purchase_returns", {
+  id: serial("id").primaryKey(),
+  number: varchar("number", { length: 40 }).notNull(),
+  vendorId: integer("vendor_id").notNull(),
+  purchaseInvoiceId: integer("purchase_invoice_id"),
+  date: date("date").notNull(),
+  reason: text("reason"),
+  subtotal: doublePrecision("subtotal").default(0).notNull(),
+  taxAmount: doublePrecision("tax_amount").default(0).notNull(),
+  total: doublePrecision("total").default(0).notNull(),
+  /** amount of this debit note adjusted against vendor bills */
+  adjustedAmount: doublePrecision("adjusted_amount").default(0).notNull(),
+  /** draft | posted | cancelled */
+  status: varchar("status", { length: 20 }).default("draft").notNull(),
+  createdBy: integer("created_by"),
+  createdAt: ts(),
+}, (t) => [uniqueIndex("pr_number_uq").on(t.number)]);
+
+export const purchaseReturnLines = pgTable("purchase_return_lines", {
+  id: serial("id").primaryKey(),
+  returnId: integer("return_id").notNull(),
+  itemId: integer("item_id").notNull(),
+  purchaseInvoiceLineId: integer("purchase_invoice_line_id"),
   qty: doublePrecision("qty").notNull(),
   rate: doublePrecision("rate").notNull(),
   gstRate: doublePrecision("gst_rate").default(18).notNull(),
@@ -438,9 +523,141 @@ export const payments = pgTable("payments", {
   mode: varchar("mode", { length: 20 }).notNull(),
   reference: varchar("reference", { length: 80 }),
   notes: text("notes"),
+  /** advance received against a customer PO / project, not yet tied to an invoice */
+  isAdvance: boolean("is_advance").default(false).notNull(),
+  orderId: integer("order_id"),
+  projectId: integer("project_id"),
+  /** portion of an advance already applied to invoices (see payment_allocations) */
+  allocatedAmount: doublePrecision("allocated_amount").default(0).notNull(),
   createdBy: integer("created_by"),
   createdAt: ts(),
 });
+
+/** Applies an advance (payments.isAdvance) to a sales invoice. */
+export const paymentAllocations = pgTable("payment_allocations", {
+  id: serial("id").primaryKey(),
+  paymentId: integer("payment_id").notNull(),
+  salesInvoiceId: integer("sales_invoice_id").notNull(),
+  amount: doublePrecision("amount").notNull(),
+  date: date("date").notNull(),
+  createdBy: integer("created_by"),
+  createdAt: ts(),
+});
+
+/** Customer returns (credit note). Posting brings stock back and reduces what the customer owes. */
+export const salesReturns = pgTable("sales_returns", {
+  id: serial("id").primaryKey(),
+  /** credit note number, e.g. LBE/CN/2026-27/0001 */
+  number: varchar("number", { length: 40 }).notNull(),
+  customerId: integer("customer_id").notNull(),
+  orderId: integer("order_id"),
+  salesInvoiceId: integer("sales_invoice_id"),
+  projectId: integer("project_id"),
+  date: date("date").notNull(),
+  /** damaged | excess | wrong_item | quality | other */
+  reason: varchar("reason", { length: 20 }).default("other").notNull(),
+  notes: text("notes"),
+  subtotal: doublePrecision("subtotal").default(0).notNull(),
+  taxAmount: doublePrecision("tax_amount").default(0).notNull(),
+  total: doublePrecision("total").default(0).notNull(),
+  /** amount of this credit note adjusted against invoices */
+  adjustedAmount: doublePrecision("adjusted_amount").default(0).notNull(),
+  /** draft | posted | cancelled */
+  status: varchar("status", { length: 20 }).default("draft").notNull(),
+  createdBy: integer("created_by"),
+  createdAt: ts(),
+}, (t) => [uniqueIndex("sr_number_uq").on(t.number)]);
+
+export const salesReturnLines = pgTable("sales_return_lines", {
+  id: serial("id").primaryKey(),
+  returnId: integer("return_id").notNull(),
+  orderLineId: integer("order_line_id"),
+  itemId: integer("item_id"),
+  description: text("description").notNull(),
+  qty: doublePrecision("qty").notNull(),
+  rate: doublePrecision("rate").notNull(),
+  gstRate: doublePrecision("gst_rate").default(18).notNull(),
+  amount: doublePrecision("amount").notNull(),
+  /** true = goes back into sellable stock; false = scrap / send back to vendor */
+  restock: boolean("restock").default(true).notNull(),
+  /** cost per unit reversed out of cost of goods */
+  costRate: doublePrecision("cost_rate").default(0).notNull(),
+});
+
+// ---------------------------------------------------------------- AMC & service
+/** Annual maintenance contracts for installed systems (hydrant, sprinkler, alarm, PA, extinguishers). */
+export const amcContracts = pgTable("amc_contracts", {
+  id: serial("id").primaryKey(),
+  number: varchar("number", { length: 40 }).notNull(),
+  customerId: integer("customer_id").notNull(),
+  projectId: integer("project_id"),
+  siteAddress: text("site_address"),
+  /** array of system keys covered (see SYSTEMS) */
+  systems: jsonb("systems").$type<string[]>().default([]).notNull(),
+  scope: text("scope"),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  /** contract value excl. GST */
+  value: doublePrecision("value").default(0).notNull(),
+  /** monthly | quarterly | half_yearly | yearly | one_time */
+  billingFrequency: varchar("billing_frequency", { length: 20 }).default("yearly").notNull(),
+  /** preventive maintenance visits per year */
+  visitsPerYear: integer("visits_per_year").default(4).notNull(),
+  /** comprehensive (parts included) | non_comprehensive */
+  coverage: varchar("coverage", { length: 20 }).default("non_comprehensive").notNull(),
+  /** response time promised for breakdown calls, in hours */
+  responseHours: integer("response_hours").default(24).notNull(),
+  engineerId: integer("engineer_id"),
+  /** draft | active | expired | renewed | cancelled */
+  status: varchar("status", { length: 20 }).default("active").notNull(),
+  renewalOf: integer("renewal_of"),
+  nextBillingDate: date("next_billing_date"),
+  notes: text("notes"),
+  createdBy: integer("created_by"),
+  createdAt: ts(),
+}, (t) => [uniqueIndex("amc_number_uq").on(t.number), index("amc_end_idx").on(t.endDate)]);
+
+export const amcVisits = pgTable("amc_visits", {
+  id: serial("id").primaryKey(),
+  contractId: integer("contract_id").notNull(),
+  scheduledDate: date("scheduled_date").notNull(),
+  /** scheduled | done | missed | cancelled */
+  status: varchar("status", { length: 20 }).default("scheduled").notNull(),
+  doneDate: date("done_date"),
+  engineerId: integer("engineer_id"),
+  /** checklist results: [{ item, ok, remark }] */
+  checklist: jsonb("checklist").$type<{ item: string; ok: boolean; remark?: string }[]>().default([]).notNull(),
+  findings: text("findings"),
+  recommendations: text("recommendations"),
+  customerSignoff: varchar("customer_signoff", { length: 120 }),
+  createdAt: ts(),
+}, (t) => [index("amc_visit_due_idx").on(t.status, t.scheduledDate)]);
+
+/** Breakdown / service calls (AMC or chargeable). */
+export const serviceCalls = pgTable("service_calls", {
+  id: serial("id").primaryKey(),
+  number: varchar("number", { length: 40 }).notNull(),
+  customerId: integer("customer_id").notNull(),
+  contractId: integer("contract_id"),
+  projectId: integer("project_id"),
+  raisedAt: timestamp("raised_at", { withTimezone: true }).defaultNow().notNull(),
+  reportedBy: varchar("reported_by", { length: 120 }),
+  /** low | normal | high | critical */
+  priority: varchar("priority", { length: 10 }).default("normal").notNull(),
+  system: varchar("system", { length: 30 }),
+  description: text("description").notNull(),
+  /** open | assigned | in_progress | resolved | closed */
+  status: varchar("status", { length: 20 }).default("open").notNull(),
+  engineerId: integer("engineer_id"),
+  dueBy: timestamp("due_by", { withTimezone: true }),
+  resolution: text("resolution"),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  chargeable: boolean("chargeable").default(false).notNull(),
+  chargeAmount: doublePrecision("charge_amount").default(0).notNull(),
+  salesInvoiceId: integer("sales_invoice_id"),
+  createdBy: integer("created_by"),
+  createdAt: ts(),
+}, (t) => [uniqueIndex("sc_number_uq").on(t.number), index("sc_status_idx").on(t.status)]);
 
 // ---------------------------------------------------------------- extinguisher refill tracker
 export const extinguisherAssets = pgTable("extinguisher_assets", {

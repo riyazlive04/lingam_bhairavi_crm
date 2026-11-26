@@ -14,7 +14,7 @@ export async function pendingDeliveryLines(db: DB, limit = 10) {
   return db
     .select({
       lineId: salesOrderLines.id, orderId: salesOrders.id, orderNumber: salesOrders.number, poNumber: salesOrders.customerPoNumber,
-      customer: customers.name, description: salesOrderLines.description, qty: salesOrderLines.qty, deliveredQty: salesOrderLines.deliveredQty,
+      customer: customers.name, description: salesOrderLines.description, qty: salesOrderLines.qty, deliveredQty: salesOrderLines.deliveredQty, returnedQty: salesOrderLines.returnedQty,
       uom: salesOrderLines.uom, status: salesOrderLines.deliveryStatus, expected: effExpected, orderDate: salesOrders.orderDate,
     })
     .from(salesOrderLines)

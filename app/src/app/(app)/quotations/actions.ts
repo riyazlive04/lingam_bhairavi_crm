@@ -15,7 +15,10 @@ import { queueEmail } from "@/lib/email";
 import { addDays, round2, todayIST } from "@/lib/format";
 import { canSeeCost } from "@/lib/rbac";
 import { nextNumber } from "@/lib/sequence";
-import { computeQuoteTotals, getPricingSettings, suggestRates } from "@/lib/pricing";
+import {
+  approvalAfterChange, approvalBlocks, approvalReasons, computeQuoteTotals, costSnapshot, getPricingSettings, parseApprovalStatus,
+  suggestRates, type ApprovalStatus, type CostSource, type PricingSettings,
+} from "@/lib/pricing";
 import { getCompanySettings, isEditableStatus, revisionNumber } from "@/lib/quotations";
 import { itemPricing, recalcQuotation, refreshLinePrices } from "./_lib/data";
 import { quotationEmailHtml } from "./_lib/email-html";
@@ -54,6 +57,46 @@ function revalidateQuote(id: number) {
   revalidatePath("/quotations");
   revalidatePath(`/quotations/${id}`);
   revalidatePath("/follow-ups");
+  revalidatePath("/");
+}
+
+// ---------------------------------------------------------------- approval helpers (rule 11)
+type PricedLine = { itemId: number | null; qty: number; supplyRate: number; erectionRate: number; costRate: number };
+
+/** Why this quote needs approval right now (empty = it does not), from its saved lines and the current settings. */
+async function approvalReasonsFor(db: Awaited<ReturnType<typeof getDb>>, q: typeof quotations.$inferSelect, pricing?: PricingSettings) {
+  const p = pricing ?? await getPricingSettings(db);
+  const lines = await db.select().from(quotationLines).where(eq(quotationLines.quotationId, q.id));
+  return approvalReasons(lines, { mode: p.approvalMode, minMarginPct: p.minMarginPct, discountPct: q.discountPct, gstPct: q.gstPct });
+}
+
+/** Throws a friendly error when sending / emailing / winning is blocked by rule 11. Checked on the server, never only in the UI. */
+async function assertApprovedToSend(db: Awaited<ReturnType<typeof getDb>>, q: typeof quotations.$inferSelect, what: string) {
+  // closed quotes (won / lost / expired) are history: re-emailing a copy is not "sending for approval"
+  if (!isEditableStatus(q.status)) return;
+  const reasons = await approvalReasonsFor(db, q);
+  if (!approvalBlocks(reasons.length > 0, q.approvalStatus)) return;
+  const st = parseApprovalStatus(q.approvalStatus);
+  const why = reasons[0] ? ` (${reasons[0].charAt(0).toLowerCase()}${reasons[0].slice(1)})` : "";
+  if (st === "pending") throw new Error(`This quotation is waiting for an admin's approval${why}. You can ${what} once it is approved`);
+  if (st === "rejected") throw new Error(`This quotation was not approved. Update the prices and request approval again before you ${what}`);
+  throw new Error(`This quotation needs an admin's approval before you ${what}${why}. Use “Request approval” first`);
+}
+
+/** Stable fingerprint of what an approver looked at: priced lines + discount + GST. */
+function priceFingerprint(lines: readonly PricedLine[], discountPct: number, gstPct: number) {
+  const ls = lines.filter((l) => l.qty > 0).map((l) => [l.itemId ?? 0, l.qty, l.supplyRate, l.erectionRate, l.costRate].join("|")).sort();
+  return JSON.stringify([ls, Number(discountPct) || 0, Number(gstPct) || 0]);
+}
+
+/** Approval columns for a status change caused by an edit / price refresh. */
+function approvalPatch(next: ApprovalStatus, prev: string, userId: number) {
+  if (next === prev) return {};
+  if (next === "pending") {
+    return { approvalStatus: next, approvalRequestedAt: new Date(), approvalRequestedBy: userId, approvedBy: null, approvedAt: null, approvalNote: "Prices changed after approval, needs a fresh approval" };
+  }
+  if (next === "not_required") return { approvalStatus: next, approvedBy: null, approvedAt: null };
+  return { approvalStatus: next };
 }
 
 // ---------------------------------------------------------------- step 1: header → step 2 grid
@@ -118,6 +161,8 @@ const lineSchema = z.object({
   erectionRate: z.coerce.number().min(0, "Rates cannot be negative").max(1e10),
   costRate: z.coerce.number().min(0).max(1e10).nullish(),
   remarks: optText(1000),
+  /** "Use latest price" was clicked: take a fresh cost snapshot (rule 10) instead of keeping the saved one */
+  repriced: z.boolean().nullish(),
 });
 
 const saveSchema = z.object({
@@ -170,22 +215,39 @@ export async function saveQuotation(form: FormData) {
     // Cost snapshot is always computed server-side (never trusted from the client for item-linked lines).
     const priceMap = await itemPricing(db, lines.map((l) => l.itemId).filter((x): x is number => x != null));
     const showCost = canSeeCost(user.role);
+    const today = todayIST();
     const rows = lines.map((l, i) => {
       const prev = l.lineId ? prevLines.get(l.lineId) : undefined;
-      let costRate = 0;
+      let costRate = 0, costDate: string | null = null, costVendorId: number | null = null, costSource: CostSource = "manual";
       if (l.itemId != null) {
         const it = priceMap.get(l.itemId);
         if (!it) throw new Error(`Item on line ${i + 1} no longer exists`);
-        costRate = prev && prev.itemId === l.itemId ? prev.costRate : suggestRates(it, h.markupPct).costRate;
+        if (prev && prev.itemId === l.itemId && !l.repriced) {
+          // keep the snapshot the line was priced with (rule 10)
+          costRate = prev.costRate;
+          costDate = prev.costDate;
+          costVendorId = prev.costVendorId;
+          costSource = prev.costSource === "purchase" || prev.costSource === "list" ? prev.costSource : costSnapshot(it).costSource;
+        } else {
+          const snap = costSnapshot(it);
+          costRate = suggestRates(it, h.markupPct).costRate;
+          costDate = snap.costDate;
+          costVendorId = snap.costVendorId;
+          costSource = snap.costSource;
+        }
       } else {
         costRate = showCost && l.costRate != null ? round2(l.costRate) : prev?.costRate ?? 0;
+        // typed by hand: date it when the figure was entered or changed
+        costDate = prev && prev.itemId == null && prev.costRate === costRate && prev.costDate ? prev.costDate : today;
       }
       return {
         sortOrder: i + 1, boqRef: l.boqRef, section: l.section, itemId: l.itemId, description: l.description, qty: l.qty,
-        uom: l.uom, costRate, supplyRate: round2(l.supplyRate), erectionRate: round2(l.erectionRate), remarks: l.remarks,
+        uom: l.uom, costRate, costDate, costVendorId, costSource, supplyRate: round2(l.supplyRate), erectionRate: round2(l.erectionRate), remarks: l.remarks,
       };
     });
     const t = computeQuoteTotals(rows, h.discountPct, h.gstPct);
+    const pricing = await getPricingSettings(db);
+    const needs = approvalReasons(rows, { mode: pricing.approvalMode, minMarginPct: pricing.minMarginPct, discountPct: h.discountPct, gstPct: h.gstPct }).length > 0;
     const header = {
       customerId: h.customerId, projectName: h.projectName, siteLocation: h.siteLocation, system: h.system || null,
       templateId: typeof h.templateId === "number" ? h.templateId : null, quoteDate: h.quoteDate, validUntil: h.validUntil,
@@ -194,14 +256,26 @@ export async function saveQuotation(form: FormData) {
     };
 
     let qid: number;
+    let approvalNote = "";
     if (id && existing) {
+      const ex = existing;
+      // Rule 11: editing what was approved sends it back for approval (or clears it when no longer needed).
+      const changed = priceFingerprint([...prevLines.values()], ex.discountPct, ex.gstPct) !== priceFingerprint(rows, h.discountPct, h.gstPct);
+      const prevStatus = parseApprovalStatus(ex.approvalStatus);
+      const nextStatus: ApprovalStatus = changed ? approvalAfterChange(prevStatus, needs) : (!needs && prevStatus === "pending" ? "not_required" : prevStatus);
+      const patch = approvalPatch(nextStatus, prevStatus, user.id);
       await db.transaction(async (tx) => {
-        await tx.update(quotations).set(header).where(eq(quotations.id, id));
+        await tx.update(quotations).set({ ...header, ...patch }).where(eq(quotations.id, id));
         await tx.delete(quotationLines).where(eq(quotationLines.quotationId, id));
         await tx.insert(quotationLines).values(rows.map((r) => ({ ...r, quotationId: id })));
       });
       qid = id;
       await audit(db, user.id, "update", "quotation", qid, { lines: rows.length, grandTotal: t.grand });
+      if (nextStatus !== prevStatus) {
+        await audit(db, user.id, "update", "quotation", qid, { approval: nextStatus, from: prevStatus, reason: "edited" });
+        approvalNote = nextStatus === "pending" ? ". Prices changed after approval, so it is back with the admin for approval" : "";
+      }
+      if (needs && (nextStatus === "not_required" || nextStatus === "rejected")) approvalNote = ". This quotation needs approval before it can be sent";
     } else {
       const number = await nextNumber(db, "quotation", h.quoteDate);
       qid = await db.transaction(async (tx) => {
@@ -211,9 +285,10 @@ export async function saveQuotation(form: FormData) {
       });
       await audit(db, user.id, "create", "quotation", qid, { number, lines: rows.length, grandTotal: t.grand });
     }
+    if (!id && needs) approvalNote = ". This quotation needs approval before it can be sent";
     revalidateQuote(qid);
     const skipped = all.length - lines.length;
-    target = `/quotations/${qid}?ok=${encodeURIComponent(`Quotation saved with ${rows.length} line${rows.length === 1 ? "" : "s"}${skipped ? ` (${skipped} zero-qty lines left out)` : ""}`)}`;
+    target = `/quotations/${qid}?ok=${encodeURIComponent(`Quotation saved with ${rows.length} line${rows.length === 1 ? "" : "s"}${skipped ? ` (${skipped} zero-qty lines left out)` : ""}${approvalNote}`)}`;
   } catch (e) {
     const back = rawId ? `/quotations/${rawId}/edit` : safeBack(form.get("back"), "/quotations/new");
     target = withMsg(back, "err", errMsg(e));
@@ -230,6 +305,7 @@ export async function markSent(form: FormData) {
   try {
     const { db, q } = await loadQuote(id);
     if (q.status !== "draft") throw new Error("Only a draft quotation can be marked as sent");
+    await assertApprovedToSend(db, q, "mark it as sent");
     const next = q.nextFollowUpDate && q.nextFollowUpDate >= todayIST() ? q.nextFollowUpDate : addDays(todayIST(), 2);
     await db.update(quotations).set({ status: "sent", sentAt: new Date(), nextFollowUpDate: next }).where(eq(quotations.id, id));
     await audit(db, user.id, "update", "quotation", id, { status: "sent", nextFollowUpDate: next });
@@ -304,6 +380,7 @@ export async function markWon(form: FormData) {
     });
     const { db, q } = await loadQuote(p.id);
     if (!isEditableStatus(q.status)) throw new Error(`Quotation is already ${q.status}`);
+    await assertApprovedToSend(db, q, "mark it as won");
     const lines = (await db.select().from(quotationLines).where(eq(quotationLines.quotationId, id)).orderBy(asc(quotationLines.sortOrder)))
       .filter((l) => l.qty > 0);
     if (!lines.length) throw new Error("Quotation has no lines");
@@ -397,7 +474,8 @@ async function copyQuotation(userId: number, srcId: number, mode: "revise" | "du
     if (lines.length) {
       await tx.insert(quotationLines).values(lines.map((l) => ({
         quotationId: n.id, sortOrder: l.sortOrder, boqRef: l.boqRef, section: l.section, itemId: l.itemId, description: l.description,
-        qty: l.qty, uom: l.uom, costRate: l.costRate, supplyRate: l.supplyRate, erectionRate: l.erectionRate, remarks: l.remarks,
+        qty: l.qty, uom: l.uom, costRate: l.costRate, costDate: l.costDate, costVendorId: l.costVendorId, costSource: l.costSource,
+        supplyRate: l.supplyRate, erectionRate: l.erectionRate, remarks: l.remarks,
       })));
     }
     if (mode === "revise" && (q.status === "sent" || q.status === "negotiation")) {
@@ -472,8 +550,19 @@ export async function refreshPrices(form: FormData) {
     const changed = await refreshLinePrices(db, id, q.markupPct);
     const t = await recalcQuotation(db, id);
     await audit(db, user.id, "update", "quotation", id, { refreshPrices: changed, grandTotal: t?.grand });
+    let extra = "";
+    if (changed) {
+      const needs = (await approvalReasonsFor(db, q)).length > 0;
+      const prev = parseApprovalStatus(q.approvalStatus);
+      const next = approvalAfterChange(prev, needs);
+      if (next !== prev) {
+        await db.update(quotations).set(approvalPatch(next, prev, user.id)).where(eq(quotations.id, id));
+        await audit(db, user.id, "update", "quotation", id, { approval: next, from: prev, reason: "prices refreshed" });
+        if (next === "pending") extra = ". It is back with the admin for approval";
+      }
+    }
     revalidateQuote(id);
-    target = withMsg(`/quotations/${id}`, "ok", changed ? `Prices refreshed on ${changed} line${changed === 1 ? "" : "s"} from the latest costs` : "All prices were already up to date");
+    target = withMsg(`/quotations/${id}`, "ok", changed ? `Prices and price dates refreshed on ${changed} line${changed === 1 ? "" : "s"} from the latest costs${extra}` : "All prices were already up to date");
   } catch (e) {
     target = withMsg(`/quotations/${id}`, "err", errMsg(e));
   }
@@ -495,6 +584,7 @@ export async function emailQuotation(form: FormData) {
   try {
     const p = emailSchema.parse({ id: form.get("id"), to: form.get("to"), cc: form.get("cc"), message: form.get("message") });
     const { db, q } = await loadQuote(id);
+    await assertApprovedToSend(db, q, "email it");
     const [cust] = await db.select().from(customers).where(eq(customers.id, q.customerId));
     const lines = await db.select().from(quotationLines).where(eq(quotationLines.quotationId, id)).orderBy(asc(quotationLines.sortOrder));
     const company = await getCompanySettings(db);
@@ -513,6 +603,96 @@ export async function emailQuotation(form: FormData) {
     revalidateQuote(id);
     revalidatePath("/emails");
     target = withMsg(`/quotations/${id}`, "ok", `Quotation emailed to ${p.to}${extra}`);
+  } catch (e) {
+    target = withMsg(`/quotations/${id}`, "err", errMsg(e));
+  }
+  redirect(target);
+}
+
+// ---------------------------------------------------------------- approval actions (rule 11)
+const requestSchema = z.object({ id: idSchema, note: optText(1000) });
+
+/** Sales asks an admin to approve a quotation that needs approval (not_required / rejected → pending). */
+export async function requestApproval(form: FormData) {
+  const user = await requireWrite("quotations");
+  const id = idSchema.parse(form.get("id"));
+  let target: string;
+  try {
+    const p = requestSchema.parse({ id: form.get("id"), note: form.get("note") });
+    const { db, q } = await loadQuote(p.id);
+    if (!isEditableStatus(q.status)) throw new Error(`A ${q.status} quotation doesn't need approval`);
+    const reasons = await approvalReasonsFor(db, q);
+    if (!reasons.length) throw new Error("This quotation doesn't need approval under the current pricing settings");
+    const prev = parseApprovalStatus(q.approvalStatus);
+    if (prev === "pending") throw new Error("Approval has already been requested");
+    if (prev === "approved") throw new Error("This quotation is already approved");
+    const upd = await db.update(quotations).set({
+      approvalStatus: "pending", approvalRequestedAt: new Date(), approvalRequestedBy: user.id, approvedBy: null, approvedAt: null, approvalNote: p.note,
+    }).where(and(eq(quotations.id, id), eq(quotations.approvalStatus, prev))).returning({ id: quotations.id });
+    if (!upd.length) throw new Error("Someone else just changed this quotation's approval. Please reload and try again");
+    await audit(db, user.id, "update", "quotation", id, { approval: "pending", from: prev, note: p.note, reasons });
+    revalidateQuote(id);
+    target = withMsg(`/quotations/${id}`, "ok", "Approval requested. An admin will review the prices");
+  } catch (e) {
+    target = withMsg(`/quotations/${id}`, "err", errMsg(e));
+  }
+  redirect(target);
+}
+
+const decideSchema = z.object({ id: idSchema, note: optText(1000) });
+const rejectSchema = z.object({ id: idSchema, note: z.string().trim().min(3, "Please say why the quotation is not approved, so sales knows what to change").max(1000) });
+
+async function requireApprover() {
+  const user = await requireWrite("quotations");
+  if (user.role !== "admin") throw new Error("Only an admin can approve or reject quotations");
+  return user;
+}
+
+/** Admin approves (pending → approved). An admin may also approve directly without a request. */
+export async function approveQuotation(form: FormData) {
+  const user = await requireApprover();
+  const id = idSchema.parse(form.get("id"));
+  let target: string;
+  try {
+    const p = decideSchema.parse({ id: form.get("id"), note: form.get("note") });
+    const { db, q } = await loadQuote(p.id);
+    if (!isEditableStatus(q.status)) throw new Error(`A ${q.status} quotation can't be approved`);
+    const prev = parseApprovalStatus(q.approvalStatus);
+    if (prev === "approved") throw new Error("This quotation is already approved");
+    const reasons = await approvalReasonsFor(db, q);
+    if (prev === "not_required" && !reasons.length) throw new Error("This quotation doesn't need approval");
+    const upd = await db.update(quotations).set({
+      approvalStatus: "approved", approvedBy: user.id, approvedAt: new Date(),
+      approvalNote: p.note ?? q.approvalNote,
+      ...(q.approvalRequestedAt ? {} : { approvalRequestedAt: new Date(), approvalRequestedBy: user.id }),
+    }).where(and(eq(quotations.id, id), eq(quotations.approvalStatus, prev))).returning({ id: quotations.id });
+    if (!upd.length) throw new Error("Someone else just changed this quotation's approval. Please reload and try again");
+    await audit(db, user.id, "update", "quotation", id, { approval: "approved", from: prev, note: p.note });
+    revalidateQuote(id);
+    target = withMsg(`/quotations/${id}`, "ok", "Approved. The quotation can now be sent");
+  } catch (e) {
+    target = withMsg(`/quotations/${id}`, "err", errMsg(e));
+  }
+  redirect(target);
+}
+
+/** Admin rejects a pending request with a note (pending → rejected). */
+export async function rejectQuotation(form: FormData) {
+  const user = await requireApprover();
+  const id = idSchema.parse(form.get("id"));
+  let target: string;
+  try {
+    const p = rejectSchema.parse({ id: form.get("id"), note: form.get("note") });
+    const { db, q } = await loadQuote(p.id);
+    if (!isEditableStatus(q.status)) throw new Error(`A ${q.status} quotation can't be rejected`);
+    const prev = parseApprovalStatus(q.approvalStatus);
+    if (prev !== "pending") throw new Error("Only a quotation waiting for approval can be rejected");
+    const upd = await db.update(quotations).set({ approvalStatus: "rejected", approvedBy: user.id, approvedAt: new Date(), approvalNote: p.note })
+      .where(and(eq(quotations.id, id), eq(quotations.approvalStatus, "pending"))).returning({ id: quotations.id });
+    if (!upd.length) throw new Error("Someone else just changed this quotation's approval. Please reload and try again");
+    await audit(db, user.id, "update", "quotation", id, { approval: "rejected", from: prev, note: p.note });
+    revalidateQuote(id);
+    target = withMsg(`/quotations/${id}`, "ok", "Marked as not approved. Sales can see your note");
   } catch (e) {
     target = withMsg(`/quotations/${id}`, "err", errMsg(e));
   }

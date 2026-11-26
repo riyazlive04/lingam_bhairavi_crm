@@ -185,3 +185,24 @@ export async function getCompanySettings(db: DB): Promise<CompanySettings> {
     return { ...DEFAULT_COMPANY };
   }
 }
+
+// ---------------------------------------------------------------- approval (rule 11)
+export const APPROVAL_STATUS_LABEL: Record<string, string> = {
+  not_required: "Not needed", pending: "Awaiting approval", approved: "Approved", rejected: "Rejected",
+};
+
+/**
+ * Number of quotations waiting for an admin's approval (approvalStatus = pending on a draft / sent / negotiation quote).
+ * For the dashboard and nav badges. Uses the relational query API so this module stays free of runtime schema imports.
+ */
+export async function pendingApprovalCount(db: DB): Promise<number> {
+  try {
+    const rows = await db.query.quotations.findMany({
+      columns: { id: true },
+      where: (q, { and, eq, inArray }) => and(eq(q.approvalStatus, "pending"), inArray(q.status, [...EDITABLE_QUOTE_STATUSES])),
+    });
+    return rows.length;
+  } catch {
+    return 0;
+  }
+}

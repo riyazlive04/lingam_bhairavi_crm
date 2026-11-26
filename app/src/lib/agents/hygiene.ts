@@ -12,7 +12,8 @@ import { budgetUsedPct, listPreview, plural, projectActualCost, toISTDate } from
 import type { AlertDraft } from "./types";
 
 /**
- * Project actual cost per CONVENTIONS rule 5, for many projects in 2 queries.
+ * Project actual cost per CONVENTIONS rules 5 and 13, for many projects in 2 queries.
+ * Kept consistent with lib/costing.ts projectCostSummary: material = issued − site returns − restocked customer returns.
  * Returns Map<projectId, { material, expenses, actual, lastActivity }>.
  */
 export async function projectCosts(db: DB, projectIds: number[]) {
@@ -24,6 +25,7 @@ export async function projectCosts(db: DB, projectIds: number[]) {
       projectId: stockMovements.projectId,
       issued: sql<number>`coalesce(sum(case when ${stockMovements.type} = 'issue_project' then abs(${stockMovements.qty}) * ${stockMovements.rate} else 0 end),0)`.mapWith(Number),
       returned: sql<number>`coalesce(sum(case when ${stockMovements.type} = 'return' then abs(${stockMovements.qty}) * ${stockMovements.rate} else 0 end),0)`.mapWith(Number),
+      customerReturned: sql<number>`coalesce(sum(case when ${stockMovements.type} = 'sales_return' then abs(${stockMovements.qty}) * ${stockMovements.rate} else 0 end),0)`.mapWith(Number),
       last: sql<string | null>`max(${stockMovements.date})::text`,
     })
     .from(stockMovements)
@@ -43,10 +45,10 @@ export async function projectCosts(db: DB, projectIds: number[]) {
   const expMap = new Map(exps.map((e) => [Number(e.projectId), e]));
   for (const id of projectIds) {
     const m = matMap.get(id), e = expMap.get(id);
-    const material = (m?.issued ?? 0) - (m?.returned ?? 0);
+    const material = (m?.issued ?? 0) - (m?.returned ?? 0) - (m?.customerReturned ?? 0);
     const expense = e?.approved ?? 0;
     const dates = [m?.last, e?.last].filter((d): d is string => !!d).sort();
-    res.set(id, { material, expenses: expense, actual: projectActualCost(m?.issued ?? 0, m?.returned ?? 0, expense), lastActivity: dates.at(-1) ?? null });
+    res.set(id, { material, expenses: expense, actual: projectActualCost(m?.issued ?? 0, m?.returned ?? 0, expense, m?.customerReturned ?? 0), lastActivity: dates.at(-1) ?? null });
   }
   return res;
 }
@@ -62,7 +64,7 @@ const dhMeta = {
 export const dataHygieneAgent = defineAgent({
   key: "data_hygiene",
   name: "Accountability Agent (Data Hygiene)",
-  description: "Catches skipped entries (the reason most CRMs fail): won quotes without an order, deliveries not billed, expenses stuck in approval, purchase bills left in draft, active sites with no cost entries, quotes with no next follow-up, and customers with unpaid bills but no email for reminders.",
+  description: "Catches skipped entries (the reason most CRMs fail): won quotes without an order, quotes waiting for approval for more than a day, deliveries not billed, expenses stuck in approval, purchase bills left in draft, active sites with no cost entries, quotes with no next follow-up, and customers with unpaid bills but no email for reminders.",
   ownerRole: "admin",
   defaultParams: { quoteNoFollowUpDays: 7, wonNoOrderDays: 3, deliveredNotInvoicedDays: 2, expensePendingDays: 3 },
   paramSchema: numericParams(dhMeta),
@@ -120,6 +122,29 @@ export const dataHygieneAgent = defineAgent({
       });
     }
 
+    // 2b) quotations waiting for admin approval (rule 11) for more than a day; clears once approved or rejected
+    const apv = await db
+      .select({
+        id: quotations.id, number: quotations.number, customer: customers.name, grandTotal: quotations.grandTotal,
+        requestedAt: quotations.approvalRequestedAt, quoteDate: quotations.quoteDate,
+      })
+      .from(quotations)
+      .innerJoin(customers, eq(customers.id, quotations.customerId))
+      .where(and(eq(quotations.approvalStatus, "pending"), inArray(quotations.status, ["draft", "sent", "negotiation"])));
+    for (const q of apv) {
+      const since = toISTDate(q.requestedAt) ?? q.quoteDate;
+      const age = daysBetween(since, today);
+      if (age < 1) continue;
+      out.push({
+        dedupeKey: `apv:${q.id}`,
+        severity: age > 3 ? "critical" : "warning",
+        title: `Quote ${q.number} awaiting your approval`,
+        message: `${q.customer} · ${moneyShort(q.grandTotal)}. Approval was requested ${plural(age, "day")} ago and the quote cannot be sent until it is approved or rejected.`,
+        entityType: "quotation", entityId: q.id, link: `/quotations/${q.id}`, assignedRole: "admin",
+        dueDate: addDays(since, 1),
+      });
+    }
+
     // 3) orders fully delivered but not fully invoiced
     const lastDel = db
       .select({ orderId: deliveries.orderId, last: sql<string>`max(${deliveries.date})::text`.as("last_del") })
@@ -138,7 +163,7 @@ export const dataHygieneAgent = defineAgent({
       .leftJoin(lastDel, eq(lastDel.orderId, salesOrders.id))
       .where(inArray(salesOrders.status, ["open", "partial", "delivered"]))
       .groupBy(salesOrders.id, customers.name, lastDel.last)
-      .having(sql`bool_and(${salesOrderLines.deliveredQty} >= ${salesOrderLines.qty} - 0.0001)
+      .having(sql`bool_and(${salesOrderLines.deliveredQty} - ${salesOrderLines.returnedQty} >= ${salesOrderLines.qty} - 0.0001)
         and bool_or(${salesOrderLines.invoicedQty} < ${salesOrderLines.qty} - 0.0001)`);
     for (const o of dni) {
       const since = o.lastDelivery ?? o.orderDate;
@@ -250,7 +275,7 @@ const pbMeta = {
 export const projectBudgetAgent = defineAgent({
   key: "project_budget",
   name: "Project Budget Watch",
-  description: "Recomputes every active project's actual cost (materials issued − returns + approved expenses) against its budget daily and warns before the project goes into loss.",
+  description: "Recomputes every active project's actual cost (materials issued − returns − restocked customer returns + approved expenses) against its budget daily and warns before the project goes into loss.",
   ownerRole: "admin",
   defaultParams: { warnPct: 80, criticalPct: 100 },
   paramSchema: numericParams(pbMeta),

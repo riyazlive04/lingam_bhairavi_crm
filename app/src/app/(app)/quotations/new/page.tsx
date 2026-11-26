@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { FileSpreadsheet } from "lucide-react";
 import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { boqTemplates, customers } from "@/db/schema";
@@ -85,6 +87,8 @@ export default async function NewQuotationPage({ searchParams }: { searchParams:
           showCost={showCost}
           minMarginPct={pricing.minMarginPct}
           canChangeMarkup={showCost}
+          today={today}
+          approvalMode={pricing.approvalMode}
         />
       </div>
     );
@@ -102,6 +106,10 @@ export default async function NewQuotationPage({ searchParams }: { searchParams:
     <div>
       <PageHeader title="New quotation" subtitle="Step 1 of 2 · customer, project and standard BOQ" back={{ href: "/quotations", label: "Quotations" }} />
       <Flash err={sp.err} ok={sp.ok} />
+      <p className="mb-4 flex items-center gap-2 rounded-lg border border-line bg-muted px-4 py-2.5 text-sm text-ink-soft">
+        <FileSpreadsheet className="h-4 w-4 shrink-0 text-brand-700 dark:text-brand-300" aria-hidden />
+        <span>Have the consultant&apos;s Excel? <Link href="/boq-import" className="font-medium text-brand-700 hover:underline dark:text-brand-300">Import it instead</Link></span>
+      </p>
       <form action={startQuotation} className="space-y-6">
         <Card title="Customer">
           <div className="grid gap-4 sm:grid-cols-2">

@@ -13,7 +13,7 @@ import { SubmitButton } from "@/components/submit-button";
 import { adjustStock, allocateStock, issueToProject, releaseAllocation, returnFromProject } from "../actions";
 
 const TYPE_TONE: Record<string, "green" | "red" | "blue" | "amber" | "violet" | "gray"> = {
-  purchase_in: "green", opening: "green", issue_project: "violet", return: "blue", sale_out: "red", adjust: "amber",
+  purchase_in: "green", opening: "green", issue_project: "violet", return: "blue", sale_out: "red", adjust: "amber", sales_return: "blue", purchase_return: "red",
 };
 
 export default async function StockItemPage({ params, searchParams }: { params: Promise<{ itemId: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {

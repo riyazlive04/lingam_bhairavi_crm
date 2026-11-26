@@ -9,6 +9,7 @@ import { settings, users } from "@/db/schema";
 import { requireWrite } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { ROLES, type Role } from "@/lib/constants";
+import { APPROVAL_MODES, type ApprovalMode } from "@/lib/pricing";
 import { UserError, errMsg, flashUrl, isUniqueViolation, zId } from "../projects/_lib/forms";
 import { formatBankDetails, readSetting } from "./_lib/settings";
 
@@ -66,6 +67,7 @@ const PricingInput = z.object({
   minMarginPct: z.coerce.number().min(0).max(100),
   gstPct: z.coerce.number().min(0).max(100),
   quoteValidityDays: z.coerce.number().int().min(1).max(365),
+  approvalMode: z.enum(APPROVAL_MODES as [ApprovalMode, ...ApprovalMode[]], "Choose when quotations need approval").default("below_margin"),
 });
 
 export async function savePricing(form: FormData) {

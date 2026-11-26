@@ -29,18 +29,18 @@ export default async function PayablesPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <PageHeader title="Vendor outstanding" subtitle="Posted purchase invoices with balance payable"
+      <PageHeader title="Vendor outstanding" subtitle="Posted purchase invoices with balance payable. Net payable takes off debit notes not yet adjusted."
         actions={<a href="/billing/export/payables" className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink hover:bg-muted"><Download className="h-4 w-4" aria-hidden /> Export Excel</a>} />
       <BillingNav active="/billing/payables" />
       <Flash ok={sp.ok} err={sp.err} />
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Total payable" value={moneyShort(t.outstanding)} />
+        <Stat label="Net payable" value={moneyShort(t.netDue)} hint={t.debitNotes ? `Bills ${moneyShort(t.outstanding)} less debit notes ${moneyShort(t.debitNotes)}` : undefined} />
         <Stat label="Overdue" value={moneyShort(t.overdue)} tone={t.overdue ? "warn" : "good"} />
         <Stat label="Due in 7 days" value={moneyShort(t.dueNext7)} />
         <Stat label="90+ days" value={moneyShort(t.d90p)} tone={t.d90p ? "bad" : "default"} />
       </div>
       <div className="mb-6">
-        <AgeingTable rows={rows} hrefFor={(id) => `/billing/payables?vendor=${id}#bills`} emptyTitle="No vendor payables outstanding." />
+        <AgeingTable kind="vendor" rows={rows} hrefFor={(id) => `/billing/payables?vendor=${id}#bills`} emptyTitle="No vendor payables outstanding." />
       </div>
 
       <Card

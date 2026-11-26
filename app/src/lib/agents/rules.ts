@@ -152,9 +152,9 @@ export function clampDraft(d: AlertDraft): AlertDraft {
   };
 }
 
-/** Project actual cost (CONVENTIONS rule 5). */
-export function projectActualCost(issued: number, returned: number, approvedExpenses: number): number {
-  return Math.max(0, Number(issued) || 0) - Math.abs(Number(returned) || 0) + (Number(approvedExpenses) || 0);
+/** Project actual cost (CONVENTIONS rules 5 and 13): issued − site returns − restocked customer returns + approved expenses. */
+export function projectActualCost(issued: number, returned: number, approvedExpenses: number, customerReturned = 0): number {
+  return Math.max(0, Number(issued) || 0) - Math.abs(Number(returned) || 0) - Math.abs(Number(customerReturned) || 0) + (Number(approvedExpenses) || 0);
 }
 
 /** Budget usage as % (0 when no budget). */

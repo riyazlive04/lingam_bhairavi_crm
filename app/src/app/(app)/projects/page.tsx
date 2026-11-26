@@ -55,9 +55,9 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
     (a, r) => {
       const c = costs.get(r.id);
       if (!c) return a;
-      return { contract: a.contract + c.contractValue, cost: a.cost + c.actualCost, invoiced: a.invoiced + c.invoiced, received: a.received + c.received };
+      return { contract: a.contract + c.contractValue, cost: a.cost + c.actualCost, invoiced: a.invoiced + c.invoiced, received: a.received + c.received, due: a.due + c.netDue };
     },
-    { contract: 0, cost: 0, invoiced: 0, received: 0 },
+    { contract: 0, cost: 0, invoiced: 0, received: 0, due: 0 },
   );
   const filtered = !!(q || sp.status || customerId || engineerId);
 
@@ -77,7 +77,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
           <Stat label="Live contract value" value={moneyShort(tot.contract)} hint={`${live.length} live project${live.length === 1 ? "" : "s"}`} />
           <Stat label="Spent so far" value={moneyShort(tot.cost)} hint="materials + approved expenses" />
           <Stat label="Invoiced (excl. GST)" value={moneyShort(tot.invoiced)} />
-          <Stat label="Received" value={moneyShort(tot.received)} hint={`Standing: ${moneyShort(tot.invoiced - tot.received)}`} tone={tot.invoiced - tot.received > 0 ? "warn" : "default"} />
+          <Stat label="Received" value={moneyShort(tot.received)} hint={`Net due: ${moneyShort(tot.due)} (incl. GST)`} tone={tot.due > 0.5 ? "warn" : "default"} />
         </div>
       )}
 
@@ -120,6 +120,8 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
               <Th className="text-right">Actual cost</Th>
               <Th>Budget used</Th>
               {full && <Th className="text-right">Margin</Th>}
+              {full && <Th className="text-right">Received</Th>}
+              {full && <Th className="text-right">Net due</Th>}
             </tr>
           </thead>
           <tbody>
@@ -142,6 +144,12 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
                     <Td className={cx("text-right tabular-nums", c && c.margin < 0 ? "font-semibold text-red-600" : "text-ink")}>
                       {c && c.contractValue ? pct(c.marginPct) : "-"}
                       {c && c.contractValue ? <div className="text-xs text-ink-soft">{money0(c.margin)}</div> : null}
+                    </Td>
+                  )}
+                  {full && <Td className="text-right tabular-nums">{money0(c?.received)}</Td>}
+                  {full && (
+                    <Td className={cx("text-right tabular-nums", c && c.netDue > 0.5 ? "font-medium text-amber-700 dark:text-amber-400" : "text-ink")}>
+                      {money0(c?.netDue)}
                     </Td>
                   )}
                 </tr>

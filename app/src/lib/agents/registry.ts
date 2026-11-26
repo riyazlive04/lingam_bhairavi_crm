@@ -3,6 +3,7 @@ import { followupAgent, marginGuardAgent, quoteExpiryAgent } from "./sales";
 import { lowStockAgent, pendingDeliveryAgent, refillDueAgent, stalePriceAgent } from "./operations";
 import { payablesAgent, receivablesAgent } from "./finance";
 import { dataHygieneAgent, projectBudgetAgent } from "./hygiene";
+import { amcServiceAgent } from "./service";
 import type { Agent } from "./types";
 
 /** Execution order matters: quote_expiry first so follow-up alerts for just-expired quotes are cleared in the same run. */
@@ -11,6 +12,7 @@ export const AGENTS: Agent[] = [
   pendingDeliveryAgent,
   followupAgent,
   refillDueAgent,
+  amcServiceAgent,
   receivablesAgent,
   payablesAgent,
   stalePriceAgent,

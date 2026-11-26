@@ -1,6 +1,8 @@
 /**
  * Orders & delivery domain helpers (customer POs = sales_orders). Maintainer: Sirah Digital.
  * Implements shared business rule 7 (delivery → deliveredQty, line status, order status).
+ * Version 2: customer returns (rule 13) reduce what counts as delivered. Net delivered = deliveredQty − returnedQty,
+ * so a fully returned line goes back to pending and shows up in the pending-delivery tracking again.
  */
 import { and, asc, eq, inArray, lt, notInArray, sql } from "drizzle-orm";
 import type { DB } from "@/db";
@@ -28,7 +30,17 @@ export const LINE_STATUS_LABEL: Record<string, string> = {
 
 const EPS = 1e-6;
 
-/** Rule 7: line status after a delivery quantity change. Keeps manual statuses (ordered/in_transit) while nothing is delivered. */
+/** Net delivered qty of a line (rule 13): delivered − returned, never below 0. */
+export function netDeliveredQty(deliveredQty: number, returnedQty: number | null | undefined): number {
+  return Math.max(0, round2(Number(deliveredQty) - Number(returnedQty ?? 0)));
+}
+
+/** Qty still to deliver on a line = ordered − net delivered (never below 0). */
+export function pendingQtyOf(l: { qty: number; deliveredQty: number; returnedQty?: number | null }): number {
+  return Math.max(0, round2(Number(l.qty) - netDeliveredQty(l.deliveredQty, l.returnedQty)));
+}
+
+/** Rule 7: line status after a delivery quantity change. Pass the NET delivered qty (delivered − returned). Keeps manual statuses (ordered/in_transit) while nothing is delivered. */
 export function lineStatusFor(qtyOrdered: number, deliveredQty: number, current: string): string {
   if (current === "cancelled") return "cancelled";
   if (deliveredQty >= qtyOrdered - EPS) return "delivered";
@@ -50,10 +62,11 @@ export async function recomputeOrderStatus(db: DbOrTx, orderId: number): Promise
   const [order] = await db.select({ status: salesOrders.status }).from(salesOrders).where(eq(salesOrders.id, orderId));
   if (!order) throw new Error("Order not found");
   const lines = await db
-    .select({ deliveryStatus: salesOrderLines.deliveryStatus, deliveredQty: salesOrderLines.deliveredQty })
+    .select({ deliveryStatus: salesOrderLines.deliveryStatus, deliveredQty: salesOrderLines.deliveredQty, returnedQty: salesOrderLines.returnedQty })
     .from(salesOrderLines)
     .where(eq(salesOrderLines.orderId, orderId));
-  const next = orderStatusFor(lines.map((l) => ({ ...l, deliveredQty: Number(l.deliveredQty) })), order.status);
+  // net delivered (rule 13): returned goods no longer count as delivered
+  const next = orderStatusFor(lines.map((l) => ({ deliveryStatus: l.deliveryStatus, deliveredQty: netDeliveredQty(l.deliveredQty, l.returnedQty) })), order.status);
   if (next !== order.status) await db.update(salesOrders).set({ status: next }).where(eq(salesOrders.id, orderId));
   return next;
 }
@@ -81,7 +94,11 @@ export type PendingLine = {
   description: string;
   uom: string;
   qty: number;
+  /** gross delivered qty (all challans) */
   deliveredQty: number;
+  /** qty the customer sent back (posted credit notes) */
+  returnedQty: number;
+  /** qty − (deliveredQty − returnedQty) */
   pendingQty: number;
   /** order rate (ex-GST) */
   rate: number;
@@ -112,6 +129,7 @@ export async function pendingDeliveryLines(
       uom: salesOrderLines.uom,
       qty: salesOrderLines.qty,
       deliveredQty: salesOrderLines.deliveredQty,
+      returnedQty: salesOrderLines.returnedQty,
       rate: salesOrderLines.rate,
       deliveryStatus: salesOrderLines.deliveryStatus,
       lineExpected: salesOrderLines.expectedDate,
@@ -125,7 +143,7 @@ export async function pendingDeliveryLines(
     .where(and(
       inArray(salesOrders.status, [...OPEN_ORDER_STATUSES]),
       inArray(salesOrderLines.deliveryStatus, [...PENDING_LINE_STATUSES]),
-      lt(salesOrderLines.deliveredQty, salesOrderLines.qty),
+      lt(sql`${salesOrderLines.deliveredQty} - ${salesOrderLines.returnedQty}`, salesOrderLines.qty),
       opts.customerId ? eq(salesOrders.customerId, opts.customerId) : undefined,
       opts.projectId ? eq(salesOrders.projectId, opts.projectId) : undefined,
       opts.orderId ? eq(salesOrders.id, opts.orderId) : undefined,
@@ -134,11 +152,11 @@ export async function pendingDeliveryLines(
 
   const out: PendingLine[] = rows.map((r) => {
     const expectedDate = r.lineExpected ?? r.orderExpected ?? null;
-    const qty = Number(r.qty), deliveredQty = Number(r.deliveredQty);
+    const qty = Number(r.qty), deliveredQty = Number(r.deliveredQty), returnedQty = Number(r.returnedQty ?? 0);
     return {
       lineId: r.lineId, orderId: r.orderId, orderNumber: r.orderNumber, customerPoNumber: r.customerPoNumber,
       customerId: r.customerId, customerName: r.customerName ?? "-", projectId: r.projectId, projectName: r.projectName,
-      description: r.description, uom: r.uom, qty, deliveredQty, pendingQty: round2(qty - deliveredQty), rate: Number(r.rate),
+      description: r.description, uom: r.uom, qty, deliveredQty, returnedQty, pendingQty: pendingQtyOf({ qty, deliveredQty, returnedQty }), rate: Number(r.rate),
       deliveryStatus: r.deliveryStatus, expectedDate, remarks: r.remarks,
       daysOverdue: expectedDate ? Math.max(0, daysBetween(expectedDate, today)) : null,
     };

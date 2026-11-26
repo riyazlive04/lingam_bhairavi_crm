@@ -1,18 +1,20 @@
 import { redirect } from "next/navigation";
 import { asc, desc, eq, ne } from "drizzle-orm";
 import { getDb } from "@/db";
-import { customers, items, projects, salesOrderLines, salesOrders } from "@/db/schema";
+import { amcContracts, customers, items, projects, salesOrderLines, salesOrders, serviceCalls } from "@/db/schema";
+import { currentBillingPeriod } from "@/lib/amc";
 import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
 import { addDays, fmtDate, qty, round2, todayIST } from "@/lib/format";
 import { Card, DL, Field, Flash, Input, PageHeader, Select, Textarea } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { createInvoice } from "../../actions";
+import { creditedQtyByOrderLine } from "@/lib/returns";
 import { InvoiceLineEditor, type InvEditorLine, type InvPickItem } from "../../_components/invoice-line-editor";
 
 export const metadata = { title: "New tax invoice" };
 
-export default async function NewInvoicePage({ searchParams }: { searchParams: Promise<{ orderId?: string; err?: string }> }) {
+export default async function NewInvoicePage({ searchParams }: { searchParams: Promise<{ orderId?: string; customerId?: string; amcId?: string; serviceCallId?: string; err?: string }> }) {
   const user = await requireUser("billing");
   if (!canWrite(user.role, "billing")) redirect("/billing/invoices?err=" + encodeURIComponent("You do not have permission to create invoices"));
   const sp = await searchParams;
@@ -33,17 +35,50 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
       .where(eq(salesOrders.id, orderId));
     if (order) {
       const ol = await db.select().from(salesOrderLines).where(eq(salesOrderLines.orderId, orderId)).orderBy(asc(salesOrderLines.sortOrder));
+      // credit notes give back invoiceable qty (replacements); returned goods no longer count as delivered
+      const credited = await creditedQtyByOrderLine(db, ol.map((l) => l.id));
+      const roomOf = (l: (typeof ol)[number]) => round2(Number(l.qty) + (credited.get(l.id) ?? 0) - Number(l.invoicedQty));
       initial = ol
-        .filter((l) => l.deliveryStatus !== "cancelled" && Number(l.qty) - Number(l.invoicedQty) > 1e-6)
+        .filter((l) => l.deliveryStatus !== "cancelled" && roomOf(l) > 1e-6)
         .map((l) => {
-          const room = round2(Number(l.qty) - Number(l.invoicedQty));
-          const def = Math.max(0, Math.min(room, round2(Number(l.deliveredQty) - Number(l.invoicedQty))));
+          const room = roomOf(l);
+          const cr = credited.get(l.id) ?? 0;
+          const netInvoiced = Number(l.invoicedQty) - cr;
+          const def = Math.max(0, Math.min(room, round2(Number(l.deliveredQty) - Number(l.returnedQty) - netInvoiced)));
           return {
             orderLineId: l.id, itemId: l.itemId, description: l.description, uom: l.uom, qty: def, rate: Number(l.rate),
             gstRate: l.itemId ? gstOf.get(l.itemId) ?? 18 : 18, maxQty: room,
-            info: `Ordered ${qty(l.qty)} · delivered ${qty(l.deliveredQty)} · invoiced ${qty(l.invoicedQty)} ${l.uom}`,
+            info: `Ordered ${qty(l.qty)} · delivered ${qty(l.deliveredQty)}${Number(l.returnedQty) ? ` · returned ${qty(l.returnedQty)}` : ""} · invoiced ${qty(l.invoicedQty)}${cr ? ` · credited ${qty(cr)}` : ""} ${l.uom}`,
           };
         });
+    }
+  }
+
+  // AMC billing and chargeable service calls link here with ?customerId=&amcId= or ?customerId=&serviceCallId=
+  const presetCustomer = !order ? Number(sp.customerId) || undefined : undefined;
+  let serviceCallId: number | undefined;
+  let amcId: number | undefined;
+  const linkNotes: string[] = [];
+  if (presetCustomer && sp.amcId) {
+    const [k] = await db.select().from(amcContracts).where(eq(amcContracts.id, Number(sp.amcId) || 0));
+    if (!k || k.customerId !== presetCustomer) linkNotes.push("That AMC contract does not belong to this customer, so no AMC line was added.");
+    else {
+      const per = currentBillingPeriod(k.startDate, k.endDate, Number(k.value), k.billingFrequency, today);
+      if (!per) linkNotes.push(`AMC ${k.number} has no billing period running today, so no AMC line was added.`);
+      else {
+        amcId = k.id;
+        initial.push({ orderLineId: null, itemId: null, description: `AMC charges: ${k.number}, ${fmtDate(per.from)} to ${fmtDate(per.to)}`, uom: "Nos", qty: 1, rate: round2(per.amount), gstRate: 18 });
+      }
+    }
+  }
+  if (presetCustomer && sp.serviceCallId) {
+    const [sc] = await db.select().from(serviceCalls).where(eq(serviceCalls.id, Number(sp.serviceCallId) || 0));
+    if (!sc || sc.customerId !== presetCustomer) linkNotes.push("That service call does not belong to this customer, so no line was added.");
+    else if (sc.salesInvoiceId) linkNotes.push(`Service call ${sc.number} is already invoiced.`);
+    else {
+      serviceCallId = sc.id;
+      const short = sc.description.replace(/\s+/g, " ").trim();
+      initial.push({ orderLineId: null, itemId: null, description: `Service call ${sc.number}: ${short.length > 120 ? short.slice(0, 117) + "..." : short}`, uom: "Nos", qty: 1, rate: round2(Number(sc.chargeAmount)), gstRate: 18 });
     }
   }
 
@@ -61,8 +96,11 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
       />
       <Flash err={sp.err} />
       {orderId && !order && <Flash err="We couldn't find that order, so you're creating a manual invoice instead." />}
+      {linkNotes.length > 0 && <p className="mb-4 text-sm text-amber-700 dark:text-amber-300">{linkNotes.join(" ")}</p>}
 
       <form action={createInvoice} className="space-y-4">
+        {serviceCallId && <input type="hidden" name="serviceCallId" value={serviceCallId} />}
+        {amcId && <input type="hidden" name="amcId" value={amcId} />}
         <Card title="Invoice details">
           {order ? (
             <>
@@ -81,7 +119,7 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
           ) : (
             <div className="mb-4 grid gap-4 sm:grid-cols-2">
               <Field label="Customer" required>
-                <Select name="customerId" required defaultValue="">
+                <Select name="customerId" required defaultValue={presetCustomer ? String(presetCustomer) : ""}>
                   <option value="" disabled>Select customer</option>
                   {custList.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.terms} days credit)</option>)}
                 </Select>
@@ -106,7 +144,7 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
         </Card>
         <Card title="Invoice lines">
           {order && initial.length === 0 && <p className="mb-3 text-sm text-amber-700 dark:text-amber-300">All order lines are fully invoiced. You can still add extra lines (e.g. transport).</p>}
-          {order && initial.length > 0 && <p className="mb-3 text-sm text-ink-soft">Quantities default to delivered − already invoiced. Adjust if billing in advance (up to ordered qty).</p>}
+          {order && initial.length > 0 && <p className="mb-3 text-sm text-ink-soft">Quantities default to delivered (less returns) minus already invoiced (less credit notes). Adjust if billing in advance (up to ordered qty).</p>}
           <InvoiceLineEditor items={pick} initial={initial} />
         </Card>
         <div className="flex justify-end">

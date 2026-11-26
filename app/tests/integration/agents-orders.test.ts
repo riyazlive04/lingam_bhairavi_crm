@@ -20,12 +20,12 @@ describe("pendingDeliveryLines", () => {
     const expected = await t.client.query<{ id: number }>(`
       SELECT l.id FROM sales_order_lines l JOIN sales_orders o ON o.id = l.order_id
       WHERE o.status IN ('open','partial') AND l.delivery_status IN ('pending','ordered','in_transit','partial')
-        AND l.delivered_qty < l.qty AND coalesce(l.expected_date, o.expected_delivery) < $1`, [today]);
+        AND l.delivered_qty - l.returned_qty < l.qty AND coalesce(l.expected_date, o.expected_delivery) < $1`, [today]);
     expect(overdue.map((l) => l.lineId).sort((a, b) => a - b)).toEqual(expected.rows.map((r) => r.id).sort((a, b) => a - b));
 
     for (const l of lines) {
       expect(l.pendingQty).toBeGreaterThan(0);
-      expect(l.pendingQty).toBeCloseTo(l.qty - l.deliveredQty, 6);
+      expect(l.pendingQty).toBeCloseTo(l.qty - (l.deliveredQty - l.returnedQty), 6);
     }
     // sort: daysOverdue non-increasing among dated lines
     const dated = lines.filter((l) => l.expectedDate);
