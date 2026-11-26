@@ -13,9 +13,11 @@ export const pct = (n: number | null | undefined, d = 1) => (n == null || !Numbe
 export function moneyShort(n: number | null | undefined) {
   if (n == null) return "-";
   const v = Number(n), a = Math.abs(v);
-  if (a >= 1e7) return `₹${(v / 1e7).toFixed(2)} Cr`;
-  if (a >= 1e5) return `₹${(v / 1e5).toFixed(2)} L`;
-  if (a >= 1e3) return `₹${(v / 1e3).toFixed(1)} K`;
+  // Sign before the rupee symbol: "-₹5.99 L", not "₹-5.99 L".
+  const sign = v < 0 ? "-" : "";
+  if (a >= 1e7) return `${sign}₹${(a / 1e7).toFixed(2)} Cr`;
+  if (a >= 1e5) return `${sign}₹${(a / 1e5).toFixed(2)} L`;
+  if (a >= 1e3) return `${sign}₹${(a / 1e3).toFixed(1)} K`;
   return inr0.format(v);
 }
 

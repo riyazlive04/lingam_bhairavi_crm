@@ -9,7 +9,7 @@ import { ROLES } from "@/lib/constants";
 import { renderMarkdown } from "@/lib/markdown";
 import { GUIDES } from "@/content/guides.generated";
 import { EmptyState, PageHeader, buttonClass } from "@/components/ui";
-import { Callout, SectionCard, StatusPill, SummaryRows, Tabs, type TabItem } from "@/components/patterns";
+import { Callout, Prose, SectionCard, StatusPill, SummaryRows, Tabs, type TabItem } from "@/components/patterns";
 
 export const metadata = { title: "Help and guides" };
 
@@ -68,7 +68,7 @@ export default async function HelpPage({ searchParams }: { searchParams: Promise
               description={current.role ? `For the ${ROLES[current.role]} role` : undefined}
               actions={current.role === user.role ? <StatusPill semantic="success" label="Your role" /> : undefined}
             >
-              <article className="prose-app max-w-3xl" dangerouslySetInnerHTML={{ __html: html }} />
+              <Prose as="article" html={html} className="max-w-3xl" />
             </SectionCard>
           ) : (
             <EmptyState title="No guides yet" icon={BookOpen}>The user guides will appear here once they are published.</EmptyState>

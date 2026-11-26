@@ -9,7 +9,6 @@ import { Badge, Field, Flash, Input, Select } from "@/components/ui";
 import { ConfirmButton, FormFooter, FormSection, ResponsiveTable, SectionCard, StatusPill, type Column } from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { PasswordInput } from "../_components/password-input";
-import { SettingsTabs } from "../_components/settings-tabs";
 import { changeUserRole, createUser, resetPassword, setUserActive } from "../actions";
 
 export const metadata = { title: "Users" };
@@ -87,7 +86,6 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
 
   return (
     <>
-      <SettingsTabs active="users" />
       <div className="space-y-8">
         <Flash ok={sp.ok} err={sp.err} />
 

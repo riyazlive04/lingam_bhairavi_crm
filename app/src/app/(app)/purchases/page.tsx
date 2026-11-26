@@ -12,7 +12,7 @@ import {
   FilterPills, ListEmpty, ListFilters, ListPage, Metric, MetricStrip, Pagination, ResponsiveTable, StatusPill,
   type Column, type FilterPillItem,
 } from "@/components/patterns";
-import { qs } from "../purchase-orders/_components/po-bits";
+import { qs } from "@/lib/url";
 
 export const metadata = { title: "Purchase invoices" };
 

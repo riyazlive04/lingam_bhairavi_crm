@@ -53,12 +53,10 @@ export function BuyVsSellTable({ rows }: { rows: BuyVsSellRow[] }) {
         </div>
       )}
       <ResponsiveTable flush rows={rows} columns={cols} rowKey={(r) => r.itemId} caption="Buy vs sell" rowClassName={(r) => r.belowCost && "bg-danger-soft"}
-        footer={
-          <tr className="bg-muted font-semibold">
-            <td className="ui-td" colSpan={6}>Material margin on priced items{unpriced ? ` (${unpriced} not priced yet)` : ""}</td>
-            <td className={cx("ui-td text-right tabular-nums", totalMargin < 0 ? "text-danger" : "text-ink")}>{money(totalMargin)}</td>
-          </tr>
-        } />
+        footerRows={[{
+          label: `Material margin on priced items${unpriced ? ` (${unpriced} not priced yet)` : ""}`,
+          cells: { total: { value: money(totalMargin), className: totalMargin < 0 ? "text-danger" : "text-ink" } },
+        }]} />
       <p className="border-t border-line px-4 py-2 text-caption text-ink-soft sm:px-5">
         Buying rate is the average of what was issued to site. Selling rate comes from this project&apos;s invoices, else its customer PO, else the quotation supply rate. Labour and erection are not included.
       </p>

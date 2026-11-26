@@ -22,9 +22,21 @@ Sales:     Quotations (+ lines, follow-ups, revisions) → Sales Orders (+ lines
 Purchase:  Purchase Invoices (+ lines) → price history, payables, project cost, stock (Phase 2)
 Projects:  Projects ← costs (purchase lines, stock issues, expenses, expense splits)
 Finance:   Sales Invoices → Payments → Receivables;  Purchase Invoices → Vendor payments → Payables
-Service:   Extinguisher refill records
+Service:   Extinguisher refill records; AMC contracts → visits (per-system checklists) → renewals; service calls (response deadlines)
 Platform:  Users/Roles, Settings, Alerts, Agent runs, Email log, Meeting Notes, Audit fields
 ```
+
+**Added in version 2 (2026-11-26):**
+
+```
+Sales:     Owner approval of quotations; consultant BOQ Excel import → quotation
+Purchase:  Vendor purchase orders (from customer PO lines) → received through purchase invoices
+Returns:   Customer returns → GST credit notes;  returns to vendor → debit notes
+Finance:   Advance payments → applied to invoices, receipts;  net outstanding
+Reports:   Monthly P&L; order, project, customer and item profitability; project history timeline
+```
+
+The rules behind these are CONVENTIONS rules 10 to 20 ([app/CONVENTIONS.md](../../app/CONVENTIONS.md)). The decisions are recorded as ADR-007 (additive migrations with a guarded one-time upgrade at boot), ADR-008 (a delivery cost snapshot for order P&L) and ADR-009 (one design system with shared page patterns) in [ARCHITECTURE.md](../ARCHITECTURE.md). There are now **12 rule-based automation agents**, including the AMC & Service agent.
 
 ## 3. Design principles
 
@@ -32,7 +44,7 @@ Platform:  Users/Roles, Settings, Alerts, Agent runs, Email log, Meeting Notes, 
 2. **Keep buying and selling apart** (BR-10). They use different tables and columns, and a selling price never overwrites a buying price.
 3. **Derive statuses, don't type them in.** SO line delivery status, invoice outstanding, project spend and the next refill due date are all calculated from transactions, so they cannot drift.
 4. **Predictable agents.** Each agent is a pure function `(data, settings, today) → alerts`, safe to run repeatedly thanks to alert keys. No AI calls (see [AUTOMATION_AGENTS.md](../AUTOMATION_AGENTS.md)).
-5. **Money and quantities are exact decimals** (`numeric(14,2)` for money, `numeric(12,3)` for qty), never floats. BOQ Ref is **text**, because the sample Excel shows float corruption such as `1.2000000000000002`.
+5. **Money and quantities are exact decimals** (`numeric(14,2)` for money, `numeric(12,3)` for qty), never floats. (As built, money uses doubles rounded to 2 decimals for simplicity, see ADR-006; revisit before any ledger-exact accounting integration.) BOQ Ref is **text**, because the sample Excel shows float corruption such as `1.2000000000000002`.
 6. **Indian context**: INR, GST (CGST/SGST or IGST, by place of supply), numbering by financial year from April to March (`LBE/Q/2026-27/0001`), and the IST time zone for cron and for "today".
 7. **Cancel softly and audit everything.** Keep created_by, updated_by and timestamps. Documents that others refer to are cancelled, not deleted.
 8. **Check permissions on the server** for every route and action, by role. Hiding something in the UI is not security.
@@ -55,7 +67,8 @@ Platform:  Users/Roles, Settings, Alerts, Agent runs, Email log, Meeting Notes, 
 - [ ] Role access is defined for read, create, update and approve.
 - [ ] Numeric types and rounding are defined. INR formatting happens in the UI only.
 - [ ] Works on both PGlite and Neon (no Neon-only features without a fallback).
-- [ ] The migration only adds things, and the rollback path is noted.
+- [ ] The migration only adds things, and the rollback path is noted. Any one-time data fix for existing databases is idempotent and guarded by a settings key (as `upgradeExisting()` does for version 2).
+- [ ] New screens use the DESIGN_SYSTEM.md page patterns, and new pages are added in `nav.ts`.
 - [ ] Mobile layout considered if engineers or store staff use it.
 - [ ] Impact on agents considered (new statuses, new dates).
 - [ ] ARCHITECTURE.md updated.

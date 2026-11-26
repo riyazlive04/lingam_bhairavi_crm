@@ -11,7 +11,15 @@ Key documents: [REQUIREMENTS.md](../REQUIREMENTS.md) · [meetings/](../meetings/
 - **Sign-off needs Jagan sir** (D-09). Never mark a scope item "Confirmed" on Karthick's word alone if it affects price or process.
 - The client communicates on **WhatsApp**. Save every document they send into the project folder and note it in the meeting file.
 
-## 2. Delivery plan and milestones
+## 2. Where we are now (2026-11-26)
+
+- **Version 1.0** (2026-11-21) delivered every kickoff requirement, with 11 rule-based agents.
+- **Client follow-up on 2026-11-26** asked for returns, AMC, advances, owner approval of quotes, consultant BOQ import, P&L and project history. **Version 2.0** delivers all of these (plus vendor purchase orders and service calls), with **12 agents** now (the new AMC & Service agent, and an approvals check inside Data Hygiene). **Version 2.1** is the UI rebuild: task-based navigation, a quick create menu, a phone tab bar and one design system ([DESIGN_SYSTEM.md](../DESIGN_SYSTEM.md)).
+- **Commercial position:** the Complete package at INR 90,000 + GST (negotiated), with the 50 % advance received on 25 Nov 2026. Owner approval and BOQ import are included at no extra cost. Returns, AMC, advances, vendor POs, P&L reports and project history were added beyond the agreed scope as goodwill. **Anything further goes through a written change request** (§5).
+- **Next:** a clarification meeting requested by the owner's spouse on **Friday 2026-11-28**. Prepare the demo of the version 2 screens and the open questions, and confirm who signs off.
+- The milestone table below is the original plan from the kickoff; M1 to M4 are now built, and UAT (M5) is next.
+
+## 3. Delivery plan and milestones
 
 | # | Milestone | Content | Exit criteria | Target (indicative) |
 |---|---|---|---|---|
@@ -25,7 +33,7 @@ Key documents: [REQUIREMENTS.md](../REQUIREMENTS.md) · [meetings/](../meetings/
 | M7 | Hypercare | 30 days of support. Weekly adoption review (Data Hygiene counts per person) | Pending entries trending down | +10 weeks |
 | Phase 2 | Distributorship | Stock, allocations, low stock, dealer pricing | Estimated separately | When the client is ready |
 
-## 3. RACI
+## 4. RACI
 
 R = Responsible, A = Accountable, C = Consulted, I = Informed.
 
@@ -44,7 +52,7 @@ R = Responsible, A = Accountable, C = Consulted, I = Informed.
 | Training & user guides | A | R | I | C | I | I | I | C | I | I | C | I |
 | Change requests | R | R | C | I | I | I | I | I | I | I | C | A |
 
-## 4. Change control
+## 5. Change control
 
 For any new or changed requirement after BRD v1.0:
 
@@ -58,7 +66,9 @@ For any new or changed requirement after BRD v1.0:
 
 Budget guardrail: keep a visible "parking lot" of Could and Won't items, so the client sees what was deferred rather than refused.
 
-## 5. Running the loop from meeting to requirements
+**After version 2:** the Complete package price is fixed, and the version 2 goodwill additions are already delivered. From now on, every new feature or change of behaviour needs a **written change request** that the client approves (with an estimate) before we build it. Bug fixes to what was delivered are not change requests. Record the version 2 requests (2026-11-26) as REQ-045 onward in REQUIREMENTS.md.
+
+## 6. Running the loop from meeting to requirements
 
 **Before the meeting (2 days ahead)**
 - Send the agenda (from the *Next meeting agenda* in the previous notes), the BRD changes and the demo link.
@@ -75,17 +85,18 @@ Budget guardrail: keep a visible "parking lot" of Could and Won't items, so the 
 3. The Manager runs change control for anything new and updates the plan.
 4. Send the client a short WhatsApp or e-mail summary: decisions, their action items and the next date.
 
-## 6. Status reporting
+## 7. Status reporting
 
-Every Friday, send the client a one-page update: milestone status (RAG), what was done this week, what's next week, decisions needed, and client actions pending. These are currently A-01 to A-07: sample BOQs, billing format, website, Office 365 details, Jagan sir's confirmation, completing the price list, and company details.
+Every Friday, send the client a one-page update: milestone status (RAG), what was done this week, what's next week, decisions needed, and client actions pending. These are currently A-01 to A-07: sample BOQs, billing format, website, Office 365 details, Jagan sir's confirmation, completing the price list, and company details. Add the follow-up of 2026-11-26 and the clarification meeting on Friday 2026-11-28 to the next update.
 
-## 7. Key risks
+## 8. Key risks
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
 | Staff don't enter data (a repeat of the past failure) | High | High | Very few mandatory fields, entry from the phone, the Data Hygiene agent, an owner dashboard per person, training for each role, and the owner's backing |
 | Price list incomplete (fire alarm and extinguishers blank) | High | Medium | Action A-06. Stale and No-price alerts. Purchase invoices fill in prices over time |
 | Pricing rules unclear (UOM, markup, erection) | Medium | High | Close Q-01 to Q-04 at meeting 2, before building pricing |
-| Scope creep against budget | Medium | High | Change control and the Phase 2 parking lot |
+| Scope creep against budget | High (version 2 already added several modules as goodwill) | High | Written change requests from now on, change control and the Phase 2 parking lot |
+| Hosting plan not licensed for business use | Medium | Medium | Move from Vercel Hobby to Vercel Pro, or a VPS, before go-live (see the [DevOps guide](devops.md)) |
 | Office 365 SMTP AUTH disabled in the client's tenant | Medium | Medium | Ask early (A-04). Fall back to a manual "copy reminder" button |
 | Approver (Jagan sir) unavailable | Medium | Medium | Book sign-off slots in advance |

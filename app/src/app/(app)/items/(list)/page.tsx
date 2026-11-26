@@ -10,6 +10,7 @@ import { SYSTEMS } from "@/lib/constants";
 import { fmtDate, money, money0, pct, todayIST, addDays } from "@/lib/format";
 import { NB_SIZES, STALE_DAYS_DEFAULT, STALE_DAYS_VOLATILE, isPriceStale, latestCostOf, normaliseNB, priceAgeDays, suggestedSupplyRate } from "@/lib/items";
 import { EmptyState, Flash, LinkButton, Select, Table, Td, Th, buttonClass, cx } from "@/components/ui";
+import { qs, withParams, type QueryParams } from "@/lib/url";
 import {
   FilterPills, ListEmpty, ListFilters, ListPage, Pagination, ResponsiveTable, SectionCard, StatusPill, Tabs,
   type Column,
@@ -23,15 +24,7 @@ const OTHERS_LIMIT = 40;
 
 type SP = { q?: string; system?: string; group?: string; make?: string; stale?: string; view?: string; basis?: string; page?: string; ok?: string; err?: string };
 
-type Params = Record<string, string | number | undefined | null>;
-/** "?a=1&b=2" from a record, skipping empty values ("" when nothing is set). */
-function query(params: Params) {
-  const u = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== "") u.set(k, String(v));
-  const s = u.toString();
-  return s ? `?${s}` : "";
-}
-const itemsHref = (params: Params) => "/items" + query(params);
+const itemsHref = (params: QueryParams) => withParams("/items", params);
 
 const linkCls = "text-brand-700 hover:underline dark:text-brand-300";
 
@@ -68,12 +61,14 @@ export default async function ItemsPage({ searchParams }: { searchParams: Promis
   const activeFilters = [sp.q?.trim(), system, sp.group, sp.make].filter(Boolean).length;
   const clearHref = itemsHref({ view: view === "matrix" ? "matrix" : undefined, stale: view === "list" ? sp.stale : undefined });
 
+  const tabs = (
+    <Tabs label="Item views" active={view} items={[
+      { id: "list", label: "Item list", href: itemsHref({ ...base }) },
+      { id: "matrix", label: "Price master (size matrix)", href: itemsHref({ ...base, view: "matrix" }) },
+    ]} />
+  );
   const filters = (
     <>
-      <Tabs label="Item views" active={view} items={[
-        { id: "list", label: "Item list", href: itemsHref({ ...base }) },
-        { id: "matrix", label: "Price master (size matrix)", href: itemsHref({ ...base, view: "matrix" }) },
-      ]} />
       {view === "list" && (
         <FilterPills label="Filter by price age" items={[
           { label: "All items", href: itemsHref({ ...base, stale: undefined }), active: sp.stale !== "1" },
@@ -102,11 +97,12 @@ export default async function ItemsPage({ searchParams }: { searchParams: Promis
     title: "Item and price master",
     subtitle: "Latest cost is picked up from posted supplier invoices, so you never have to re-check prices for each quotation.",
     secondaryActions: (
-      <a href={"/items/export" + query({ system, group: sp.group, make: sp.make, q: sp.q })} className={buttonClass("secondary")}>
+      <a href={"/items/export" + qs({ system, group: sp.group, make: sp.make, q: sp.q })} className={buttonClass("secondary")}>
         <Download className="icon-sm" aria-hidden /> Download Excel
       </a>
     ),
     primaryAction: write && <LinkButton href="/items/new"><Plus className="icon-sm" aria-hidden /> New item</LinkButton>,
+    tabs,
     notices: <Flash ok={sp.ok} err={sp.err} />,
     filters,
   };
@@ -192,7 +188,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Promis
 }
 
 type Header = {
-  title: string; subtitle: string; secondaryActions: ReactNode; primaryAction: ReactNode; notices: ReactNode; filters: ReactNode;
+  title: string; subtitle: string; secondaryActions: ReactNode; primaryAction: ReactNode; tabs: ReactNode; notices: ReactNode; filters: ReactNode;
 };
 
 async function PriceMatrix({ header, where, seeCost, basis, base }: {
@@ -220,6 +216,8 @@ async function PriceMatrix({ header, where, seeCost, basis, base }: {
     used.add(nb);
   }
   const sizes = NB_SIZES.filter((s) => used.has(s));
+  type MatrixRow = { group: string; make: string | null; cells: Map<string, Cell> };
+  const matrixRows: MatrixRow[] = [...matrix.values()];
   const othersShown = others.slice(0, OTHERS_LIMIT);
   const filtered = !!(base.q || base.system || base.group || base.make);
 
@@ -250,30 +248,21 @@ async function PriceMatrix({ header, where, seeCost, basis, base }: {
         {matrix.size === 0 ? (
           <EmptyState title="No NB sized items for these filters">The size matrix covers pipes, fittings and valves sized in NB. Other items are listed below and in the item list.</EmptyState>
         ) : (
-          <Table tall>
-            <caption className="sr-only">Price matrix by group and size</caption>
-            <thead>
-              <tr>
-                <Th className="sticky left-0 z-10">Group / make</Th>
-                {sizes.map((s) => <Th key={s} className="text-right">{s.replace("NB", " NB")}</Th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {[...matrix.values()].map((r) => (
-                <tr key={r.group + (r.make ?? "")} className="hover:bg-muted/50">
-                  <Td className="sticky left-0 z-10 bg-surface font-medium">{r.group}{r.make && <div className="text-caption font-normal text-ink-faint">{r.make}</div>}</Td>
-                  {sizes.map((s) => {
-                    const c = r.cells.get(s);
-                    return (
-                      <Td key={s} className={cx("text-right tabular-nums", c?.source === "list" && "italic text-ink-soft")}>
-                        {c ? <Link href={`/items/${c.id}`} title={c.code} className="hover:underline">{c.rate == null ? "-" : money0(c.rate)}</Link> : <span className="text-ink-faint" aria-label="Not stocked">·</span>}
-                      </Td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </Table>
+          <ResponsiveTable cards={false} stickyFirst tall rows={matrixRows} rowKey={(r) => r.group + (r.make ?? "")} caption="Price matrix by group and size"
+            rowClassName={() => "hover:bg-muted/50"}
+            columns={[
+              { key: "group", header: "Group / make", className: "font-medium",
+                cell: (r) => <>{r.group}{r.make && <div className="text-caption font-normal text-ink-faint">{r.make}</div>}</> },
+              ...sizes.map((s): Column<MatrixRow> => ({
+                key: s, header: s.replace("NB", " NB"), align: "right",
+                cell: (r) => {
+                  const c = r.cells.get(s);
+                  return c
+                    ? <Link href={`/items/${c.id}`} title={c.code} className={cx("hover:underline", c.source === "list" && "italic text-ink-soft")}>{c.rate == null ? "-" : money0(c.rate)}</Link>
+                    : <span className="text-ink-faint" aria-label="Not stocked">·</span>;
+                },
+              })),
+            ]} />
         )}
         {others.length > 0 && (
           <SectionCard title="Other items not sized in NB" count={others.length} flush>

@@ -21,7 +21,8 @@ export default async function ReceivablesPage({ searchParams }: { searchParams: 
       title="Customer outstanding"
       subtitle="Receivables by customer with ageing (days past due). Net due takes off credit notes and advances not yet used."
       secondaryActions={<a href="/billing/export/receivables" className={buttonClass("secondary")}><Download className="icon-sm" aria-hidden /> Download Excel</a>}
-      notices={<><BillingTabs active="receivables" /><Flash ok={sp.ok} err={sp.err} /></>}
+      tabs={<BillingTabs active="receivables" />}
+      notices={<Flash ok={sp.ok} err={sp.err} />}
       stats={
         <MetricStrip>
           <Metric label="Net due" value={moneyShort(t.netDue)} hint={`Invoices ${moneyShort(t.outstanding)} · credits ${moneyShort(t.creditNotes)} · advances ${moneyShort(t.advances)}`} />

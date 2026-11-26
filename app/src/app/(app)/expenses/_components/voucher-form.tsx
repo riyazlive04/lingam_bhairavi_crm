@@ -154,7 +154,7 @@ export function VoucherForm({
       </FormSection>
 
       <FormFooter
-        className={cx(!stickyFooter && "max-sm:static")}
+        sticky={stickyFooter}
         note={<span aria-live="polite" className={cx((mismatch || dupes) && "font-medium text-danger")}>{status}</span>}
       >
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">

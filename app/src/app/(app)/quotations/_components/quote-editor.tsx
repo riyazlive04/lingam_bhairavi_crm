@@ -8,7 +8,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { Link2, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
 import { Button, Field, Input, Select, Textarea, cx, inputClass } from "@/components/ui";
-import { Callout, FormFooter, FormSection, LineItemsTable, MoneySummary, StatusPill, SummaryRows, li } from "@/components/patterns";
+import { Callout, ConfirmButton, FormFooter, FormSection, LineItemsTable, MoneySummary, StatusPill, SummaryRows, li } from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { SYSTEMS } from "@/lib/constants";
 import { money, pct, round2 } from "@/lib/format";
@@ -96,7 +96,6 @@ export function QuoteEditor({
   const [onlyQty, setOnlyQty] = useState(false);
   const [find, setFind] = useState("");
   const [addSection, setAddSection] = useState("");
-  const [confirmReprice, setConfirmReprice] = useState(false);
   const catalogById = useMemo(() => new Map(catalog.map((c) => [c.id, c])), [catalog]);
 
   const totals = useMemo(
@@ -293,20 +292,12 @@ export function QuoteEditor({
               <input type="checkbox" checked={onlyQty} onChange={(e) => setOnlyQty(e.target.checked)} />
               Only lines with a quantity
             </label>
-            {showCost && canChangeMarkup && (confirmReprice ? (
-              <span role="group" aria-label="Confirm re-pricing" className="ui-fade-in inline-flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface-2 p-1.5"
-                onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); setConfirmReprice(false); } }}>
-                <span className="pl-1.5 text-caption text-ink" role="alert">Re-price every item line at {markup}%? Hand-typed rates are replaced.</span>
-                <span className="inline-flex gap-1.5">
-                  <Button type="button" size="sm" autoFocus onClick={() => { applyMarkup(markup, true); setConfirmReprice(false); }}>Yes, re-price all</Button>
-                  <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmReprice(false)}>Keep</Button>
-                </span>
-              </span>
-            ) : (
-              <Button type="button" variant="ghost" onClick={() => setConfirmReprice(true)}>
+            {showCost && canChangeMarkup && (
+              <ConfirmButton variant="ghost" confirm={`Re-price every item line at ${markup}%? Hand-typed rates are replaced.`}
+                confirmLabel="Yes, re-price all" onConfirm={() => applyMarkup(markup, true)}>
                 <RotateCcw className="icon-sm" aria-hidden /> Re-apply markup to all
-              </Button>
-            ))}
+              </ConfirmButton>
+            )}
           </div>
         </header>
 

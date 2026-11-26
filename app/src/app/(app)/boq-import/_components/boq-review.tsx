@@ -8,7 +8,8 @@ import { memo, startTransition, useActionState, useCallback, useId, useMemo, use
 import { FileSpreadsheet, RotateCcw, Search, X } from "lucide-react";
 import { Button, cx, Field, Input, Select } from "@/components/ui";
 import {
-  Callout, FormFooter, FormPage, FormSection, LineItemsTable, MoneySummary, SectionCard, StatusPill, SummaryRows, li, type StatusSemantic,
+  Callout, ClientPills, ClientTabs, FormFooter, FormPage, FormSection, LineItemsTable, MoneySummary, SectionCard, StatusPill, SummaryRows,
+  clientTabId, li, type StatusSemantic,
 } from "@/components/patterns";
 import {
   boqTotals, splitMakes, statusForScore, summariseRows, supplyFromCost, type MatchStatus, type RowMatch,
@@ -316,33 +317,12 @@ export function BoqReview({ data, catalog, showCost, defaultMarkup, defaultGst, 
           </header>
 
           {multiSheet && (
-            <div role="tablist" aria-label="Sheets in this BOQ" className="flex gap-1 overflow-x-auto border-b border-line px-2 sm:px-3">
-              {data.sheets.map((s, i) => {
-                const on = i === tab;
-                return (
-                  <button
-                    key={s.name + i}
-                    id={`${tabsId}-tab${i}`}
-                    type="button"
-                    role="tab"
-                    aria-selected={on}
-                    aria-controls={`${tabsId}-panel`}
-                    onClick={() => { setTab(i); setPickerFor(null); }}
-                    className={cx(
-                      "-mb-px inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 text-sm font-medium transition-colors",
-                      on ? "border-brand-600 text-brand-700 dark:text-brand-300" : "border-transparent text-ink-soft hover:border-line-strong hover:text-ink",
-                    )}
-                  >
-                    {s.name}
-                    <span className={cx("rounded-full px-1.5 text-[11px] leading-[18px] tabular-nums",
-                      on ? "bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-200" : "bg-muted text-ink-soft")}>{sheetCounts[i]}</span>
-                  </button>
-                );
-              })}
-            </div>
+            <ClientTabs label="Sheets in this BOQ" idPrefix={tabsId} panelId={`${tabsId}-panel`} active={tab} className="px-2 sm:px-3"
+              onChange={(i) => { setTab(i); setPickerFor(null); }}
+              items={data.sheets.map((s, i) => ({ id: i, label: s.name, count: sheetCounts[i] }))} />
           )}
 
-          <div id={`${tabsId}-panel`} role={multiSheet ? "tabpanel" : undefined} aria-labelledby={multiSheet ? `${tabsId}-tab${tab}` : undefined}>
+          <div id={`${tabsId}-panel`} role={multiSheet ? "tabpanel" : undefined} aria-labelledby={multiSheet ? clientTabId(tabsId, tab) : undefined}>
             {sheet?.headerRow != null && (
               <p className="px-4 pt-3 text-caption text-ink-soft sm:px-5">Header found on row {sheet.headerRow}. Row numbers below are the Excel row numbers.</p>
             )}
@@ -446,36 +426,6 @@ export function BoqReview({ data, catalog, showCost, defaultMarkup, defaultGst, 
         </FormFooter>
       </div>
     </FormPage>
-  );
-}
-
-/** Client-side segmented filter, styled like FilterPills (which is link based). */
-function ClientPills<T extends string>({ items, active, onChange, label }: {
-  items: { id: T; label: string; count: number; attention?: boolean }[]; active: T; onChange: (id: T) => void; label: string;
-}) {
-  return (
-    <div role="group" aria-label={label} className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
-      {items.map((it) => {
-        const on = it.id === active;
-        return (
-          <button
-            key={it.id}
-            type="button"
-            aria-pressed={on}
-            onClick={() => onChange(it.id)}
-            className={cx(
-              "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors",
-              on ? "border-brand-600 bg-brand-600 text-white shadow-xs"
-                : it.attention ? "border-warning-line bg-warning-soft text-warning hover:border-warning"
-                  : "border-line bg-surface text-ink-soft hover:border-line-strong hover:text-ink",
-            )}
-          >
-            {it.label}
-            <span className={cx("rounded-full px-1.5 text-[11px] leading-[18px] tabular-nums", on ? "bg-white/20 text-white" : "bg-muted text-ink-soft")}>{it.count}</span>
-          </button>
-        );
-      })}
-    </div>
   );
 }
 

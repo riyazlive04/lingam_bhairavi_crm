@@ -79,9 +79,9 @@ export default async function AdvancesPage({ searchParams }: { searchParams: Pro
     <ListPage
       title="Advances"
       subtitle="Money received before invoicing, for example the 50% advance against a customer PO."
+      tabs={<BillingTabs active="advances" />}
       notices={
         <>
-          <BillingTabs active="advances" />
           <Flash ok={sp.ok} err={sp.err} />
           {receiptId && sp.ok && (
             <Callout tone="success" title="Advance recorded"

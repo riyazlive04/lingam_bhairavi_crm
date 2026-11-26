@@ -54,7 +54,8 @@ export default async function PayablesPage({ searchParams }: { searchParams: Pro
       title="Vendor outstanding"
       subtitle="Posted purchase invoices with a balance to pay. Net payable takes off debit notes not yet adjusted."
       secondaryActions={<a href="/billing/export/payables" className={buttonClass("secondary")}><Download className="icon-sm" aria-hidden /> Download Excel</a>}
-      notices={<><BillingTabs active="payables" /><Flash ok={sp.ok} err={sp.err} /></>}
+      tabs={<BillingTabs active="payables" />}
+      notices={<Flash ok={sp.ok} err={sp.err} />}
       stats={
         <MetricStrip>
           <Metric label="Net payable" value={moneyShort(t.netDue)} hint={t.debitNotes ? `Bills ${moneyShort(t.outstanding)} less debit notes ${moneyShort(t.debitNotes)}` : undefined} />

@@ -9,7 +9,7 @@ import { canRead, canWrite } from "@/lib/rbac";
 import { PAYMENT_MODES } from "@/lib/constants";
 import { fmtDate, fmtDateTime, money, pct, qty, todayIST } from "@/lib/format";
 import { PRICE_JUMP_PCT, purchaseOutstanding } from "@/lib/purchasing";
-import { Field, Flash, Input, LinkButton, Select, Td, cx } from "@/components/ui";
+import { Field, Flash, Input, LinkButton, Select, cx } from "@/components/ui";
 import {
   Callout, ConfirmButton, DetailPage, KeyValueGrid, MetaChip, ResponsiveTable, SectionCard, StatusPill, SummaryRows, type Column,
 } from "@/components/patterns";
@@ -201,13 +201,11 @@ export default async function PurchaseDetailPage({ params, searchParams }: { par
     >
       <SectionCard title="Lines" count={lines.length} flush empty={lines.length === 0 && "No lines on this invoice."}>
         <ResponsiveTable flush rows={lines} columns={lineCols} rowKey={(x) => x.l.id} caption="Invoice lines"
-          footer={
-            <>
-              <tr><Td colSpan={6} className="text-right text-ink-soft">Subtotal</Td><Td className="text-right tabular-nums">{money(inv.subtotal)}</Td></tr>
-              <tr><Td colSpan={6} className="text-right text-ink-soft">GST</Td><Td className="text-right tabular-nums">{money(inv.taxAmount)}</Td></tr>
-              <tr><Td colSpan={6} className="text-right font-semibold">Total</Td><Td className="text-right font-semibold tabular-nums">{money(inv.total)}</Td></tr>
-            </>
-          } />
+          footerRows={[
+            { key: "sub", label: "Subtotal", labelAlign: "right", className: "", labelClassName: "text-ink-soft", cells: { amount: money(inv.subtotal) } },
+            { key: "gst", label: "GST", labelAlign: "right", className: "", labelClassName: "text-ink-soft", cells: { amount: money(inv.taxAmount) } },
+            { key: "total", label: "Total", labelAlign: "right", className: "", labelClassName: "font-semibold", cells: { amount: { value: money(inv.total), className: "font-semibold" } } },
+          ]} />
       </SectionCard>
 
       <SectionCard title="Payments" count={pays.length} icon={Wallet} flush

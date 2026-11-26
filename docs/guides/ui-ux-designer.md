@@ -2,6 +2,16 @@
 
 Your role: design screens that busy staff at an Indian SMB will actually use every day. The previous CRM failed because data wasn't entered (11-20 [26:15 to 27:05]). Every design choice should make entering data easier and less intimidating.
 
+**Since the UI rebuild (version 2.1), the live design rules are in [DESIGN_SYSTEM.md](../DESIGN_SYSTEM.md)** (tokens, navigation, components, page recipes, copy rules and the page checklist) and the screen-by-screen findings are in [UX_AUDIT.md](../UX_AUDIT.md). Use this guide for the reasoning behind the design; use the design system for what to build. In particular:
+
+- **Navigation is grouped by task** in `app/src/components/nav.ts`: Home, Sell, Deliver, Buy, Money, Projects & site, Service, Automation, Admin.
+- A **"New" quick create menu** in the top bar (New quotation, Import BOQ, Record payment, Record advance, New expense, New service call), shown only to roles that can create those things.
+- On phones, a **bottom tab bar** with four destinations per role plus More (for example the engineer gets Home, Projects, Expenses, Service calls).
+- Shared page patterns for list, detail, form, wizard, board, report, document and settings pages, with **one A4 document layout for every print**.
+- **Inline confirms** instead of browser pop-ups, and a **density toggle** (comfortable or compact) on tables.
+
+Where the token values in §3 below differ from DESIGN_SYSTEM.md, the design system is correct.
+
 ## 1. Users and context
 
 | User | Device | Context | What it means for design |
@@ -57,6 +67,10 @@ Dark mode is optional. If we provide it, keep contrast at 4.5:1 or better.
 | Login pop-up | Pending PO lines, overdue first. "View all" and "Dismiss for now" |
 | Mobile expense | Amount (numeric keypad), category chips (Petrol, Lodging, Food…), project picker (recent first), photo and a "Split" toggle |
 | Item page | Two clearly separate histories: **Purchase price history** and **Sales price history** |
+| Quotation approval (version 2) | A clear "Needs approval / Pending / Approved / Rejected" state with the reason, and the send buttons explained when they are blocked |
+| Quote line price freshness (version 2) | Rate, price date and supplier beside each line, with a stale flag the user can't miss |
+| Import BOQ (version 2) | Upload, then a review screen that shows which lines matched, which need checking and which did not match, so the user spends time only on the lines that need a decision |
+| AMC visit report (version 2) | A checklist per system that works one-handed on a phone at site, then prints as an A4 report |
 
 ## 6. Accessibility
 
@@ -68,4 +82,4 @@ Dark mode is optional. If we provide it, keep contrast at 4.5:1 or better.
 
 ## 7. Deliverables
 
-Wireframes for the key screens above, component specs (buttons, chips, tables, forms, alerts), a token sheet for the frontend, and a usability test with 1 person per role before UAT (the task: "create a hydrant quote for 120 m of MS pipe 80 NB and 6 single hydrant valves").
+For any new screen: pick the page recipe in DESIGN_SYSTEM.md §4, reuse its components, and check it against §7. Propose new components to the design system rather than designing one-off ones. Original deliverables: wireframes for the key screens above, component specs (buttons, chips, tables, forms, alerts), a token sheet for the frontend, and a usability test with 1 person per role before UAT (the task: "create a hydrant quote for 120 m of MS pipe 80 NB and 6 single hydrant valves").

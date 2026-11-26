@@ -9,11 +9,10 @@ import { EXPENSE_CATEGORIES, PROJECT_STATUSES } from "@/lib/constants";
 import { fmtDate, money, money0, pct, qty } from "@/lib/format";
 import { CardLink, Field, Flash, LinkButton, Select, Textarea, buttonClass, cx } from "@/components/ui";
 import {
-  Callout, DetailPage, KeyValueGrid, MetaChip, Metric, MetricStrip, ResponsiveTable, SectionCard, StatusPill, SummaryRows, Tabs, activeTab,
-  statusLabel, type Column, type TabItem,
+  Callout, DetailPage, KeyValueGrid, MetaChip, Metric, MetricStrip, ProgressBar, ResponsiveTable, SectionCard, StatusPill, SummaryRows, Tabs, activeTab,
+  statusLabel, type Column, type FooterRow, type TabItem,
 } from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
-import { BudgetBar, ProgressBar } from "../_components/budget-bar";
 import { projectAccess } from "../_lib/access";
 import { loadCostingSheet } from "../_lib/sheet";
 import { loadProjectHistory } from "../_lib/history";
@@ -82,13 +81,7 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
       cell: (m) => (m.refType === "purchase_invoice" ? "Direct purchase" : m.refType ? statusLabel(m.refType) : "Store issue") },
   ];
   const returnCols = issueCols.filter((col) => col.key !== "source");
-  const totalRow = (label: string, value: number, span: number, trailing = 0) => (
-    <tr className="bg-muted font-semibold">
-      <td className="ui-td" colSpan={span}>{label}</td>
-      <td className="ui-td text-right tabular-nums">{money(value)}</td>
-      {trailing > 0 && <td className="ui-td" colSpan={trailing} />}
-    </tr>
-  );
+  const totalRow = (label: string, value: number): FooterRow[] => [{ label, cells: { value: money(value) } }];
 
   type Pur = Sheet["purchases"][number];
   const purCols: Column<Pur>[] = [
@@ -275,7 +268,7 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
           </MetricStrip>
 
           <SectionCard title="Budget burn">
-            <BudgetBar usedPct={c.budgetUsedPct} budget={c.budget} />
+            {c.budget ? <ProgressBar mode="budget" value={c.budgetUsedPct} label="Budget used" className="min-w-32" /> : <span className="text-caption text-ink-faint">No budget set</span>}
             {c.budget > 0 && (
               <p className="mt-2 text-sm text-ink-soft">
                 {money0(c.actualCost)} of {money0(c.budget)} spent
@@ -324,12 +317,12 @@ export default async function ProjectSheetPage({ params, searchParams }: { param
           <SectionCard title="Materials issued" count={s.issues.length} icon={Package} flush={s.issues.length > 0}
             empty={s.issues.length === 0 && "No materials issued to this project yet. Store issues and project-tagged purchase invoices appear here."}>
             <ResponsiveTable flush rows={s.issues} columns={issueCols} rowKey={(m) => m.id} caption="Materials issued"
-              footer={totalRow("Total issued", c.materials, issueCols.length - 2, 1)} />
+              footerRows={totalRow("Total issued", c.materials)} />
           </SectionCard>
           {s.returns.length > 0 && (
             <SectionCard title="Materials returned" count={s.returns.length} flush>
               <ResponsiveTable flush rows={s.returns} columns={returnCols} rowKey={(m) => m.id} caption="Materials returned"
-                footer={totalRow("Total returned", c.returns, returnCols.length - 1)} />
+                footerRows={totalRow("Total returned", c.returns)} />
             </SectionCard>
           )}
           {acc.full && (

@@ -10,10 +10,9 @@ import { fmtDate, money0, qty, todayIST } from "@/lib/format";
 import { LINE_STATUS_LABEL, OPEN_ORDER_STATUSES, orderProgress, pendingDeliveryLines, type PendingLine } from "@/lib/orders";
 import { Flash, LinkButton, Select, cx } from "@/components/ui";
 import {
-  ListEmpty, ListFilters, ListPage, Metric, MetricStrip, ResponsiveTable, StatusPill, Tabs, activeTab, statusLabel,
+  ListEmpty, ListFilters, ListPage, Metric, MetricStrip, ProgressBar, ResponsiveTable, StatusPill, Tabs, activeTab, statusLabel,
   type Column,
 } from "@/components/patterns";
-import { LineProgress } from "../_components/progress";
 
 export const metadata = { title: "Orders & delivery" };
 
@@ -110,7 +109,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
         const isOpen = (OPEN_ORDER_STATUSES as readonly string[]).includes(o.status);
         return (
           <div className="flex flex-col gap-1 max-sm:w-40">
-            <LineProgress done={p.deliveredLines} total={p.totalLines} />
+            <ProgressBar value={p.deliveredLines} max={p.totalLines} label={`${p.deliveredLines} of ${p.totalLines} lines delivered`} caption={`${p.deliveredLines}/${p.totalLines} lines`} />
             {isOpen && p.overdueLines > 0 && <StatusPill status="overdue" label={`${p.overdueLines} overdue`} />}
           </div>
         );
@@ -164,12 +163,14 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
           <Metric label="Pending value" value={money0(pending.reduce((s, l) => s + l.pendingQty * l.rate, 0))} hint="Ex-GST, yet to deliver" />
         </MetricStrip>
       }
+      tabs={
+        <Tabs label="Order views" basePath="/orders" params={{ ...sp, ok: undefined, err: undefined }} active={tab} items={[
+          { id: "orders", label: "Customer orders", count: orders.length },
+          { id: "pending", label: "Pending delivery lines", count: pending.length, alert: overdueCount > 0 },
+        ]} />
+      }
       filters={
         <>
-          <Tabs label="Order views" basePath="/orders" params={{ ...sp, ok: undefined, err: undefined }} active={tab} items={[
-            { id: "orders", label: "Customer orders", count: orders.length },
-            { id: "pending", label: "Pending delivery lines", count: pending.length, alert: overdueCount > 0 },
-          ]} />
           {tab === "orders" ? (
             <ListFilters q={q} placeholder="Search order, PO number, customer" clearHref="/orders" activeCount={orderFilters}>
               <Select name="status" defaultValue={status ?? ""} aria-label="Status">

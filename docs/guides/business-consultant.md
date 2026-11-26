@@ -30,6 +30,21 @@ Enquiry / consultant BOQ
    → Outstanding & reminders → (Extinguishers) Refill tracker → next refill quotation
 ```
 
+**Added in version 2 (after the client follow-up on 2026-11-26):**
+
+```
+Consultant BOQ Excel → Import BOQ (automatic item matching) → quotation
+Quotation below minimum margin (or all, per setting) → owner approval → sent
+Customer PO lines → vendor purchase orders → received through purchase invoices
+Advance from customer → receipt → applied to invoices
+Customer return → GST credit note → adjusted against invoices;  return to vendor → debit note
+Net outstanding = invoices − credit notes − advances
+Installed site → AMC contract → scheduled visits (checklist per system) → renewal;  breakdown → service call (response deadline)
+Monthly P&L; order, project, customer and item profit (buy vs sell); project history timeline
+```
+
+On the client's sample consultant BOQ, the import matched 95 of 150 lines automatically and left 55 to check, with 0 unmatched. Use that figure when you explain the feature: it saves typing, but someone still checks the flagged lines.
+
 ## 3. Your responsibilities
 
 1. **Meetings.** Prepare questions, attend, and write the notes following [meetings/README.md](../meetings/README.md) within 1 working day.
@@ -39,6 +54,8 @@ Enquiry / consultant BOQ
 5. **Master data readiness.** Work with the client to complete the price list (fire-alarm and extinguisher prices are blank, and many hydrant items are too), the customer list, the vendor list and the company header details.
 6. **UAT and training.** Write business scenarios with the tester, and run training for each role using the user guides.
 7. **Adoption review.** After go-live, go through the Data Hygiene "pending entries by person" list with the owner every week.
+8. **Change requests.** Since version 2, new asks are handled by written change request (see the [Manager guide](manager.md)). Record each one in the REQUIREMENTS.md change log. The version 2 asks from the 2026-11-26 follow-up are REQ-045 onward.
+9. **Next meeting.** The owner's spouse has asked for a clarification meeting on **Friday 2026-11-28**. Prepare a short walk-through of the version 2 screens (approval, BOQ import, returns, advances, AMC, reports) and the open questions, and write the notes in `docs/meetings/` afterwards.
 
 ## 4. How to write requirements
 

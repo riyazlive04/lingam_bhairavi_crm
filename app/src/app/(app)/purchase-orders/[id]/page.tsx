@@ -10,14 +10,14 @@ import { requireUser } from "@/lib/auth";
 import { canRead, canWrite } from "@/lib/rbac";
 import { fmtDate, fmtDateTime, money, pct, qty, todayIST } from "@/lib/format";
 import { PO_STATUS_LABEL, isPoStatus, pendingReceipt, poReceivedPct } from "@/lib/purchase-orders";
-import { Field, Flash, Input, LinkButton, Td, cx } from "@/components/ui";
+import { Field, Flash, Input, LinkButton, cx } from "@/components/ui";
 import {
-  ActivityFeed, Callout, ConfirmButton, DetailPage, KeyValueGrid, MenuSeparator, MetaChip, ResponsiveTable, SectionCard, StatusPill, SummaryRows,
+  ActivityFeed, Callout, ConfirmButton, DetailPage, KeyValueGrid, MenuSeparator, MetaChip, ProgressBar, ResponsiveTable, SectionCard, StatusPill, SummaryRows,
   type Column, type TimelineItem,
 } from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { cancelPo, closePo, markPoSent } from "../actions";
-import { PoStatusBadge, ReceivedBar, receivedText } from "../_components/po-bits";
+import { PoStatusBadge, receivedText } from "../_components/po-bits";
 
 export const metadata = { title: "Purchase order" };
 
@@ -93,7 +93,7 @@ export default async function PurchaseOrderPage({ params, searchParams }: { para
         return (
           <div>
             <div className={cx("text-sm tabular-nums", l.receivedQty > l.qty && "text-warning")}>{receivedText(l.receivedQty, l.qty)}</div>
-            <ReceivedBar pct={linePct} className="mt-1" />
+            <ProgressBar size="sm" label="Received" value={linePct} className="mt-1" />
             {left > 0 && po.status !== "draft" && po.status !== "cancelled" && <div className="text-caption text-ink-soft">{qty(left)} to come</div>}
             {l.receivedQty > l.qty && <div className="text-caption text-warning">More than ordered</div>}
           </div>
@@ -228,13 +228,11 @@ export default async function PurchaseOrderPage({ params, searchParams }: { para
         actions={isDraft && lines.length === 0 ? <LinkButton href={`/purchase-orders/${id}/edit`} size="sm" variant="secondary">Add lines</LinkButton> : undefined}
         empty={lines.length === 0 && "No lines on this PO yet. Edit the draft to add items."}>
         <ResponsiveTable flush rows={lines} columns={lineCols} rowKey={(x) => x.l.id} caption="PO lines"
-          footer={
-            <>
-              <tr><Td colSpan={5} className="text-right text-ink-soft">Subtotal</Td><Td className="text-right tabular-nums">{money(po.subtotal)}</Td></tr>
-              <tr><Td colSpan={5} className="text-right text-ink-soft">GST</Td><Td className="text-right tabular-nums">{money(po.taxAmount)}</Td></tr>
-              <tr><Td colSpan={5} className="text-right font-semibold">Total</Td><Td className="text-right font-semibold tabular-nums">{money(po.total)}</Td></tr>
-            </>
-          } />
+          footerRows={[
+            { key: "sub", label: "Subtotal", labelAlign: "right", className: "", labelClassName: "text-ink-soft", cells: { amount: money(po.subtotal) } },
+            { key: "gst", label: "GST", labelAlign: "right", className: "", labelClassName: "text-ink-soft", cells: { amount: money(po.taxAmount) } },
+            { key: "total", label: "Total", labelAlign: "right", className: "", labelClassName: "font-semibold", cells: { amount: { value: money(po.total), className: "font-semibold" } } },
+          ]} />
       </SectionCard>
 
       <SectionCard title="Bills" count={bills.length} icon={FileText} flush

@@ -11,7 +11,7 @@ import { PAYMENT_MODES } from "@/lib/constants";
 import { daysBetween, fmtDate, fmtDateTime, money, qty, round2, todayIST } from "@/lib/format";
 import { OPEN_INVOICE_STATUSES, customerAdvances, outstandingOf, receiptNumber } from "@/lib/billing";
 import { reasonLabel } from "@/lib/returns";
-import { Field, Flash, Input, LinkButton, Select, Td, cx } from "@/components/ui";
+import { Field, Flash, Input, LinkButton, Select, cx } from "@/components/ui";
 import {
   Callout, ConfirmButton, DetailPage, KeyValueGrid, MetaChip, ResponsiveTable, SectionCard, StatusPill, SummaryRows, Tabs, activeTab, tabHref,
   type Column, type TabItem,
@@ -215,14 +215,10 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
       {tab === "lines" && (
         <SectionCard title="Invoice lines" count={lines.length} flush={lines.length > 0} empty={lines.length === 0 && "This invoice has no lines."}>
           <ResponsiveTable flush rows={lines} columns={lineCols} rowKey={(l) => l.id} caption="Invoice lines"
-            footer={
-              <tr>
-                <Td colSpan={4} className="text-right font-medium max-sm:hidden">Totals</Td>
-                <Td className="rt-p3 text-right tabular-nums max-sm:hidden">{money(inv.subtotal)}</Td>
-                <Td className="rt-p3 text-right tabular-nums max-sm:hidden">{money(inv.taxAmount)}</Td>
-                <Td className="text-right font-semibold tabular-nums"><span className="sm:hidden">Invoice total </span>{money(inv.total)}</Td>
-              </tr>
-            } />
+            footerRows={[{
+              label: "Totals", labelAlign: "right", className: "", labelClassName: "font-medium",
+              cells: { taxable: money(inv.subtotal), gst: money(inv.taxAmount), total: { value: money(inv.total), className: "font-semibold" } },
+            }]} />
         </SectionCard>
       )}
 

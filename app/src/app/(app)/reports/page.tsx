@@ -4,20 +4,19 @@ import { BarChart3, Download, Table2 } from "lucide-react";
 import { getDb } from "@/db";
 import { requireUser } from "@/lib/auth";
 import { canRead, canSeeCost } from "@/lib/rbac";
+import { searchString } from "@/lib/url";
 import { PROJECT_STATUSES, SYSTEMS } from "@/lib/constants";
 import { fmtDate, money0, moneyShort, pct, qty, todayIST } from "@/lib/format";
 import {
   customerProfitability, financialYearOptions, itemMargins, monthLabel, monthlyPnl, orderProfitability, projectProfitability,
   type CustomerProfit, type ItemMargin, type OrderPnl, type PnlReport, type ProjectProfit,
 } from "@/lib/reports";
-import { EmptyState, Flash, Select, Td, buttonClass, cx } from "@/components/ui";
+import { EmptyState, Flash, Select, buttonClass, cx } from "@/components/ui";
 import {
-  Callout, ListEmpty, ListFilters, ListPage, Metric, MetricStrip, ResponsiveTable, SectionCard, StatusPill, Tabs, statusLabel,
+  BarChart, Callout, ListEmpty, ListFilters, ListPage, Metric, MetricStrip, ProgressBar, ResponsiveTable, SectionCard, StatusPill, Tabs, statusLabel,
   type Column,
 } from "@/components/patterns";
-import { BudgetBar } from "../projects/_components/budget-bar";
-import { PnlChart } from "./_components/pnl-chart";
-import { REPORT_TABS, parseReportParams, periodLabel, reportQuery, type ReportParams, type ReportSP, type ReportTab } from "./_lib/params";
+import { REPORT_TABS, parseReportParams, periodLabel, type ReportParams, type ReportSP, type ReportTab } from "./_lib/params";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Reports and profit" };
@@ -49,7 +48,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   }
 
   const db = await getDb();
-  const exportHref = `/reports/export?${reportQuery({ tab: p.tab, fy: p.fy, q: p.q, kind: p.kind, sort: p.sort, status: p.status, system: p.system, flagged: p.flagged })}`;
+  const exportHref = `/reports/export?${searchString({ tab: p.tab, fy: p.fy, q: p.q, kind: p.kind, sort: p.sort, status: p.status, system: p.system, flagged: p.flagged })}`;
 
   let view: TabView;
   if (p.tab === "pnl") view = pnlView(await monthlyPnl(db, p.range!), p, today);
@@ -68,13 +67,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
       }
       notices={<><Flash ok={sp.ok} err={sp.err} />{view.notices}</>}
       stats={view.stats}
-      filters={
-        <>
-          <Tabs label="Report sections" basePath="/reports" active={p.tab}
-            items={(Object.keys(REPORT_TABS) as ReportTab[]).map((t) => ({ id: t, label: REPORT_TABS[t] }))} />
-          {view.filters}
-        </>
+      tabs={
+        <Tabs label="Report sections" basePath="/reports" active={p.tab}
+          items={(Object.keys(REPORT_TABS) as ReportTab[]).map((t) => ({ id: t, label: REPORT_TABS[t] }))} />
       }
+      filters={view.filters}
       isEmpty={view.isEmpty}
       empty={view.empty}
       resultSummary={view.summary}
@@ -99,11 +96,6 @@ const clearHref = (tab: ReportTab) => (tab === "pnl" ? "/reports" : `/reports?ta
 
 function Footnote({ children }: { children: ReactNode }) {
   return <p className="mt-3 text-caption text-ink-soft">{children}</p>;
-}
-
-/** A footer cell that also reads well as a phone card row. */
-function FootTd({ label, children, className, slot = "field" }: { label: string; children: ReactNode; className?: string; slot?: string }) {
-  return <Td data-slot={slot} data-label={label} className={cx("text-right tabular-nums", className)}>{children}</Td>;
 }
 
 // ------------------------------------------------------------------------------------------------ a) monthly P&L
@@ -150,22 +142,26 @@ function pnlView(report: PnlReport, p: ReportParams, today: string): TabView {
     content: (
       <div className="space-y-4">
         <SectionCard title="Month by month" description={periodLabel(p.fy)} icon={BarChart3}>
-          <PnlChart months={months} />
+          <BarChart data={months} title="Monthly sales, cost of goods, expenses and net profit" description="The table below has the same numbers."
+            category={(m) => monthLabel(m.month, true)} categoryLong={(m) => monthLabel(m.month)}
+            emptyText="No sales, deliveries or expenses in this period"
+            series={[
+              { key: "sales", label: "Sales", value: (m) => m.sales },
+              { key: "cogs", label: "Cost of goods", value: (m) => m.cogs },
+              { key: "expenses", label: "Expenses", value: (m) => m.expenses },
+            ]}
+            line={{ key: "net", label: "Net profit", value: (m) => m.netProfit }}
+            tooltipExtra={(m) => [["Gross profit", money0(m.grossProfit)]]} />
         </SectionCard>
         <SectionCard title="The numbers behind the chart" icon={Table2} flush>
           <ResponsiveTable flush rows={months} columns={cols} rowKey={(m) => m.month} caption="Monthly profit and loss"
-            footer={
-              <tr className="bg-muted font-semibold">
-                <Td data-slot="title" data-label="Month">Total</Td>
-                <FootTd label="Sales" slot="amount">{money0(total.sales)}</FootTd>
-                <FootTd label="Cost of goods">{money0(total.cogs)}</FootTd>
-                <FootTd label="Gross profit">{money0(total.grossProfit)}</FootTd>
-                <FootTd label="Gross %" className="rt-p3">{pct(total.grossMarginPct)}</FootTd>
-                <FootTd label="Expenses">{money0(total.expenses)}</FootTd>
-                <FootTd label="Net profit" className={cx(total.netProfit < 0 && "text-danger")}>{money0(total.netProfit)}</FootTd>
-                <FootTd label="Net %">{pct(total.netMarginPct)}</FootTd>
-              </tr>
-            } />
+            footerRows={[{
+              label: "Total",
+              cells: {
+                sales: money0(total.sales), cogs: money0(total.cogs), gross: money0(total.grossProfit), grossPct: pct(total.grossMarginPct),
+                exp: money0(total.expenses), net: { value: money0(total.netProfit), className: cx(total.netProfit < 0 && "text-danger") }, netPct: pct(total.netMarginPct),
+              },
+            }]} />
         </SectionCard>
         <Footnote>
           How this is worked out: sales are invoices less credit notes (before GST) by invoice date. Cost of goods is what delivered supply orders cost us,
@@ -202,7 +198,7 @@ function ordersView(rows: OrderPnl[], p: ReportParams, today: string, canOrders:
       cell: (r) => <span className={cx("font-medium", r.grossProfit < 0 ? "text-danger" : "text-ink")}>{money0(r.grossProfit)}</span> },
     { key: "margin", header: "Margin", align: "right", nowrap: true,
       cell: (r) => <span className={marginTone(r.marginPct, r.revenue !== 0)}>{r.revenue ? pct(r.marginPct) : "Not billed"}</span> },
-    { key: "delivered", header: "Delivered", cell: (r) => <DeliveredBar value={r.deliveredPct} /> },
+    { key: "delivered", header: "Delivered", cell: (r) => <ProgressBar value={r.deliveredPct} label="Delivered" /> },
   ];
   return {
     stats: (
@@ -262,7 +258,7 @@ function projectsView(rows: ProjectProfit[], p: ReportParams): TabView {
       cell: (r) => <>{money0(r.received)}{r.netDue > 0.5 && <div className="text-caption text-warning">{money0(r.netDue)} due</div>}</> },
     { key: "margin", header: "Margin", align: "right", card: "amount", nowrap: true,
       cell: (r) => <><span className={marginTone(r.marginPct, r.contractValue !== 0)}>{r.contractValue ? pct(r.marginPct) : "-"}</span><div className="text-caption font-normal text-ink-soft">{money0(r.margin)}</div></> },
-    { key: "budget", header: "Budget used", cell: (r) => <BudgetBar usedPct={r.budgetUsedPct} budget={r.budget} /> },
+    { key: "budget", header: "Budget used", cell: (r) => r.budget ? <ProgressBar mode="budget" value={r.budgetUsedPct} label="Budget used" className="min-w-32" /> : <span className="text-caption text-ink-faint">No budget set</span> },
   ];
   return {
     stats: (
@@ -385,16 +381,3 @@ function itemsView(rows: ItemMargin[], p: ReportParams): TabView {
     ),
   };
 }
-
-function DeliveredBar({ value }: { value: number }) {
-  const w = Math.max(0, Math.min(100, value));
-  return (
-    <div className="flex min-w-28 items-center gap-2">
-      <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted ring-1 ring-inset ring-line" role="progressbar" aria-valuenow={Math.round(value)} aria-valuemin={0} aria-valuemax={100} aria-label="Delivered">
-        <div className={cx("h-full rounded-full", value >= 100 ? "bg-success" : "bg-chart-1")} style={{ width: `${w}%` }} />
-      </div>
-      <span className="w-10 text-right text-caption tabular-nums text-ink-soft">{pct(value, 0)}</span>
-    </div>
-  );
-}
-

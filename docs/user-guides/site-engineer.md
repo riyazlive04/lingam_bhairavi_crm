@@ -8,14 +8,19 @@ Why your entries matter: for each project, the owner wants to know **how much we
 
 1. Open https://lbe-fire-crm.vercel.app in Chrome on your phone and log in with the email and password your admin gave you.
 2. Tap the Chrome menu and choose **Add to Home screen**.
-3. Open **Projects & Costing** and find the projects you are working on.
+3. Open **Projects** and find the projects you are working on.
 4. Enter today's expense (even a small one) in **Expenses**, following section 1 below, to get used to it.
-5. If you handle extinguisher refills, open **Refill Tracker** and find your customers.
+5. If you handle extinguisher refills, open **Refills** and find your customers.
+
+### Finding your way around
+- On your phone, the tab bar at the bottom gives you **Home**, **Projects**, **Expenses** and **Service calls**. Tap **More** for the full menu.
+- In the menu, your work is in **Projects & site** (**Projects** and **Expenses**) and **Service** (**AMC**, **Service calls** and **Refills**). You can also look at **Orders & delivery**, **Stock** and **Customers**.
+- The **New** button in the top bar starts a **New expense** or a **New service call** in one tap.
 
 ## 1. Daily workflow
 
 ### Log an expense (under a minute)
-1. Open **Expenses** and start a new voucher.
+1. Tap **New**, then **New expense** (or open **Expenses** and start a new voucher).
 2. Enter the amount (₹) and choose a category: **Petrol / Fuel**, **Travel**, **Lodging**, **Food**, **Labour**, **Transport / Freight**, **Local material purchase** or **Miscellaneous**.
 3. **Project:** pick the site.
 4. Enter the **bill or receipt number**, and keep the paper bill safe to hand over to accounts.
@@ -27,10 +32,10 @@ Why your entries matter: for each project, the owner wants to know **how much we
 **Lodging for several days?** Enter one expense for the total bill with the dates in the note, or one per day. Use whichever matches the receipt.
 
 ### Check material at site
-Open **Projects & Costing**, then your project, to see what has been delivered and what is still pending. When material arrives, check it against the list. If anything is missing, tell the store team straight away. This stops items being forgotten, which is the old problem where 9 of 10 items arrive and the 10th is never followed up.
+Open **Projects**, then your project, to see what has been delivered and what is still pending. When material arrives, check it against the list. If anything is missing, tell the store team straight away. This stops items being forgotten, which is the old problem where 9 of 10 items arrive and the 10th is never followed up.
 
 ### Extinguisher refills and service at site
-Open **Refill Tracker**, find the customer, select the extinguishers you serviced (for example 12 × ABC 6 kg, Safex) and record the refill with the date. The next due date moves forward by itself (1 year or 3 years).
+Open **Refills**, find the customer, select the extinguishers you serviced (for example 12 × ABC 6 kg, Safex) and record the refill with the date. The next due date moves forward by itself (1 year or 3 years).
 
 ### Project view
 Your project page shows the site address, the customer contact, materials delivered and pending, and the expenses you submitted with their status.
@@ -39,10 +44,10 @@ Your project page shows the site address, the customer contact, materials delive
 
 | Agent | Reminder |
 |---|---|
-| Pending Delivery | Material for your project that is overdue, or arriving today or tomorrow |
-| Project Budget | Your project has reached 80 % or 100 % of its budget, so you know to control spending |
-| Data Hygiene | Expenses you submitted that are still waiting for approval (so you can follow up), or a project with no cost entries |
-| Refill Due | Extinguishers due for refill (if you handle refills) |
+| AMC & Service | AMC visits assigned to you that are due this week or overdue, and your service calls that have passed their response deadline |
+| Data Hygiene | A project of yours with no material or expense entry for 14 days (enter the costs, or ask the office to put it on hold) |
+
+Budget warnings for your projects go to the owner, who will tell you if spending on a site needs to be controlled.
 
 ## 3. What you need to enter so the system works
 
@@ -58,10 +63,10 @@ Tip: enter the expense **before you leave the petrol pump or the lodge counter**
 ## 4. New screens for you
 
 ### AMC visits
-**AMC Contracts** lists the maintenance contracts and their planned visits. Open a visit, fill in the checklist for each system and save your remarks. If you cannot go, use **Reschedule** or **Mark missed** so the office knows.
+**AMC** lists the maintenance contracts and their planned visits. Open a visit, fill in the checklist for each system and save your remarks. If you cannot go, use **Reschedule** or **Mark missed** so the office knows.
 
 ### Service calls
-Breakdown complaints are logged in **Service Calls**. Each call has a response deadline. Open the call, record what you did and click **Resolve call**. You get an alert if a call passes its deadline.
+Breakdown complaints are logged in **Service calls**. Each call has a response deadline. Open the call, record what you did and click **Resolve call**. You get an alert if a call passes its deadline.
 
 ### Project History tab
 Your projects now have a **History** tab that shows everything that happened on the site in date order: material issued, returns, expenses and more.

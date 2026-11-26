@@ -1,5 +1,7 @@
 # Test Report: LBE Fire Safety CRM
 
+> **Version 2 update (2026-11-26):** sections 1 to 7 are the version 1 round of 2026-11-21 and are kept as they were. The version 2 and UI rebuild results are in [§8](#8-version-2-and-ui-rebuild-2026-11-26). Current totals: **197 unit and integration tests and 66 of 66 end-to-end checks pass**, and the crawler finds **0 problems** on about 990 pages.
+
 **Date:** 2026-11-21 · **Tester:** QA / Test Engineer, Sirah Digital (automated tests and HTTP smoke checks) · **Build under test:** the production build running at `http://localhost:3100` (embedded PGlite, seeded demo data). The source fixes from this round are **not** in that build yet, so a rebuild is needed.
 
 ## 1. Scope
@@ -181,3 +183,65 @@ Verified: `npx tsc --noEmit -p .` is clean, and `npx eslint` on all changed file
 | O-3 | Sev-4 | Two ageing conventions: billing `ageingBucket(0)` returns "0 to 30" days, while agents `bucketAgeing(0)` returns "current". On its due date, the same invoice can sit in different buckets on the billing page and in agent alerts | Billing / Agents developers |
 | O-4 | Sev-4 | Rebuild needed: the crawler will keep reporting the 41 old problems until the Manager rebuilds. Then re-run `node scripts/smoke-crawl.mjs http://localhost:3100 300` and expect 0 FORBIDDEN-LINK and 0 404 | Manager |
 | O-5 | N/A | Many UAT items need manual or browser testing (see the NOT TESTED rows), including mobile at 360 px and the 150-line export timing | Tester + client UAT |
+
+---
+
+## 8. Version 2 and UI rebuild (2026-11-26)
+
+**Tester:** QA / Test Engineer, Sirah Digital · **Builds under test:** version 2 (commit `5840a3c`) and the UI rebuild (commit `d86366d`), production build on embedded PGlite with seeded demo data, plus a copy of the version 1 database for the upgrade test.
+
+### 8.1 Results
+
+| Suite | Files | Tests | Pass | Fail |
+|---|---|---|---|---|
+| Unit `tests/unit/*` | 12 | 175 | 175 | 0 |
+| Integration `tests/integration/*` (in-memory PGlite, real migrations + `seed()`) | 6 | 22 | 22 | 0 |
+| **Unit + integration (`npm test`)** | **18** | **197** | **197** | **0** |
+| HTTP end-to-end `tests/e2e/smoke.test.ts` (live server, `E2E_BASE_URL` set) | 1 | 66 | 66 | 0 |
+| **Total** | **19** | **263** | **263** | **0** |
+
+Without `E2E_BASE_URL`, `npm test` reports the 66 end-to-end checks as skipped; that is expected.
+
+### 8.2 What the new suites cover
+
+| File | Tests | Covers |
+|---|---|---|
+| `unit/quote-approval.test.ts` | 11 | Rule 10: cost snapshot with date and supplier, list price fallback, stale windows (7 days for volatile items, 90 for others). Rule 11: the three approval modes (off, below minimum margin, all), discounts pushing a quote under the minimum, and sending blocked until approved |
+| `unit/pricing.test.ts` | 10 | Rules 1 to 3: latest cost, suggested rates, quotation totals and GST, line price warnings, pricing settings (version 1 suite, kept) |
+| `unit/boq-import.test.ts` | 50 | Reading all four sheets of the client's sample BOQ (different header layouts, formula refs, sections, continuation lines), size normalisation, item scoring by group, size and make, matching the sample against the item catalogue, and the upload limits and zip bomb checks (V2-02) |
+| `unit/purchase-orders.test.ts` | 11 | Rule 16: PO status from received qty, received percentage, ordering only what is still pending on a sales order line, default buying rate and totals |
+| `unit/returns-outstanding.test.ts` | 11 | Rules 13 to 15: returnable quantities, note totals, GST split, net delivered and line status, and net outstanding (invoices − credit notes − advances; debit notes reduce payables) |
+| `unit/amc.test.ts` | 16 | Rule 19: visit scheduling across the period, contract and renewal dates, billing period amounts, the service call response countdown and breach, and checklists per system |
+| `unit/reports.test.ts` | 17 | Financial year helpers, margin maths and rule 18: monthly P&L lines (sales net of credit notes, cost of goods from deliveries and issues less returns) and totals |
+| `integration/purchase-orders.test.ts` | 4 | The demo POs and the quote cost-date backfill (both idempotent), and posting a bill raised from a PO (received qty, partial then received) |
+| `integration/returns-advances.test.ts` | 4 | The delivery cost backfill, posting a credit note (returned qty, restock at delivery cost, adjustment, no double posting), a debit note, and a part-applied advance matching the ledger |
+| `integration/amc.test.ts` | 5 | The AMC demo data (idempotent), contract numbering and visit scheduling, and the AMC & Service agent (visit, renewal and SLA alerts raised once, SLA alert cleared when the call is resolved) |
+| `integration/reports.test.ts` | 2 | All report loaders on the seeded database (monthly P&L, orders, projects, customers, items), and project cost with returns, credit notes and advances |
+
+The version 1 suites (`agents-rules`, `domain-status`, `format`, `pricing`, `rbac`, `words-numbering`, `agents-orders`, `purchasing-costing`) still pass. The RBAC suite checks the whole matrix, including the new modules, for rules such as "write implies read" and "admin can do everything".
+
+### 8.3 Crawler
+
+`node scripts/smoke-crawl.mjs <base-url> 300`, signed in as each of the 6 roles, visiting every reachable in-app link: **about 990 pages visited, 0 problems** (no server errors, broken links or forbidden links). This also closes O-4 above: the problems found on the old version 1 build are gone.
+
+### 8.4 Upgrade path
+
+We started the version 2 build on a copy of the version 1 database (created before migration 0001). The upgrade worked as designed (see [ARCHITECTURE.md §9](ARCHITECTURE.md#9-database-lifecycle-and-upgrade-path)):
+
+- migration `0001_v2_returns_amc_po_approval` applied once on top of `0000_init`, adding tables and columns only, so existing records were kept;
+- the one-time backfill (quote line cost dates and suppliers, delivery cost rates) is guarded by `migrations.v2_backfill_done`;
+- the version 2 demo data is added only with `SEED_V2_DEMO=1`, once, guarded by `migrations.v2_demo_seeded`.
+
+The idempotency of the backfill and the demo seed is also covered by the integration tests above.
+
+### 8.5 Business check on the client's sample BOQ
+
+Importing the client's sample consultant BOQ (150 lines) matched **95 lines automatically**, left **55 lines to check** and **0 unmatched**. Lines to check are shown for a person to confirm or change before the quotation is created.
+
+### 8.6 Not covered yet
+
+- **Visual browser review is pending.** The UI rebuild has been checked through automated tests, HTTP checks and the crawler, but not yet by a person looking at every screen in a browser at desktop and phone width (including the bottom tab bar, the New menu, the density toggle, inline confirms and the A4 prints). This is the next QA step, together with client UAT.
+- Real Office 365 sending (needs the client's mailbox, A-04).
+- The new UAT rows in [guides/tester.md](guides/tester.md) that need manual data entry.
+
+Prepared by Sirah Digital · https://sirahdigital.in/

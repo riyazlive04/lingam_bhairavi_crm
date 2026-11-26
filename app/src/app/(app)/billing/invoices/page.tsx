@@ -94,10 +94,10 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
       title="Sales invoices"
       subtitle="Tax invoices, payments and reminders."
       primaryAction={write && <LinkButton href="/billing/invoices/new"><Plus className="icon-sm" aria-hidden /> New invoice</LinkButton>}
+      tabs={<BillingTabs active="invoices" />}
       notices={<Flash ok={sp.ok} err={sp.err} />}
       filters={
         <>
-          <BillingTabs active="invoices" />
           <FilterPills label="Filter by status" items={pills} />
           <ListFilters q={q} placeholder="Search invoice no., customer, PO" clearHref={qs({ q: undefined, customer: undefined })}
             activeCount={[q, customerId].filter(Boolean).length} hidden={{ status, overdue: overdueOnly ? "1" : undefined }}>

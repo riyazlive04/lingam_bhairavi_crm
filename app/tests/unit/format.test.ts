@@ -64,7 +64,8 @@ describe("moneyShort", () => {
     expect(moneyShort(12_500_000)).toBe("₹1.25 Cr");
     expect(moneyShort(250_000)).toBe("₹2.50 L");
     expect(moneyShort(1_500)).toBe("₹1.5 K");
-    expect(moneyShort(-250_000)).toBe("₹-2.50 L");
+    expect(moneyShort(-250_000)).toBe("-₹2.50 L");
+    expect(moneyShort(-12_500_000)).toBe("-₹1.25 Cr");
     expect(moneyShort(999)).toMatch(/^₹\s?999$/);
     expect(moneyShort(null)).toBe("-");
   });

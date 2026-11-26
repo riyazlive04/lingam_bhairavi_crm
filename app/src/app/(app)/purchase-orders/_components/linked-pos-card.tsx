@@ -11,8 +11,8 @@ import { fmtDate, money0 } from "@/lib/format";
 import { poReceivedPct } from "@/lib/purchase-orders";
 import { canRead, canSeeCost } from "@/lib/rbac";
 import type { Role } from "@/lib/constants";
-import { ResponsiveTable, SectionCard, type Column } from "@/components/patterns";
-import { PoStatusBadge, ReceivedBar } from "./po-bits";
+import { ProgressBar, ResponsiveTable, SectionCard, type Column } from "@/components/patterns";
+import { PoStatusBadge } from "./po-bits";
 
 export async function LinkedPosCard({ role, salesOrderId, projectId, className, hideWhenEmpty = false }: {
   role: Role; salesOrderId?: number; projectId?: number; className?: string; hideWhenEmpty?: boolean;
@@ -40,7 +40,7 @@ export async function LinkedPosCard({ role, salesOrderId, projectId, className, 
     { key: "date", header: "Date", nowrap: true, cell: (p) => fmtDate(p.poDate) },
     ...(showTotal ? [{ key: "total", header: "Total", align: "right" as const, card: "amount" as const, nowrap: true, cell: (p: Po) => money0(p.total) }] : []),
     { key: "status", header: "Status", card: "badge", cell: (p) => <PoStatusBadge status={p.status} /> },
-    { key: "recv", header: "Received", cell: (p) => <ReceivedBar pct={poReceivedPct(lines.filter((l) => l.poId === p.id))} /> },
+    { key: "recv", header: "Received", cell: (p) => <ProgressBar size="sm" label="Received" value={poReceivedPct(lines.filter((l) => l.poId === p.id))} /> },
   ];
 
   return (

@@ -79,7 +79,8 @@ export default async function ReturnsPage({ searchParams }: { searchParams: Prom
             <Metric label="Drafts" value={rows.length - posted.length} hint="Not posted yet" />
           </MetricStrip>
         }
-        filters={<>{tabs}<ListFilters q={q} placeholder="Search debit note, vendor or bill no." clearHref={clearHref} activeCount={activeCount} hidden={{ tab: "vendor" }}>{statusSelect}</ListFilters></>}
+        tabs={tabs}
+        filters={<ListFilters q={q} placeholder="Search debit note, vendor or bill no." clearHref={clearHref} activeCount={activeCount} hidden={{ tab: "vendor" }}>{statusSelect}</ListFilters>}
         isEmpty={rows.length === 0}
         empty={
           <ListEmpty filtered={filtered} noun="debit notes" clearHref={clearHref} title={filtered ? undefined : "No returns to vendors yet"}
@@ -137,7 +138,8 @@ export default async function ReturnsPage({ searchParams }: { searchParams: Prom
           <Metric label="Drafts" value={rows.length - posted.length} hint="Goods not received back yet" />
         </MetricStrip>
       }
-      filters={<>{tabs}<ListFilters q={q} placeholder="Search credit note, customer or invoice" clearHref={clearHref} activeCount={activeCount}>{statusSelect}</ListFilters></>}
+      tabs={tabs}
+      filters={<ListFilters q={q} placeholder="Search credit note, customer or invoice" clearHref={clearHref} activeCount={activeCount}>{statusSelect}</ListFilters>}
       isEmpty={rows.length === 0}
       empty={
         <ListEmpty filtered={filtered} noun="credit notes" clearHref={clearHref} title={filtered ? undefined : "No customer returns yet"}

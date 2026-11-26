@@ -26,14 +26,14 @@ export const INTERVAL_OPTIONS = [
 
 /**
  * Single asset create/edit form (server component).
- * `inline` drops the sticky footer for use inside a detail page, whose phone action bar already sits at the bottom.
+ * Pass stickyFooter={false} inside a detail page, whose phone action bar already sits at the bottom.
  */
-export function AssetForm({ customers, values, today, cancelHref, inline }: {
-  customers: { id: number; name: string }[]; values: AssetFormValues; today: string; cancelHref: string; inline?: boolean;
+export function AssetForm({ customers, values, today, cancelHref, stickyFooter = true }: {
+  customers: { id: number; name: string }[]; values: AssetFormValues; today: string; cancelHref: string; stickyFooter?: boolean;
 }) {
   const v = values;
   const interval = v.refillIntervalMonths ?? 12;
-  const submit = <SubmitButton pendingText="Saving…" className={inline ? "max-sm:w-full" : undefined}>{v.id ? "Save asset" : "Add asset"}</SubmitButton>;
+  const submit = <SubmitButton pendingText="Saving…">{v.id ? "Save asset" : "Add asset"}</SubmitButton>;
   return (
     <form action={saveAsset} className="space-y-4">
       {v.id && <input type="hidden" name="id" value={v.id} />}
@@ -84,9 +84,7 @@ export function AssetForm({ customers, values, today, cancelHref, inline }: {
           <Textarea name="notes" rows={2} maxLength={1000} defaultValue={v.notes ?? ""} />
         </Field>
       </FormSection>
-      {inline
-        ? <div className="flex justify-end">{submit}</div>
-        : <FormFooter cancelHref={cancelHref}>{submit}</FormFooter>}
+      <FormFooter cancelHref={cancelHref} sticky={stickyFooter}>{submit}</FormFooter>
     </form>
   );
 }

@@ -22,12 +22,14 @@ import { projectCosts } from "@/lib/agents/hygiene";
 import { monthlyPnl } from "@/lib/reports";
 import { pendingQtyOf } from "@/lib/orders";
 import { CardLink, EmptyState, buttonClass, cx } from "@/components/ui";
-import { Metric, MetricStrip, ResponsiveTable, SectionCard, StatusPill, type Column } from "@/components/patterns";
-import { SalesQuotesChart } from "./_components/sales-quotes-chart";
+import { BarChart, Metric, MetricStrip, ResponsiveTable, SectionCard, StatusPill, type Column } from "@/components/patterns";
 
 export const dynamic = "force-dynamic";
 
 const n = (v: unknown) => Number(v ?? 0) || 0;
+/** "Apr 26" (short) or "April 2026" for a "2026-04" month key. */
+const chartMonth = (m: string, short = true) =>
+  new Date(`${m}-01T00:00:00Z`).toLocaleDateString("en-IN", { month: short ? "short" : "long", year: short ? "2-digit" : "numeric", timeZone: "UTC" });
 
 async function quoteKpis(db: DB, today: string) {
   const yearAgo = addDays(today, -365);
@@ -358,7 +360,13 @@ export default async function Dashboard() {
 
           {show.chart && series.length > 0 && (
             <SectionCard title="Sales vs quotes" description="Last 6 months, by month" icon={BarChart3} actions={show.profit ? <CardLink href="/reports">Reports</CardLink> : undefined}>
-              <SalesQuotesChart data={series} />
+              <BarChart data={series} title="Invoiced sales and quoted value for the last six months" description="The table below has the same numbers."
+                category={(d) => chartMonth(d.month)} categoryLong={(d) => chartMonth(d.month, false)} width={640} height={240} table
+                emptyText="No quotes or invoices yet"
+                series={[
+                  { key: "sales", label: "Sales (invoiced)", shortLabel: "Sales", value: (d) => d.sales },
+                  { key: "quoted", label: "Quoted (sent quotes)", shortLabel: "Quoted", value: (d) => d.quoted },
+                ]} />
             </SectionCard>
           )}
 

@@ -5,7 +5,7 @@
  * Server-safe. Maintainer: Sirah Digital.
  */
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { Children, Fragment, isValidElement, type ReactElement, type ReactNode } from "react";
 import { ArrowLeft } from "lucide-react";
 import { cx } from "../ui";
 import { ActionMenu, MenuSeparator } from "./action-menu";
@@ -22,7 +22,10 @@ export type DetailPageProps = {
   meta?: ReactNode;
   /** The one thing people most often do next. Hide it when the user cannot do it (RBAC). */
   primaryAction?: ReactNode;
-  /** Two or three common actions. On phones they move into the More menu. */
+  /**
+   * Two or three common actions. On phones they move into the More menu. With more than three, the first two stay
+   * in view and the rest move into More below 1280px (xl), so the header never overflows on a laptop.
+   */
   secondaryActions?: ReactNode;
   /** Rare or destructive actions (close, cancel, delete, reopen). Use ConfirmButton for anything destructive. */
   moreActions?: ReactNode;
@@ -51,8 +54,29 @@ export type DetailPageProps = {
  *   ...tab content
  * </DetailPage>
  */
+/** Flattens fragments so `<>{a}{b}{c}</>` counts as three actions. Drops null, false and empty strings. */
+export function flattenActions(node: ReactNode): ReactNode[] {
+  const out: ReactNode[] = [];
+  Children.forEach(node, (child) => {
+    if (child == null || typeof child === "boolean" || child === "") return;
+    if (isValidElement(child) && child.type === Fragment) out.push(...flattenActions((child as ReactElement<{ children?: ReactNode }>).props.children));
+    else out.push(child);
+  });
+  return out;
+}
+
+/** How many secondary actions stay in view before the rest fold into More (below xl). */
+const KEEP_VISIBLE = 2;
+const MAX_INLINE = 3;
+
 export function DetailPage({ back, eyebrow, title, status, meta, primaryAction, secondaryActions, moreActions, notices, tabs, aside, children }: DetailPageProps) {
   const hasActions = !!(primaryAction || secondaryActions || moreActions);
+  const actions = flattenActions(secondaryActions);
+  const overflowing = actions.length > MAX_INLINE;
+  const visible = overflowing ? actions.slice(0, KEEP_VISIBLE) : actions;
+  const folded = overflowing ? actions.slice(KEEP_VISIBLE) : [];
+  const list = (items: ReactNode[]) => items.map((a, i) => <Fragment key={i}>{a}</Fragment>);
+  const menuCol = "flex flex-col gap-1 [&>*]:w-full [&>*]:justify-start [&_form>button]:w-full [&_form>button]:justify-start";
   return (
     <div>
       {back && (
@@ -82,19 +106,25 @@ export function DetailPage({ back, eyebrow, title, status, meta, primaryAction, 
               aria-label="Actions"
               role="toolbar"
             >
-              {secondaryActions && <div className="flex items-center gap-2 max-sm:hidden">{secondaryActions}</div>}
+              {actions.length > 0 && (
+                <div className="flex items-center gap-2 max-sm:hidden">
+                  {list(visible)}
+                  {folded.length > 0 && <div className="hidden items-center gap-2 xl:flex">{list(folded)}</div>}
+                </div>
+              )}
               {primaryAction && <div className="flex items-center gap-2 max-sm:min-w-0 max-sm:flex-1 max-sm:[&>*]:w-full max-sm:[&>form>button]:w-full">{primaryAction}</div>}
-              {(secondaryActions || moreActions) && (
+              {(actions.length > 0 || moreActions) && (
                 <ActionMenu
                   label="More actions"
                   iconOnly
                   side="bottom"
-                  className={cx(!moreActions && "sm:hidden", !primaryAction && "max-sm:ml-auto")}
+                  className={cx(!moreActions && (folded.length ? "xl:hidden" : "sm:hidden"), !primaryAction && "max-sm:ml-auto")}
                   menuClassName="max-sm:bottom-full max-sm:top-auto max-sm:mb-2 max-sm:mt-0"
                 >
-                  {secondaryActions && <div className="flex flex-col gap-1 sm:hidden [&>*]:w-full [&>*]:justify-start [&_form>button]:w-full [&_form>button]:justify-start">{secondaryActions}</div>}
-                  {secondaryActions && moreActions && <div className="sm:hidden"><MenuSeparator /></div>}
-                  {moreActions && <div className="flex flex-col gap-1 [&>*]:w-full [&>*]:justify-start [&_form>button]:w-full [&_form>button]:justify-start">{moreActions}</div>}
+                  {visible.length > 0 && <div className={cx(menuCol, "sm:hidden")}>{list(visible)}</div>}
+                  {folded.length > 0 && <div className={cx(menuCol, "xl:hidden")}>{list(folded)}</div>}
+                  {actions.length > 0 && moreActions && <div className={folded.length ? "xl:hidden" : "sm:hidden"}><MenuSeparator /></div>}
+                  {moreActions && <div className={menuCol}>{moreActions}</div>}
                 </ActionMenu>
               )}
             </div>

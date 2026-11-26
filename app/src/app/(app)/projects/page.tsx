@@ -10,10 +10,9 @@ import { projectCostSummary } from "@/lib/costing";
 import { fmtDate, money0, moneyShort, pct } from "@/lib/format";
 import { Flash, LinkButton, Select, cx } from "@/components/ui";
 import {
-  FilterPills, ListEmpty, ListFilters, ListPage, Metric, MetricStrip, ResponsiveTable, StatusPill, statusLabel,
+  FilterPills, ListEmpty, ListFilters, ListPage, Metric, MetricStrip, ProgressBar, ResponsiveTable, StatusPill, statusLabel,
   type Column, type FilterPillItem,
 } from "@/components/patterns";
-import { BudgetBar } from "./_components/budget-bar";
 import { projectAccess } from "./_lib/access";
 
 type SP = { q?: string; status?: string; customerId?: string; engineerId?: string; mine?: string; ok?: string; err?: string };
@@ -101,7 +100,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
       key: "budget", header: "Budget used",
       cell: (r) => {
         const c = costs.get(r.id);
-        return projectAccess(user, r).spend && c ? <BudgetBar usedPct={c.budgetUsedPct} budget={c.budget} /> : <span className="text-ink-faint">-</span>;
+        return projectAccess(user, r).spend && c ? (c.budget ? <ProgressBar mode="budget" value={c.budgetUsedPct} label="Budget used" className="min-w-32" /> : <span className="text-caption text-ink-faint">No budget set</span>) : <span className="text-ink-faint">-</span>;
       },
     },
     ...(full ? [

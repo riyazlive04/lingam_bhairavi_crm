@@ -382,6 +382,150 @@ Data and naming rules:
 - Get company details from `getCompany(db)` (lib/billing).
 - Document titles are sentence case: "Tax invoice", "Credit note", "Debit note", "Purchase order", "Delivery challan", "Payment receipt", "Quotation", "AMC contract", "Visit report".
 
+### Kit additions (absorbed from the module teams)
+
+These pieces started as local copies in the modules and now live in the kit. Use them instead of writing your own. The local copies (ReceivedBar, DeliveredBar, BudgetBar, LineProgress, LinkTabs, Pager, SettingsTabs, the orders PrintButton, the two chart files and the BOQ ClientPills) are deleted.
+
+#### ProgressBar
+
+```tsx
+<ProgressBar value={o.deliveredPct} label="Delivered" />
+<ProgressBar size="sm" value={pct} label="Received" />
+<ProgressBar value={done} max={total} label={`${done} of ${total} lines delivered`} caption={`${done}/${total} lines`} />
+{c.budget ? <ProgressBar mode="budget" value={c.budgetUsedPct} label="Budget used" /> : <span className="text-caption text-ink-faint">No budget set</span>}
+```
+
+Props: `value`, `max` (default 100), `tone` (`auto`, `info`, `success`, `warning`, `danger`), `mode` (`progress` or `budget`), `label` (the accessible name), `showValue` (default true), `caption` (text above the bar, turns on the stacked layout), `size` (`sm` or `md`).
+
+| Mode | Auto tone |
+|---|---|
+| `progress` | Grey at 0, blue while under way, green at 100% |
+| `budget` | Green below 80%, amber from 80% to 100%, red past 100% (the percentage turns red too) |
+
+The tone logic is `progressTone(value, max, mode)` in `patterns/progress-tone.ts`, covered by unit tests.
+
+#### ListPage `tabs`
+
+```tsx
+<ListPage title="Stock" tabs={<Tabs label="Stock views" active={view} items={[...]} />} notices={...} stats={...} filters={...}>
+```
+
+- Section and view tabs go in `tabs`, which renders right under the header and before notices, stats and filters. Do not hide them in `filters` or `notices`.
+- Billing sections use `tabs={<BillingTabs active="invoices" />}`. Reports, returns, items, orders and stock use the slot too.
+
+#### ListFilters on phones
+
+- Below 640px the selects fold behind a "Filters (n)" button under the search box, so the results stay on the first screen. It opens by itself when a filter is active.
+- From 640px the selects are always shown. Nothing changes in how you call ListFilters.
+
+#### ResponsiveTable footers, plain grids and groups
+
+```tsx
+<ResponsiveTable rows={months} columns={cols} rowKey={(m) => m.month}
+  footerRows={[{ label: "Total", cells: { sales: money0(t.sales), net: { value: money0(t.net), className: "text-danger" } } }]} />
+
+// Bill style totals: the label spans up to the first value and sits on the right
+footerRows={[
+  { key: "sub", label: "Subtotal", labelAlign: "right", className: "", labelClassName: "text-ink-soft", cells: { amount: money(sub) } },
+  { key: "total", label: "Total", labelAlign: "right", className: "", labelClassName: "font-semibold", cells: { amount: money(total) } },
+]}
+```
+
+- `footerRows: { key?, label, cells, labelAlign?, labelClassName?, className? }[]`. `cells` is keyed by column key, so values line up with their columns and take each column's label on the phone card. A cell is a value, or `{ value, className?, slot? }`.
+- On phones a footer row reads as a totals card. A row with one value reads "Label ..... value" on one line.
+- The default row style is `bg-muted font-semibold`. Pass `className: ""` for a plain row.
+- `footer` (raw `<tfoot>` content) still works as an escape hatch. Never hand-write `data-slot` or `data-label` again.
+- `cards={false}` keeps a plain table that scrolls sideways on phones. Use it only for grids that are read across, such as the price matrix. Add `stickyFirst` to pin the first column.
+- `groupBy={(r) => r.group}` with an optional `groupHeader={(key, rows) => ...}` adds a header row above each group. Rows must already be sorted by group.
+
+#### DetailPage with many secondary actions
+
+When `secondaryActions` holds more than three actions, the first two stay in view and the rest move into More below 1280px. Fragments are flattened, so `<>{a}{b}{c}{d}</>` counts as four. Keep the most used actions first.
+
+#### RouteTabs (client)
+
+```tsx
+// app/(app)/settings/layout.tsx
+<RouteTabs label="Settings sections" className="mb-4" items={[
+  { label: "Company and pricing", href: "/settings" },
+  { label: "Users", href: "/settings/users" },
+]} />
+```
+
+- For sections that are separate routes and share a layout. It reads the pathname, and the longest matching `href` wins.
+- The settings layout owns the settings tabs. Pages no longer render their own tabs.
+
+#### ClientPills and ClientTabs (client)
+
+```tsx
+<ClientPills label="Show rows" items={[{ id: "all", label: "All rows", count: 40 }]} active={filter} onChange={setFilter} />
+<ClientTabs label="Sheets in this BOQ" idPrefix={id} panelId={`${id}-panel`} active={tab} onChange={setTab}
+  items={sheets.map((s, i) => ({ id: i, label: s.name, count: counts[i] }))} />
+<div id={`${id}-panel`} role="tabpanel" aria-labelledby={clientTabId(id, tab)}>...</div>
+```
+
+- Use these only for state that lives in the page (the BOQ review). Anything that should survive a reload or be shared uses FilterPills and Tabs with the URL.
+- ClientPills are toggle buttons with `aria-pressed`. ClientTabs are a `role="tablist"` with arrow key, Home and End support.
+
+#### ConfirmButton with a client callback
+
+```tsx
+<ConfirmButton variant="ghost" confirm={`Re-price every item line at ${markup}%? Hand-typed rates are replaced.`}
+  confirmLabel="Yes, re-price all" onConfirm={() => applyMarkup(markup, true)}>Re-apply markup to all</ConfirmButton>
+```
+
+With `onConfirm` the second click runs the callback instead of submitting a form, then the button disarms.
+
+#### FormFooter `sticky` and `stackOnMobile`
+
+- `sticky` (default true) keeps the footer above the phone tab bar.
+- Pass `sticky={false}` when the form sits inside a DetailPage, whose action bar already owns the bottom of the phone screen (expense edit, refill asset edit).
+- `stackOnMobile` stacks the buttons full width on phones, with the submit button on top.
+
+#### BarChart
+
+```tsx
+<BarChart data={months} title="Monthly sales, cost of goods, expenses and net profit" description="The table below has the same numbers."
+  category={(m) => monthLabel(m.month, true)} categoryLong={(m) => monthLabel(m.month)}
+  series={[{ key: "sales", label: "Sales", value: (m) => m.sales }, { key: "cogs", label: "Cost of goods", value: (m) => m.cogs }]}
+  line={{ key: "net", label: "Net profit", value: (m) => m.netProfit }}
+  tooltipExtra={(m) => [["Gross profit", money0(m.grossProfit)]]} />
+```
+
+- Server component, inline SVG, one y axis. Negative values draw below the zero line.
+- Bars take `chart-1`, `chart-2` and so on in the order given. The optional `line` takes the next colour. Pass `color` only to keep an entity's colour the same across charts.
+- It has a legend for 2 or more series, an SVG `<title>` and `<desc>`, and a native tooltip per category.
+- `format` is `money` (the default: axis in moneyShort, tooltips in money0) or `number`.
+- `table` adds the "Show the numbers as a table" disclosure. Leave it off when a full table already follows the chart, as on the P&L report.
+- `shortLabel` on a series shortens it in tooltips and the table ("Sales" for "Sales (invoiced)").
+
+#### Prose
+
+```tsx
+<Prose as="article" html={renderMarkdown(guide.markdown)} className="max-w-3xl" />   // help guides
+<Prose size="sm" html={renderMarkdown(note.summary)} />                              // inside a card
+```
+
+Every rendered markdown block uses `.prose-app` from globals.css, with `size="sm"` for a compact scale inside cards. Do not write local `[&_h2]:...` prose styles. Only pass sanitised HTML.
+
+#### DocumentSheet `company.tagline`, `company.website` and `screenControls`
+
+- `company.tagline` prints under the company name and `company.website` after phone and email. Do not fold them into the address.
+- `screenControls` sits above the toolbar and is never printed. Use it for period filters and Callouts about the document, as on the customer statement.
+
+#### Query-string helpers (`@/lib/url`)
+
+```ts
+qs({ q: "pipe", page: 2 })                 // "?q=pipe&page=2"
+qs(base, { page: undefined })              // base without page
+withParams("/stock", { low: 1 })           // "/stock?low=1"
+searchString({ tab, fy, flagged: true })   // "tab=pnl&fy=2026-27&flagged=1"
+```
+
+- Empty values (undefined, null, "" and false) are dropped. `true` becomes "1".
+- `overrides` replace keys in place, and an empty override removes the key.
+- Use these instead of building URLSearchParams by hand.
+
 ### Loading skeletons (`@/components/page-skeleton`)
 
 | Skeleton | Use for |

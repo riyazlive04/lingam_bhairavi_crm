@@ -6,7 +6,6 @@ import { APPROVAL_MODES, APPROVAL_MODE_LABEL } from "@/lib/pricing";
 import { SubmitButton } from "@/components/submit-button";
 import { savePricing, saveCompany } from "./actions";
 import { readSetting, toCompanyForm, toPricingForm } from "./_lib/settings";
-import { SettingsTabs } from "./_components/settings-tabs";
 
 export const metadata = { title: "Settings" };
 
@@ -20,7 +19,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <SettingsTabs active="company" />
       <div className="space-y-8">
         <Flash ok={sp.ok} err={sp.err} />
 

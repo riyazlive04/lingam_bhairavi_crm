@@ -5,7 +5,6 @@ import { requireUser } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/format";
 import { Flash, Input, Select } from "@/components/ui";
 import { ListEmpty, ListFilters, ResponsiveTable, StatusPill, type Column, type StatusSemantic } from "@/components/patterns";
-import { SettingsTabs } from "../_components/settings-tabs";
 
 export const metadata = { title: "Audit log" };
 
@@ -88,7 +87,6 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
 
   return (
     <>
-      <SettingsTabs active="audit" />
       <div className="space-y-4">
         <Flash ok={sp.ok} err={sp.err} />
         <ListFilters searchName={false} clearHref="/settings/audit" activeCount={activeCount}>

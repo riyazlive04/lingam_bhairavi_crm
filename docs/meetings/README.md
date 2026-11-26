@@ -28,7 +28,7 @@ We record every client meeting for the Linga Bhairavi Enterprise CRM, transcribe
 
 ### ID rules
 
-- **REQ IDs are global** and never reused. Before you add a new requirement, check the last ID in [../REQUIREMENTS.md](../REQUIREMENTS.md) and carry on from there. (The kickoff ended at REQ-030, and the BRD adds derived requirements after that.)
+- **REQ IDs are global** and never reused. Before you add a new requirement, check the last ID in [../REQUIREMENTS.md](../REQUIREMENTS.md) and carry on from there. (The kickoff ended at REQ-030, the BRD added derived requirements up to REQ-044, and the client follow-up of 2026-11-26 added REQ-045 to REQ-058.)
 - PP, D, A and Q IDs are **per meeting**. When you refer to one from another meeting, put the file date in front: `2026-11-20/A-04`.
 - A changed requirement keeps its ID, and the change goes in the REQUIREMENTS change log. A dropped requirement is marked `Dropped`, not deleted.
 
@@ -109,4 +109,5 @@ The Markdown files in this folder stay the **formal record for requirements**. I
 
 | Date | Topic | File | Status |
 |---|---|---|---|
-| 2026-11-20 | Kickoff: requirements | [2026-11-20-kickoff-meeting.md](2026-11-20-kickoff-meeting.md) | v1.0 draft, awaiting client confirmation |
+| 2026-11-20 | Kickoff: requirements | [2026-11-20-kickoff-meeting.md](2026-11-20-kickoff-meeting.md) | v1.1 (2026-11-26 follow-up recorded in its change log), awaiting client confirmation |
+| 2026-11-28 | Clarification meeting requested by the owner's spouse (planned) | Notes to be added after the meeting | Planned, see kickoff action item A-14 |

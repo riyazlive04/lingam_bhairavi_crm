@@ -156,6 +156,7 @@ Status values: `Open` · `In progress` · `Done` · `Blocked` · `Dropped`.
 | A-11 | Prepare a **budget-friendly proposal** (scope, phases, cost) | Sirah Digital (Manager) | Next meeting | Open | [27:55] |
 | A-12 | Build a clickable demo of the CRM for review | Sirah Digital (Dev team) | Next meeting | In progress | - |
 | A-13 | Prepare clarification questions (Section 7) for the next meeting | Sirah Digital (BC) | Next meeting | Done | Section 7 |
+| A-14 | Hold a **clarification meeting** requested by the owner's spouse after the 2026-11-26 follow-up: walk through version 2 (returns, AMC, advances, owner approval, BOQ import, P&L, project history) and answer her questions | Sirah Digital (Manager, BC) with the client | Friday 2026-11-28 | Open | Added 2026-11-26 (see change log 1.1) |
 
 ---
 
@@ -223,6 +224,7 @@ Pre-reads to send: this document, REQUIREMENTS.md and the demo link.
 | Version | Date | Author | Change |
 |---|---|---|---|
 | 1.0 | 2026-11-21 | Sirah Digital (Business Consultant) | First version, from the recording and the Sarvam AI transcript. Reference Excel files reviewed |
+| 1.1 | 2026-11-26 | Sirah Digital (Business Consultant) | Client follow-up of 2026-11-26 recorded. New asks: customer returns, AMC, advances, owner approval of quotations, consultant BOQ import, P&L and project history. All are built in version 2 and logged as REQ-045 onward in [REQUIREMENTS.md](../REQUIREMENTS.md). The owner's spouse requested a clarification meeting on **Friday 2026-11-28**, added as action item A-14. The original meeting content above is unchanged |
 | | | | *Add a row whenever an action item, decision or question in this file changes after a later meeting* |
 
 ---

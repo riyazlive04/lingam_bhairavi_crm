@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { Button, EmptyState, Input, PageHeader, cx } from "../ui";
 import { DensityToggle } from "./density-toggle";
+import { FilterDisclosure } from "./filter-disclosure";
 
 export type ListPageProps = {
   title: ReactNode;
@@ -19,6 +20,11 @@ export type ListPageProps = {
   secondaryActions?: ReactNode;
   /** <Flash ok err /> and any page-level <Callout>. */
   notices?: ReactNode;
+  /**
+   * Section or view tabs (<Tabs>), drawn right under the header, before notices, stats and filters.
+   * Use it for "Item list / Price master", "Stock on hand / Allocations", report sections, billing sections.
+   */
+  tabs?: ReactNode;
   /** <MetricStrip> with 2 to 4 <Metric> tiles. */
   stats?: ReactNode;
   /** Usually <FilterPills> (status) above <ListFilters> (search and selects). */
@@ -41,6 +47,7 @@ export type ListPageProps = {
  * @example
  * <ListPage
  *   title="Quotations" subtitle="Priced from the latest purchase cost."
+ *   tabs={<Tabs basePath="/quotations" params={sp} active={tab} items={[...]} />}
  *   primaryAction={writable && <LinkButton href="/quotations/new"><Plus className="icon-sm" aria-hidden /> New quotation</LinkButton>}
  *   notices={<Flash ok={sp.ok} err={sp.err} />}
  *   stats={<MetricStrip>...</MetricStrip>}
@@ -54,13 +61,14 @@ export type ListPageProps = {
  * </ListPage>
  */
 export function ListPage({
-  title, subtitle, eyebrow, back, primaryAction, secondaryActions, notices, stats, filters, isEmpty, empty, children, pagination,
+  title, subtitle, eyebrow, back, primaryAction, secondaryActions, tabs, notices, stats, filters, isEmpty, empty, children, pagination,
   density = true, resultSummary,
 }: ListPageProps) {
   const actions = (primaryAction || secondaryActions) ? <>{secondaryActions}{primaryAction}</> : undefined;
   return (
     <div className="space-y-4">
       <PageHeader title={title} subtitle={subtitle} eyebrow={eyebrow} back={back} actions={actions} />
+      {tabs && <div className="-mt-2">{tabs}</div>}
       {notices}
       {stats}
       {filters && <div className="space-y-3">{filters}</div>}
@@ -83,6 +91,8 @@ export function ListPage({
 /**
  * GET filter bar: search box, any selects / date inputs as children, Apply and Clear.
  * Keep current non-filter params (status pill, tab) with `hidden`.
+ * On phones the children fold behind a "Filters (n)" button (open when a filter is active);
+ * from 640px they are always shown.
  * @example
  * <ListFilters q={sp.q} placeholder="Search number, customer, project" clearHref="/quotations"
  *   activeCount={countActive} hidden={{ status }}>
@@ -95,18 +105,25 @@ export function ListFilters({ q, placeholder = "Search", children, clearHref, ac
 }) {
   return (
     <form method="get" action={action} role="search"
-      className="flex flex-col gap-2 rounded-2xl border border-line bg-surface p-2 shadow-xs lg:flex-row lg:flex-wrap lg:items-center">
+      className={cx(
+        "grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-2xl border border-line bg-surface p-2 shadow-xs",
+        "sm:flex sm:flex-col lg:flex-row lg:flex-wrap lg:items-center",
+      )}>
       {hidden && Object.entries(hidden).map(([k, v]) => (v != null && v !== "" ? <input key={k} type="hidden" name={k} value={String(v)} /> : null))}
       {searchName !== false && (
-        <label className="relative min-w-0 lg:w-72 lg:flex-none">
+        <label className="relative col-span-2 min-w-0 lg:w-72 lg:flex-none">
           <span className="sr-only">Search</span>
           <Search className="icon-sm pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" aria-hidden />
           <Input name={searchName} type="search" defaultValue={q} placeholder={placeholder} className="pl-9" />
         </label>
       )}
-      {children && <div className="grid min-w-0 flex-1 grid-cols-1 gap-2 min-[420px]:grid-cols-2 lg:flex lg:flex-wrap lg:[&>*]:w-auto lg:[&>*]:min-w-40">{children}</div>}
-      <div className="flex items-center gap-2 lg:ml-auto">
-        <Button variant="secondary" type="submit" className="max-lg:flex-1">Apply</Button>
+      {children && (
+        <FilterDisclosure activeCount={activeCount} className="max-sm:open:col-span-2 lg:flex-1">
+          <div className="grid min-w-0 grid-cols-1 gap-2 max-sm:mt-2 min-[420px]:grid-cols-2 lg:flex lg:flex-wrap lg:[&>*]:w-auto lg:[&>*]:min-w-40">{children}</div>
+        </FilterDisclosure>
+      )}
+      <div className={cx("flex items-center gap-2 lg:ml-auto", children ? "max-sm:col-start-2 max-sm:justify-self-end" : "col-span-2")}>
+        <Button variant="secondary" type="submit" className={cx(!children && "max-lg:flex-1", children && "sm:max-lg:flex-1")}>Apply</Button>
         {clearHref && activeCount > 0 && (
           <Link href={clearHref} className="inline-flex h-9.5 items-center gap-1 rounded-lg px-3 text-sm font-medium text-ink-soft hover:bg-muted hover:text-ink">
             <X className="icon-sm" aria-hidden /> Clear{activeCount > 1 ? ` (${activeCount})` : ""}

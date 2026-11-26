@@ -9,10 +9,11 @@ import { fmtDate, money, moneyShort, todayIST } from "@/lib/format";
 import { PO_STATUSES, PO_STATUS_LABEL, isPoStatus } from "@/lib/purchase-orders";
 import { Badge, Flash, LinkButton, Select, cx } from "@/components/ui";
 import {
-  Callout, FilterPills, ListEmpty, ListFilters, ListPage, Metric, MetricStrip, Pagination, ResponsiveTable,
+  Callout, FilterPills, ListEmpty, ListFilters, ListPage, Metric, MetricStrip, Pagination, ProgressBar, ResponsiveTable,
   type Column, type FilterPillItem,
 } from "@/components/patterns";
-import { PoStatusBadge, ReceivedBar, qs } from "./_components/po-bits";
+import { PoStatusBadge } from "./_components/po-bits";
+import { qs } from "@/lib/url";
 
 export const metadata = { title: "Purchase orders" };
 
@@ -117,7 +118,7 @@ export default async function PurchaseOrdersPage({ searchParams }: { searchParam
     { key: "status", header: "Status", card: "badge", cell: ({ po }) => <PoStatusBadge status={po.status} /> },
     { key: "value", header: "Value", align: "right", card: "amount", nowrap: true, cell: ({ po }) => money(po.total) },
     { key: "recv", header: "Received", priority: 3,
-      cell: ({ po }) => po.status === "draft" || po.status === "cancelled" ? <span className="text-ink-faint">-</span> : <ReceivedBar pct={pctOf.get(po.id) ?? 0} /> },
+      cell: ({ po }) => po.status === "draft" || po.status === "cancelled" ? <span className="text-ink-faint">-</span> : <ProgressBar size="sm" label="Received" value={pctOf.get(po.id) ?? 0} /> },
   ];
   const pills: FilterPillItem[] = [
     { label: "All", href: href({ status: undefined, page: undefined }), active: !status, count: allN },

@@ -38,16 +38,6 @@ export function parseReportParams(sp: ReportSP, today: string) {
 }
 export type ReportParams = ReturnType<typeof parseReportParams>;
 
-/** Query string for links that keep the current filters (empty values dropped). */
-export function reportQuery(p: Partial<Record<string, string | boolean | undefined | null>>) {
-  const u = new URLSearchParams();
-  for (const [k, v] of Object.entries(p)) {
-    if (v === undefined || v === null || v === "" || v === false) continue;
-    u.set(k, v === true ? "1" : String(v));
-  }
-  return u.toString();
-}
-
 export function periodLabel(fy: string) {
   return fy === "last12" ? "Last 12 months" : fy === "all" ? "All time" : `FY ${fy} (Apr to Mar)`;
 }

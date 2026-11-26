@@ -8,9 +8,14 @@ The problem this solves: when a customer PO has 10 lines, 9 get delivered and on
 
 1. Open https://lbe-fire-crm.vercel.app and log in with the email and password your admin gave you.
 2. Read the pop-up. It lists every PO line that hasn't been delivered yet.
-3. Open **Orders & Delivery** and look at the pending lines. Click one order to see its lines and their status.
+3. Open **Orders & delivery** and look at the pending lines. Click one order to see its lines and their status.
 4. Record your next real dispatch in the system, following section 1 below.
 5. If you will handle stock, open **Stock** to see what is on hand, reserved and available.
+
+### Finding your way around
+- On a phone, the tab bar at the bottom gives you **Home**, **Orders & delivery**, **Stock** and **Returns**. Tap **More** for the full menu.
+- In the menu, your work is in **Deliver** (**Orders & delivery** and **Returns**) and **Buy** (**Purchase orders**, **Purchase invoices**, **Item & price master** and **Stock**).
+- The **New** button in the top bar starts a **New expense** in one click.
 
 ## 1. Daily workflow
 
@@ -18,7 +23,7 @@ The problem this solves: when a customer PO has 10 lines, 9 get delivered and on
 A **pop-up lists all undelivered PO lines**: customer, PO number, item (for example *Pipe MS 65 NB* or *2 way FBI valve*), pending quantity, expected date and days overdue. Overdue lines are at the top. Click a line to open the order, or close the pop-up for now. It comes back at your next login until the line is delivered.
 
 ### Dispatching material
-1. Open **Orders & Delivery**, select the customer order and click **Record delivery**.
+1. Open **Orders & delivery**, select the customer order and click **Record delivery**.
 2. All pending lines are listed, with the pending quantity already filled in.
 3. Change the quantity actually sent on each line. It can be less than pending (a partial delivery).
 4. Enter the date, the DC number (filled in for you, like `LBE/DC/2026-27/0001`) and the vehicle or transporter.
@@ -39,8 +44,9 @@ When the company starts holding stock (for example, fire-alarm panels), you will
 
 | Agent | Reminder |
 |---|---|
-| Pending Delivery | Lines past their expected date (critical after 7 days), in-transit lines arriving today or tomorrow, and orders that are 90 % delivered but whose last items are still pending after 3 days |
-| Low Stock (Phase 2) | Stock items below the reorder level, or not enough for allocated orders |
+| Pending Delivery | One alert per undelivered line: critical once the expected date has passed, a warning when an order has had no delivery date for more than 3 days, and a heads-up for lines due in the next 3 days. The alert clears itself when you record the delivery |
+
+Low stock alerts (items below their reorder level) go to the purchase team, so tell them if you notice a shortage first.
 
 ## 3. What you need to enter so the system works
 
@@ -60,8 +66,8 @@ When material comes back from a customer, open the order and click **Record retu
 ### Return to vendor
 Goods sent back to a supplier are recorded from the purchase invoice with **Return to vendor**. They show in stock as **Returned to vendor** and reduce stock on hand.
 
-### Purchase Orders
-**Purchase Orders** shows what has been ordered from suppliers and how much has arrived, so you know what to expect at the store.
+### Purchase orders
+**Purchase orders** shows what has been ordered from suppliers and how much has arrived, so you know what to expect at the store.
 
 ### Pending deliveries after a return
 If a customer returns goods, that quantity counts as pending again on the order, so a replacement can be dispatched.
@@ -69,7 +75,7 @@ If a customer returns goods, that quantity counts as pending again on the order,
 ## Quick help
 
 **I delivered something but it still shows as pending. Why?**
-The delivery probably hasn't been recorded, or the quantity entered was less than what was sent. Open the order in **Orders & Delivery** and check the delivery entries.
+The delivery probably hasn't been recorded, or the quantity entered was less than what was sent. Open the order in **Orders & delivery** and check the delivery entries.
 
 **Can I deliver half the quantity now and the rest later?**
 Yes. Enter only what you sent. The line shows as Partial, and the rest stays on your pending list.

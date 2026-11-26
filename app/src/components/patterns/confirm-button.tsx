@@ -4,6 +4,7 @@
  * First click arms it and shows the question with "Yes" and "Keep" buttons in place;
  * the second click submits the surrounding form. Escape or "Keep" disarms.
  * Any name / value props go on the real submit button, so `name="op" value="cancel"` still works.
+ * Pass `onConfirm` instead for a client-side action (no form): the second click calls it and disarms.
  */
 import { useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { useFormStatus } from "react-dom";
@@ -25,14 +26,21 @@ export type ConfirmButtonProps = Omit<ComponentProps<"button">, "type"> & {
   size?: "sm" | "md" | "lg";
   /** Stack the question above the buttons (for narrow places such as menus and table cells). */
   stacked?: boolean;
+  /**
+   * Client callback mode: the confirm button is type="button" and runs this instead of submitting a form.
+   * @example <ConfirmButton variant="ghost" confirm="Re-price every line?" confirmLabel="Yes, re-price all" onConfirm={() => applyMarkup(m, true)}>Re-apply markup</ConfirmButton>
+   */
+  onConfirm?: () => void;
 };
 
 export function ConfirmButton({
   confirm, confirmLabel, keepLabel = "Keep", pendingText = "Working…", variant = "secondary", confirmVariant, size = "md",
-  stacked, children, className, name, value, disabled, onClick, form, formAction, formNoValidate, ...rest
+  stacked, children, className, name, value, disabled, onClick, form, formAction, formNoValidate, onConfirm, ...rest
 }: ConfirmButtonProps) {
   const [armed, setArmed] = useState(false);
-  const { pending } = useFormStatus();
+  const status = useFormStatus();
+  // A client callback is never "pending" on a parent form's submit.
+  const pending = onConfirm ? false : status.pending;
   const yesRef = useRef<HTMLButtonElement>(null);
   const firstRef = useRef<HTMLButtonElement>(null);
   const qid = useId();
@@ -68,12 +76,9 @@ export function ConfirmButton({
       <span className="inline-flex items-center gap-1.5">
         <button
           ref={yesRef}
-          type="submit"
-          name={name}
-          value={value}
-          form={form}
-          formAction={formAction}
-          formNoValidate={formNoValidate}
+          {...(onConfirm
+            ? { type: "button" as const, onClick: () => { onConfirm(); disarm(); } }
+            : { type: "submit" as const, name, value, form, formAction, formNoValidate })}
           disabled={pending}
           className={buttonClass(confirmVariant ?? (variant === "danger" ? "danger" : "primary"), "sm")}
         >

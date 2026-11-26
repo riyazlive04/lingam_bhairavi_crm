@@ -98,7 +98,8 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
       title="Payments"
       subtitle="Receipts from customers and payments to vendors."
       secondaryActions={write && <LinkButton href="/billing/advances" variant="secondary"><HandCoins className="icon-sm" aria-hidden /> Record advance</LinkButton>}
-      notices={<><BillingTabs active="payments" /><Flash ok={sp.ok} err={sp.err} /></>}
+      tabs={<BillingTabs active="payments" />}
+      notices={<Flash ok={sp.ok} err={sp.err} />}
       stats={
         <>
           {write && (

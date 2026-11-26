@@ -8,14 +8,19 @@ Why your entries matter most: **every quotation price comes from the purchase in
 
 1. Open https://lbe-fire-crm.vercel.app and log in with the email and password your admin gave you.
 2. Open **Vendors** and check that your regular suppliers are listed, with GSTIN, phone, email and payment terms.
-3. Open **Item & Price Master** and search for a few items you buy often, such as "pipe ms 80". Look at the size and make on each item.
-4. Pick one recent supplier invoice from your desk and enter it in **Purchase Invoices**, following section 1 below.
+3. Open **Item & price master** and search for a few items you buy often, such as "pipe ms 80". Look at the size and make on each item.
+4. Pick one recent supplier invoice from your desk and enter it in **Purchase invoices**, following section 1 below.
 5. Open the item again and see your new rate in its purchase history.
+
+### Finding your way around
+- Your work is in the **Buy** group of the menu: **Purchase orders**, **Purchase invoices**, **Vendors**, **Item & price master** and **Stock**. You can also see **Quotations** and **BOQ templates** (under **Sell**), **Orders & delivery** and **Returns** (under **Deliver**) and **Projects** and **Expenses** (under **Projects & site**).
+- The **New** button in the top bar starts a **New expense** in one click.
+- On a phone, the tab bar at the bottom gives you **Home**, **Purchase orders**, **Purchase invoices** and **Stock**. Tap **More** for everything else.
 
 ## 1. Daily workflow
 
 ### Entering a supplier (purchase) invoice as soon as it arrives
-1. Go to **Purchase Invoices** and click **New**.
+1. Go to **Purchase invoices** and click **New invoice**. (If the goods came against a vendor PO, start from the PO instead: see section 4.)
 2. Choose the vendor (type to search). If the vendor is new, create them with name, GSTIN, phone, email, payment terms in days and categories.
 3. Enter the invoice number and invoice date exactly as printed.
 4. **Project:** select the project if the material is for a particular site, so it counts in that project's cost. Leave it blank for general store stock.
@@ -33,7 +38,7 @@ What happens automatically when you post:
 - If the rate has jumped by 5 % or more, you will see a warning so you can double-check it.
 
 ### Checking prices before a big quotation
-Open **Item & Price Master**, then the item, and look at its **purchase history**: date, vendor and rate for recent months and years. The vendor list on the item shows all 3 or 4 suppliers with their last rates, with the cheapest highlighted.
+Open **Item & price master**, then the item, and look at its **purchase history**: date, vendor and rate for recent months and years. The vendor list on the item shows all 3 or 4 suppliers with their last rates, with the cheapest highlighted.
 
 ### Refreshing stale prices
 Pipe prices change daily. Each morning, open **Alerts** and look for the Stale Price alerts. Call the suppliers about the flagged items that are about to be quoted, and then either:
@@ -44,10 +49,9 @@ Pipe prices change daily. Each morning, open **Alerts** and look for the Stale P
 
 | Agent | Reminder |
 |---|---|
-| Stale Price | Items whose latest rate is older than 7 days (pipes and cables) or 90 days (other items in use), and items with no price at all (many fire-alarm and extinguisher items in the current list) |
-| Data Hygiene | Draft purchase invoices not yet posted, and items without a UOM or price |
-| Pending Delivery | PO lines waiting for material you are buying |
-| Low Stock (later, once distributorship starts) | Stock items below the reorder level |
+| Stale Price | Items whose latest rate is older than 7 days (pipes, cables and other fast-moving items) or 90 days (other items in open quotes or BOQ templates), and items that have never been bought (many fire-alarm and extinguisher items in the current list) |
+| Data Hygiene | Purchase invoices left in draft for more than 3 days |
+| Low Stock | Items with a reorder level whose available stock has fallen below it (useful once distributorship stock starts) |
 
 ## 3. What you need to enter so the system works
 
@@ -55,16 +59,16 @@ Pipe prices change daily. Each morning, open **Alerts** and look for the Stale P
 |---|---|---|
 | **Every supplier invoice**, line by line, with the correct item, size and make, and posted | The day it arrives | Quotations use old prices, vendor rates are wrong and payables are missing |
 | The project on the invoice (if it is for a site) | At the same time | The project's cost and margin look better than they really are |
-| Vendor payment terms | When you create a vendor | The Payables Due agent can't warn accounts |
+| Vendor payment terms | When you create a vendor | The Payables agent can't warn accounts |
 | New items with size, make and UOM | The first time you buy them | Duplicate items and wrong prices |
 
 Tip: don't create "Pipe GI 2 inch" if *Pipe GI 50 NB* already exists. Search by NB size first.
 
 ## 4. New screens for you
 
-### Purchase Orders
-Go to **Purchase Orders** to place an order with a supplier. The quickest way: open a customer order with pending lines and click **Create vendor PO**. The lines are filled in for you and the customer order line is marked as ordered.
-When the goods and the bill arrive, open the PO and create the purchase invoice from it. The quantities still to receive are filled in. When you post the bill, the PO shows how much has been received.
+### Purchase orders
+Go to **Purchase orders** (under **Buy**) to place an order with a supplier. The quickest way: open a customer order with pending lines and click **Create vendor PO**. The lines are filled in for you and the customer order line is marked as ordered. Each PO can be printed on the standard A4 layout and sent to the supplier.
+When the goods and the bill arrive, open the PO and click **Create purchase invoice**. The quantities still to receive are filled in. When you post the bill, the PO shows how much has been received.
 
 ### Return to vendor
 If goods must go back to a supplier, open the posted purchase invoice and click **Return to vendor**. Pick the lines and quantities. Once posted, it becomes a debit note, stock goes down, and accounts can adjust it against the vendor's open bills.
@@ -78,7 +82,7 @@ The Vendors list shows **Bills due** and **Net due** (after unadjusted debit not
 ## Quick help
 
 **I saved an invoice but the price didn't change. Why?**
-It is probably still a draft. Open it in **Purchase Invoices** and click **Post**. Prices, stock and payables update only after posting.
+It is probably still a draft. Open it in **Purchase invoices** and click **Post**. Prices, stock and payables update only after posting.
 
 **I entered a wrong rate on a posted invoice. Can I edit it?**
 A posted invoice is locked to protect the price history. Tell your admin, who can help you correct it.
@@ -87,7 +91,7 @@ A posted invoice is locked to protect the price history. Tell your admin, who ca
 Use the one with the correct NB size and make, and tell your admin about the duplicate so it can be tidied up.
 
 **Do I need to enter small local purchases?**
-If they are bought for a site, the site engineer usually records them as an expense under **Expenses**. Supplier invoices for material always go in **Purchase Invoices**.
+If they are bought for a site, the site engineer usually records them as an expense under **Expenses**. Supplier invoices for material always go in **Purchase invoices**.
 
 **Where do I see what we owe a vendor?**
 Open **Vendors** and select the vendor. You will see their bills, payments and the outstanding balance.

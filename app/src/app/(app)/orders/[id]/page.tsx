@@ -12,12 +12,11 @@ import { noteBalance, reasonLabel, returnsForOrder } from "@/lib/returns";
 import { customerAdvances, receiptNumber } from "@/lib/billing";
 import { Field, Flash, Input, LinkButton, Select, Textarea, cx } from "@/components/ui";
 import {
-  Callout, ConfirmButton, DetailPage, KeyValueGrid, MetaChip, ResponsiveTable, SectionCard, StatusPill, SummaryRows, Tabs, activeTab, tabHref,
+  Callout, ConfirmButton, DetailPage, KeyValueGrid, MetaChip, ProgressBar, ResponsiveTable, SectionCard, StatusPill, SummaryRows, Tabs, activeTab, tabHref,
   type Column, type TabItem,
 } from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { changeOrderStatus, recordDelivery, updateOrderLine } from "../actions";
-import { LineProgress } from "../_components/progress";
 import { CreateVendorPoButton } from "../../purchase-orders/_components/create-po-button";
 import { LinkedPosCard } from "../../purchase-orders/_components/linked-pos-card";
 import { OrderPnlCard } from "../../reports/_components/order-pnl-card";
@@ -300,7 +299,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
       aside={
         <>
           <SectionCard title="Delivery progress" icon={Truck}>
-            <LineProgress done={deliveredLines} total={active.length} />
+            <ProgressBar value={deliveredLines} max={active.length} label={`${deliveredLines} of ${active.length} lines delivered`} caption={`${deliveredLines}/${active.length} lines`} />
             <SummaryRows className="mt-4" rows={[
               ["Pending lines", pendingLines.length],
               ["Overdue lines", <span key="o" className={cx(overdue.length > 0 && "text-danger")}>{overdue.length}</span>],

@@ -14,7 +14,7 @@ import { Badge, Flash, LinkButton, Select } from "@/components/ui";
 import {
   FilterPills, ListEmpty, ListFilters, ListPage, Metric, MetricStrip, ResponsiveTable, StatusPill, type Column, type FilterPillItem,
 } from "@/components/patterns";
-import { qs } from "../purchase-orders/_components/po-bits";
+import { qs } from "@/lib/url";
 
 export const metadata = { title: "Vendors" };
 

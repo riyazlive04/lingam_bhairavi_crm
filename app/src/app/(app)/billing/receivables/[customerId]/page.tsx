@@ -60,16 +60,15 @@ export default async function CustomerLedgerPage({ params, searchParams }: {
   return (
     <>
       <Flash ok={sp.ok} err={sp.err} />
-      <div className="no-print mx-auto mb-4 max-w-[210mm] space-y-3">
-        {!c.email && <Callout tone="warning" title="No email on file">Add an email address on the customer to send this statement.</Callout>}
-        {!c.autoReminders && <Callout tone="info">Automatic payment reminders are off for this customer.</Callout>}
-        <ListFilters searchName={false} clearHref={base} activeCount={from || to ? 1 : 0}>
-          <Input type="date" name="from" defaultValue={from} aria-label="From date" title="From date" />
-          <Input type="date" name="to" defaultValue={to} aria-label="To date" title="To date" />
-        </ListFilters>
-      </div>
-
       <DocumentSheet
+        screenControls={<>
+          {!c.email && <Callout tone="warning" title="No email on file">Add an email address on the customer to send this statement.</Callout>}
+          {!c.autoReminders && <Callout tone="info">Automatic payment reminders are off for this customer.</Callout>}
+          <ListFilters searchName={false} clearHref={base} activeCount={from || to ? 1 : 0}>
+            <Input type="date" name="from" defaultValue={from} aria-label="From date" title="From date" />
+            <Input type="date" name="to" defaultValue={to} aria-label="To date" title="To date" />
+          </ListFilters>
+        </>}
         company={company}
         title="Statement of account"
         numberLabel="As on"

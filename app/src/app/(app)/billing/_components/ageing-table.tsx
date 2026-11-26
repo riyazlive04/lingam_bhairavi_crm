@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { AGEING_LABELS, sumAgeing, type PartyOutstanding } from "@/lib/billing";
 import { money0 } from "@/lib/format";
-import { EmptyState, Td, cx } from "@/components/ui";
-import { ResponsiveTable, StatusPill, type Column } from "@/components/patterns";
+import { EmptyState, cx } from "@/components/ui";
+import { ResponsiveTable, StatusPill, type Column, type FooterRow } from "@/components/patterns";
 
 /**
  * Party-wise outstanding with ageing buckets (days past due), on the shared ResponsiveTable.
@@ -19,7 +19,6 @@ export function AgeingTable({ rows, hrefFor, emptyTitle, emptyText, limit, kind,
   const cust = kind === "customer", vend = kind === "vendor";
   const credit = (v: number) => (v ? <span className="text-success">- {money0(v)}</span> : "-");
   const net = (v: number) => (v < -0.5 ? <span className="text-success">{money0(-v)} credit</span> : money0(v));
-  const num = "text-right tabular-nums";
 
   const columns: Column<PartyOutstanding>[] = [
     {
@@ -63,21 +62,21 @@ export function AgeingTable({ rows, hrefFor, emptyTitle, emptyText, limit, kind,
     },
   ];
 
-  const footer = (
-    <tr className="bg-muted font-semibold">
-      <Td data-slot="title">Total{limit && rows.length > limit ? ` (all ${rows.length})` : ""}</Td>
-      <Td data-slot="field" data-label={kind ? (vend ? "Bills due" : "Invoices due") : "Outstanding"} className={num}>{money0(t.outstanding)}</Td>
-      {cust && <><Td data-slot="field" data-label="Credit notes" className={cx(num, "rt-p3")}>{credit(t.creditNotes)}</Td><Td data-slot="field" data-label="Advances" className={cx(num, "rt-p3")}>{credit(t.advances)}</Td></>}
-      {vend && <Td data-slot="field" data-label="Debit notes" className={cx(num, "rt-p3")}>{credit(t.debitNotes)}</Td>}
-      {kind && <Td data-slot="field" data-label="Net due" className={num}>{net(t.netDue)}</Td>}
-      <Td data-slot="field" data-label="Overdue" className={cx(num, "text-danger")}>{money0(t.overdue)}</Td>
-      {AGEING_LABELS.map(([k, l]) => <Td key={k} data-slot={k === "d90p" ? "field" : "hidden"} data-label={`${l} days`} className={cx(num, "rt-p3")}>{money0(t[k])}</Td>)}
-      <Td data-slot="hidden" />
-    </tr>
-  );
+  const footerRows: FooterRow[] = [{
+    label: `Total${limit && rows.length > limit ? ` (all ${rows.length})` : ""}`,
+    cells: {
+      outstanding: money0(t.outstanding),
+      cn: credit(t.creditNotes),
+      adv: credit(t.advances),
+      dn: credit(t.debitNotes),
+      net: net(t.netDue),
+      overdue: { value: money0(t.overdue), className: "text-danger" },
+      ...Object.fromEntries(AGEING_LABELS.map(([k]) => [k, money0(t[k])])),
+    },
+  }];
 
   return (
-    <ResponsiveTable rows={shown} columns={columns} rowKey={(r) => r.partyId} footer={footer} flush={flush}
+    <ResponsiveTable rows={shown} columns={columns} rowKey={(r) => r.partyId} footerRows={footerRows} flush={flush}
       caption={vend ? "Vendor payables by ageing" : "Customer receivables by ageing"} />
   );
 }

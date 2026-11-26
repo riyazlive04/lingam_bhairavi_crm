@@ -7,7 +7,6 @@ import { smtpConfigured } from "@/lib/email";
 import { fmtDateTime } from "@/lib/format";
 import { Flash } from "@/components/ui";
 import { KeyValueGrid, Metric, MetricStrip, SectionCard, StatusPill, statusLabel } from "@/components/patterns";
-import { SettingsTabs } from "../_components/settings-tabs";
 
 export const metadata = { title: "System" };
 
@@ -38,7 +37,6 @@ export default async function SystemPage({ searchParams }: { searchParams: Promi
 
   return (
     <>
-      <SettingsTabs active="system" />
       <div className="space-y-4">
         <Flash ok={sp.ok} err={sp.err} />
         <SectionCard title="Configuration" icon={Settings2} description="Secrets live in the hosting environment variables and are never shown here.">

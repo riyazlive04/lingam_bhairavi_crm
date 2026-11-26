@@ -2,6 +2,17 @@
 
 Scope: the UI in the Next.js 15 App Router app (`app/`), in TypeScript and Tailwind. Read it together with [ui-ux-designer.md](ui-ux-designer.md), [REQUIREMENTS.md](../REQUIREMENTS.md) and [ARCHITECTURE.md](../ARCHITECTURE.md).
 
+**Since the UI rebuild, [DESIGN_SYSTEM.md](../DESIGN_SYSTEM.md) is the reference for every screen.** Before you build or change a page:
+
+1. Find its page type (list, detail, form, wizard, board, report, document or settings) in [UX_AUDIT.md](../UX_AUDIT.md) §3, and open the matching reference page: list `src/app/(app)/quotations/(list)/page.tsx`, detail `src/app/(app)/orders/[id]/page.tsx`, document `src/app/(app)/returns/[id]/print/page.tsx`.
+2. Build it from the shared patterns, always imported from `@/components/patterns`: `ListPage` with `ResponsiveTable`, `DetailPage` with `Tabs` and an action bar, `FormPage` with `FormSection` and `FormFooter`, `LineItemsTable` with `MoneySummary`, `StatusPill`, `Callout`, `KeyValueGrid`, `FilterPills`, `ListFilters`, `Pagination`, `StatusTimeline`, `ActivityFeed`, `ConfirmButton`, `ActionMenu` and `DocumentSheet` (every print is an A4 document on `DocumentSheet`).
+3. Destructive actions go in the action bar's more menu with `ConfirmButton` (an inline confirm, never `window.confirm`).
+4. Add a `loading.tsx` skeleton from `@/components/page-skeleton`.
+5. Navigation, the "New" quick create menu and the phone bottom tab bar all come from `src/components/nav.ts`. Add or rename a page only there.
+6. Pass the page checklist in DESIGN_SYSTEM.md §7 at 375 px and 1280 px, in light and dark mode.
+
+Where the older notes below disagree with DESIGN_SYSTEM.md, the design system wins.
+
 ## 1. Conventions
 
 - **Server Components by default.** Use Client Components only for interactive parts (the quotation grid, forms, the pop-up, charts), and put `"use client"` at the smallest possible boundary.
@@ -46,6 +57,8 @@ export const ddmmyyyy = (d: Date | string) =>
 
 ## 5. Navigation by role
 
+As built, the sidebar is grouped by task in `src/components/nav.ts`: **Home, Sell, Deliver, Buy, Money, Projects & site, Service, Automation, Admin**. Each item keeps its own RBAC module, so a role sees only what it can read, and empty groups are hidden. Version 2 added Import BOQ (Sell), Returns (Deliver), Purchase orders (Buy), Advances and Reports & profit (Money), and AMC and Service calls (Service). The table below is the original role plan; the live rules are in `src/lib/rbac.ts`.
+
 | Menu | admin | sales | purchase | accounts | engineer | store |
 |---|---|---|---|---|---|---|
 | Dashboard | ✓ | ✓ | ✓ | ✓ | ✓ (own) | ✓ |
@@ -72,3 +85,4 @@ export const ddmmyyyy = (d: Date | string) =>
 - [ ] Loading, empty and error states are designed (for example the empty state "No pending deliveries").
 - [ ] No console errors, and Lighthouse accessibility is 90 or above on key screens.
 - [ ] What each of the six roles can see has been checked.
+- [ ] Built from the `@/components/patterns` scaffolds and passes the DESIGN_SYSTEM.md §7 checklist (including dark mode, the density toggle on tables and the phone tab bar offset).

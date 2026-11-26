@@ -58,20 +58,28 @@ export function FormSection({ title, description, children, columns = 2, aside, 
 }
 
 /**
- * Sticky footer for forms. Cancel on the left of the actions, the submit button last.
- * Sits above the phone tab bar. Put it as the last child inside the <form>.
+ * Footer for forms: note on the left, Cancel then the submit button on the right. Put it as the last child inside the <form>.
+ * `sticky` (default true) keeps it above the phone tab bar while the form scrolls. Pass sticky={false} when the form
+ * sits inside a DetailPage, whose own action bar already owns the bottom of the phone screen.
+ * `stackOnMobile` stacks the buttons full width on phones (submit first) instead of sharing one row.
+ * @example <FormFooter cancelHref="/vendors"><SubmitButton>Save vendor</SubmitButton></FormFooter>
+ * @example <FormFooter sticky={false} cancelHref={base}><SubmitButton>Save asset</SubmitButton></FormFooter>
  */
-export function FormFooter({ cancelHref, cancelLabel = "Cancel", note, children, className }: {
+export function FormFooter({ cancelHref, cancelLabel = "Cancel", note, children, className, sticky = true, stackOnMobile = false }: {
   cancelHref?: string; cancelLabel?: string; note?: ReactNode; children: ReactNode; className?: string;
+  sticky?: boolean; stackOnMobile?: boolean;
 }) {
   return (
     <div className={cx(
-      "no-print sticky bottom-nav-offset z-20 -mx-4 mt-6 flex flex-col gap-2 border-t border-line bg-surface/95 px-4 py-3 backdrop-blur-md",
-      "sm:mx-0 sm:flex-row sm:items-center sm:justify-between sm:rounded-2xl sm:border sm:shadow-md lg:bottom-4",
+      "no-print mt-6 flex flex-col gap-2 border-line px-4 py-3",
+      sticky
+        ? "sticky bottom-nav-offset z-20 -mx-4 border-t bg-surface/95 backdrop-blur-md sm:mx-0 sm:rounded-2xl sm:border sm:shadow-md lg:bottom-4"
+        : "rounded-2xl border bg-surface shadow-xs",
+      "sm:flex-row sm:items-center sm:justify-between",
       className,
     )}>
       <div className="min-w-0 text-caption text-ink-soft">{note}</div>
-      <div className="flex items-center gap-2 max-sm:[&>*]:flex-1">
+      <div className={cx("flex gap-2", stackOnMobile ? "max-sm:flex-col-reverse max-sm:items-stretch sm:items-center max-sm:[&>*]:w-full" : "items-center max-sm:[&>*]:flex-1")}>
         {cancelHref && <Link href={cancelHref} className={buttonClass("ghost")}>{cancelLabel}</Link>}
         {children}
       </div>

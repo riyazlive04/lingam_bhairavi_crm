@@ -6,6 +6,7 @@
  *   - Document print: src/app/(app)/returns/[id]/print/page.tsx
  *
  * Server-safe unless marked (client). Client components can still be rendered from server pages.
+ * Query-string helpers for filter links live in "@/lib/url" (qs, withParams, searchString).
  *
  * @example List page
  * <ListPage title="Vendors" primaryAction={<LinkButton href="/vendors/new">New vendor</LinkButton>}
@@ -27,16 +28,22 @@
  * </FormPage>
  */
 export { ListPage, ListFilters, ListEmpty, Pagination, type ListPageProps } from "./list-page";
-export { ResponsiveTable, type Column, type CardSlot, type ResponsiveTableProps } from "./responsive-table";
-export { DetailPage, MetaChip, type DetailPageProps } from "./detail-page";
+export { ResponsiveTable, type Column, type CardSlot, type FooterCell, type FooterRow, type ResponsiveTableProps } from "./responsive-table";
+export { DetailPage, MetaChip, flattenActions, type DetailPageProps } from "./detail-page";
 export { FormPage, FormSection, FormFooter, LineItemsTable, li, MoneySummary, type MoneyRow } from "./form-page";
 export { SectionCard, Callout, KeyValueGrid, SummaryRows, Metric, MetricStrip, StatusTimeline, ActivityFeed, type KV, type TimelineItem } from "./blocks";
 export { Tabs, tabHref, activeTab, type TabItem } from "./tabs";
 export { StatusPill, FilterPills, type FilterPillItem } from "./status";
 export { STATUS_SEMANTIC, SEMANTIC_TONE, statusLabel, statusSemantic, type StatusSemantic } from "./status-tones";
 export { DocumentSheet, DocTable, GstSummaryTable, DocTotals, DocNotes, DocSignature, type DocCompany, type DocParty, type DocumentSheetProps } from "./document-sheet";
+export { ProgressBar, type ProgressBarProps } from "./progress-bar";
+export { progressTone, progressPercent, type ProgressTone, type ProgressMode } from "./progress-tone";
+export { BarChart, niceStep, type BarChartProps, type ChartSeries, type ChartColor } from "./bar-chart";
+export { Prose } from "./prose";
 // client components
 export { ConfirmButton, type ConfirmButtonProps } from "./confirm-button";
 export { ActionMenu, MenuLink, MenuSeparator, type ActionMenuProps } from "./action-menu";
 export { DensityToggle } from "./density-toggle";
 export { PrintButton } from "./print-button";
+export { RouteTabs, activeRouteIndex, type RouteTabItem } from "./route-tabs";
+export { ClientPills, ClientTabs, clientTabId, type ClientPillItem, type ClientTabItem } from "./client-switch";

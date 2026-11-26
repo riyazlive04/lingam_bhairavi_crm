@@ -11,7 +11,7 @@ const TABS = [
 
 export type BillingSection = (typeof TABS)[number]["id"];
 
-/** Billing section tabs (separate routes) on the shared kit Tabs. Pass it to ListPage `filters` or above the content. */
+/** Billing section tabs (separate routes) on the shared kit Tabs. Pass it to the ListPage `tabs` slot (or under PageHeader on the overview). */
 export function BillingTabs({ active }: { active: BillingSection }) {
   return <Tabs label="Billing sections" active={active} items={TABS.map((t) => ({ id: t.id, label: t.label, href: t.href }))} />;
 }

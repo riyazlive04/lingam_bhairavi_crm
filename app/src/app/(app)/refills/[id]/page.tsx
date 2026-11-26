@@ -152,7 +152,7 @@ export default async function AssetPage({ params, searchParams }: { params: Prom
       )}
 
       {tab === "edit" && writable && (
-        <AssetForm customers={customerList} values={a} today={today} cancelHref={base} inline />
+        <AssetForm customers={customerList} values={a} today={today} cancelHref={base} stickyFooter={false} />
       )}
     </DetailPage>
   );

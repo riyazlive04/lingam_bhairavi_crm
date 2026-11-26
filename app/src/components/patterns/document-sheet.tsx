@@ -13,7 +13,13 @@ import { cx } from "../ui";
 import { PrintButton } from "./print-button";
 
 /** Shape of getCompany() from lib/billing (only the fields the letterhead needs). */
-export type DocCompany = { name: string; address?: string | null; gstin?: string | null; pan?: string | null; phone?: string | null; email?: string | null; bank?: string | null; state?: string | null };
+export type DocCompany = {
+  name: string; address?: string | null; gstin?: string | null; pan?: string | null; phone?: string | null; email?: string | null; bank?: string | null; state?: string | null;
+  /** Optional line under the name (the quotation letterhead shows it). */
+  tagline?: string | null;
+  /** Printed after phone and email. */
+  website?: string | null;
+};
 export type DocParty = { label: string; name: ReactNode; address?: string | null; city?: string | null; state?: string | null; gstin?: string | null; /** extra lines (contact, phone) */ extra?: ReactNode[] };
 
 export type DocumentSheetProps = {
@@ -35,6 +41,8 @@ export type DocumentSheetProps = {
   watermark?: string;
   /** Screen-only toolbar: back link and print button (plus any extra buttons). */
   toolbar?: { backHref: string; backLabel: string; actions?: ReactNode; printLabel?: string };
+  /** Screen-only controls above the toolbar, never printed: period filters, Callouts about the document. */
+  screenControls?: ReactNode;
   children: ReactNode;
 };
 
@@ -43,15 +51,18 @@ export type DocumentSheetProps = {
  * <DocumentSheet company={company} title="Credit note" numberLabel="Credit note no." number={r.number} date={fmtDate(r.date)}
  *   meta={[["Original invoice", inv]]} party={{ label: "Issued to", name: c.name, address: c.address, gstin: c.gstin }}
  *   facts={[["Place of supply", c.state], ["Tax", "CGST + SGST"]]}
- *   toolbar={{ backHref: `/returns/${r.id}`, backLabel: `Back to ${r.number}` }}>
+ *   toolbar={{ backHref: `/returns/${r.id}`, backLabel: `Back to ${r.number}` }}
+ *   screenControls={<ListFilters searchName={false} ...>period</ListFilters>}>
  *   <DocTable>...</DocTable>
  *   <DocTotals ... />
  *   <DocSignature company={company.name} />
  * </DocumentSheet>
  */
-export function DocumentSheet({ company, title, numberLabel = "No.", number, date, meta = [], party, secondParty, facts, watermark, toolbar, children }: DocumentSheetProps) {
+export function DocumentSheet({ company, title, numberLabel = "No.", number, date, meta = [], party, secondParty, facts, watermark, toolbar, screenControls, children }: DocumentSheetProps) {
+  const contact = [company.phone && `Phone ${company.phone}`, company.email, company.website].filter(Boolean).join(" · ");
   return (
     <>
+      {screenControls && <div className="no-print mx-auto mb-4 max-w-[210mm] space-y-3">{screenControls}</div>}
       {toolbar && (
         <div className="no-print mx-auto mb-4 flex max-w-[210mm] flex-wrap items-center justify-between gap-2">
           <Link href={toolbar.backHref} className="inline-flex items-center gap-1.5 rounded-md text-sm font-medium text-ink-soft hover:text-brand-700 dark:hover:text-brand-300">
@@ -77,11 +88,12 @@ export function DocumentSheet({ company, title, numberLabel = "No.", number, dat
         <header className="flex flex-col gap-4 border-b-2 border-brand-600 pb-4 print:border-black sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <p className="doc-brand font-display text-[1.375rem] font-bold leading-tight text-brand-700 dark:text-brand-300">{company.name}</p>
+            {company.tagline && <p className="mt-0.5 text-[0.75rem] font-medium italic text-[var(--doc-soft)]">{company.tagline}</p>}
             {company.address && <p className="mt-1 whitespace-pre-line text-[var(--doc-soft)]">{company.address}</p>}
             {(company.gstin || company.pan) && (
               <p className="mt-0.5">{company.gstin && <>GSTIN <strong>{company.gstin}</strong></>}{company.gstin && company.pan && " · "}{company.pan && <>PAN {company.pan}</>}</p>
             )}
-            {(company.phone || company.email) && <p className="text-[var(--doc-soft)]">{[company.phone && `Phone ${company.phone}`, company.email].filter(Boolean).join(" · ")}</p>}
+            {contact && <p className="text-[var(--doc-soft)]">{contact}</p>}
           </div>
           <div className="shrink-0 sm:text-right">
             <h1 className="font-display text-[1.25rem] font-bold uppercase tracking-wide">{title}</h1>

@@ -2,11 +2,15 @@
 
 The CRM holds the client's **buying prices, margins, customer and vendor details, outstanding amounts and staff expense data**. For a contractor bidding against competitors, that is commercially sensitive. Security must be solid while staying within a small budget, with no paid security products needed.
 
+**Current state:** the full review, findings and go-live checklist are in [SECURITY_REVIEW.md](../SECURITY_REVIEW.md). The [Version 2 review (2026-11-26)](../SECURITY_REVIEW.md#version-2-review-2026-11-26) covers purchase orders, returns with credit and debit notes, advances and receipts, AMC and service calls, profit reports, BOQ import, quotation approval and the startup upgrade path. It lists findings V2-01 to V2-17: the three Medium findings (V2-01 credit note value from the form, V2-02 zip bomb in BOQ upload, V2-03 buying totals shown to engineers) and the Low findings V2-04 and V2-05 are fixed, the rest are accepted or informational. The owner approval gate for below-margin quotes is now built, so **S-16 is fixed** (V2-13). Points still for the client to confirm: V2-07 (store sees PO and debit note rates) and V2-09 (who may post credit notes).
+
+When you review new code, use the same method as the Version 2 review: check that every exported function in a `"use server"` file calls its guard first, recompute money on the server, make posting idempotent with status-conditional updates, and check that every linked id (customer, vendor, order, invoice) belongs to the same party.
+
 ## 1. OWASP Top 10 (2021) checklist
 
 | # | Risk | Controls in this app | Check |
 |---|---|---|---|
-| A01 | Broken access control | `requireRole()` in every server action and route. Record-level checks (an engineer sees only their own expenses and projects). No IDOR: verify ownership on `id` params. Settings, Users and Agents are admin-only | ☐ |
+| A01 | Broken access control | `requireUser()` on every page and `requireWrite()` in every server action, on top of the middleware route gate. Record-level checks (an engineer sees only their own expenses and projects). No IDOR: verify ownership on `id` params. Settings, Users and Agents are admin-only | ☐ |
 | A02 | Cryptographic failures | HTTPS only (Vercel). Passwords hashed with bcrypt (cost ≥ 10) or argon2id. JWT signed HS256 with an `AUTH_SECRET` of at least 32 random bytes. DB connection uses `sslmode=require` | ☐ |
 | A03 | Injection | Drizzle parameterised queries only, never SQL built from strings. Schema validation (zod) on all inputs. The Excel export escapes cells starting with `= + - @` (formula injection) | ☐ |
 | A04 | Insecure design | Approval for below-margin quotes and for expenses. Soft-cancel. Audit fields. Rate-limited login | ☐ |
@@ -17,7 +21,7 @@ The CRM holds the client's **buying prices, margins, customer and vendor details
 | A09 | Logging & monitoring | Log logins (success and failure), role changes, price overrides, approvals, deletions and cancellations, e-mail sends and agent runs. Never log passwords or secrets | ☐ |
 | A10 | SSRF | The server never fetches URLs supplied by users. Receipt uploads are stored, not fetched | ☐ |
 
-Also: for file uploads (expense receipts), accept images and PDF only, up to 5 MB, with random file names, served with `Content-Disposition` and the correct type. For CSRF, Server Actions use origin checks, and we keep SameSite cookies.
+Also: for file uploads (expense receipts), accept images and PDF only, up to 5 MB, with random file names, served with `Content-Disposition` and the correct type. For CSRF, Server Actions use origin checks, and we keep SameSite cookies. For the consultant BOQ upload (version 2): `.xlsx` or `.csv` only, up to 8 MB compressed, macro-enabled files refused, and zip bomb checks on the uncompressed size before the workbook is read (V2-02).
 
 ## 2. Handling secrets
 
@@ -55,6 +59,14 @@ C = create, R = read, U = update, A = approve, - = no access. "own" means only t
 | Refill tracker | CRU | CRU | - | - | CRU | - |
 | Meeting notes | CRU | CRU | CRU | CRU | CRU | CRU |
 | Audit log | R | - | - | - | - | - |
+| Quotation approval (version 2) | A | request | - | - | - | - |
+| Vendor purchase orders (version 2) | CRU | R | CRU | R | - | R |
+| Returns, credit and debit notes (version 2) | CRU | CRU | CRU | CRU | - | CRU |
+| Advances and receipts (version 2, billing) | CRU | - | - | CRU | - | - |
+| AMC contracts and service calls (version 2) | CRU | CRU | - | R | CRU (own or unassigned calls and visits) | - |
+| Reports & profit (version 2) | R | - | - | R | - | - |
+
+The version 2 rows are as built in `app/src/lib/rbac.ts`. Reports also need `canSeeCost`, and adjusting a credit or debit note against a bill or invoice needs billing write.
 
 Open points to review with the client (add them to the next meeting): Should sales see raw purchase rates, or only margin %? (Buying prices are the most sensitive data.) Can sales edit BOQ templates, or only admin?
 
@@ -84,6 +96,8 @@ This is a practical summary, not legal advice. The client should confirm it with
 
 - [ ] RBAC tests pass for all six roles.
 - [ ] Demo and seed users removed or their passwords changed; admin password rotated.
+- [ ] `SHOW_DEMO_LOGINS` and `SEED_V2_DEMO` removed from the Vercel environment.
+- [ ] Sarvam API key rotated, and the GitHub repository made private (it is public today and holds the meeting transcript).
 - [ ] Secrets live only in Vercel; `.env.local` is not committed; preview uses a separate DB branch.
 - [ ] Security headers verified and HTTPS enforced.
 - [ ] Backup and restore tested.

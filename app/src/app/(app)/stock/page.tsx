@@ -8,6 +8,7 @@ import { SYSTEMS } from "@/lib/constants";
 import { fmtDateTime, money, qty, round2 } from "@/lib/format";
 import { latestCostOf } from "@/lib/items";
 import { stockPositions } from "@/lib/stock";
+import { withParams, type QueryParams } from "@/lib/url";
 import { EmptyState, Flash, Select, cx } from "@/components/ui";
 import {
   ConfirmButton, FilterPills, ListEmpty, ListFilters, ListPage, Metric, MetricStrip, ResponsiveTable, StatusPill, Tabs,
@@ -20,12 +21,7 @@ export const metadata = { title: "Stock" };
 type SP = { q?: string; system?: string; low?: string; all?: string; view?: string; status?: string; ok?: string; err?: string };
 
 /** "/stock?a=1" from a record, skipping empty values. */
-function stockHref(params: Record<string, string | number | undefined | null>) {
-  const u = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== "") u.set(k, String(v));
-  const s = u.toString();
-  return s ? `/stock?${s}` : "/stock";
-}
+const stockHref = (params: QueryParams) => withParams("/stock", params);
 
 const ALLOC_STATUSES = ["reserved", "released", "consumed", "all"] as const;
 
@@ -134,9 +130,9 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
     return (
       <ListPage
         {...common}
+        tabs={tabs}
         filters={
           <>
-            {tabs}
             <FilterPills label="Filter by allocation status" items={ALLOC_STATUSES.map((s) => ({
               label: s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1),
               href: stockHref({ view: "allocations", status: s === "reserved" ? undefined : s }),
@@ -185,9 +181,9 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
   return (
     <ListPage
       {...common}
+      tabs={tabs}
       filters={
         <>
-          {tabs}
           <FilterPills label="Filter stock" items={[
             { label: "Tracked items", href: stockHref({ q: sp.q, system }), active: sp.low !== "1" && sp.all !== "1", count: tracked.length },
             { label: "Low stock", href: stockHref({ q: sp.q, system, low: 1 }), active: sp.low === "1", count: lowCount, attention: lowCount > 0 },

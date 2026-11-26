@@ -45,10 +45,12 @@ export default async function PrintQuotationPage({ params }: { params: Promise<{
       company={{
         name: company.name,
         // The quotation letterhead carries the tagline and website as well.
-        address: [company.tagline, company.address].filter(Boolean).join("\n"),
+        tagline: company.tagline,
+        address: company.address,
         gstin: company.gstin,
         phone: company.phone,
-        email: [company.email, company.website].filter(Boolean).join(" · "),
+        email: company.email,
+        website: company.website,
       }}
       title="Quotation"
       numberLabel="Quotation no."

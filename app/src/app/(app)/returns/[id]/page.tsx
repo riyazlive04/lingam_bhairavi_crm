@@ -9,7 +9,7 @@ import { canRead, canSeeCost, canWrite } from "@/lib/rbac";
 import { fmtDate, fmtDateTime, money, qty } from "@/lib/format";
 import { openSalesInvoices } from "@/lib/billing";
 import { maxAdjustable, noteBalance, reasonLabel } from "@/lib/returns";
-import { Field, Flash, Input, LinkButton, Select, Td } from "@/components/ui";
+import { Field, Flash, Input, LinkButton, Select } from "@/components/ui";
 import {
   Callout, ConfirmButton, DetailPage, KeyValueGrid, MetaChip, ResponsiveTable, SectionCard, StatusPill, SummaryRows, type Column,
 } from "@/components/patterns";
@@ -174,14 +174,13 @@ export default async function CreditNotePage({ params, searchParams }: { params:
 
       <SectionCard title="Lines" count={lines.length} flush empty={lines.length === 0 && "No lines on this credit note yet. Edit the draft to add the items coming back."}>
         <ResponsiveTable flush rows={lines} columns={lineCols} rowKey={(l) => l.id} caption="Credit note lines"
-          footer={
-            <tr>
-              <Td colSpan={5} className="text-right font-medium max-sm:hidden">Totals</Td>
-              <Td className="text-right font-semibold tabular-nums">{money(r.subtotal)}<span className="font-normal text-ink-soft sm:hidden"> taxable</span></Td>
-              <Td className="text-right tabular-nums">{money(r.taxAmount)}<span className="text-ink-soft sm:hidden"> GST</span><div className="text-caption font-semibold text-ink">Total {money(r.total)}</div></Td>
-              {showCost && isPosted && <Td className="max-sm:hidden" />}
-            </tr>
-          } />
+          footerRows={[{
+            label: "Totals", labelAlign: "right", className: "", labelClassName: "font-medium",
+            cells: {
+              amount: { value: money(r.subtotal), className: "font-semibold" },
+              gst: <>{money(r.taxAmount)}<div className="text-caption font-semibold text-ink">Total {money(r.total)}</div></>,
+            },
+          }]} />
       </SectionCard>
 
       <SectionCard title="Adjustments" count={history.length} flush
