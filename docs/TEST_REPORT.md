@@ -240,7 +240,7 @@ Importing the client's sample consultant BOQ (150 lines) matched **95 lines auto
 
 ### 8.6 Not covered yet
 
-- **Visual browser review is pending.** The UI rebuild has been checked through automated tests, HTTP checks and the crawler, but not yet by a person looking at every screen in a browser at desktop and phone width (including the bottom tab bar, the New menu, the density toggle, inline confirms and the A4 prints). This is the next QA step, together with client UAT.
+- **Visual review, 26 November 2026.** Screenshots of the live and freshly seeded app were reviewed at desktop (1440 px) and phone (390 px) width: home dashboard, morning summary, quotation with approval and price dates, BOQ import, customer order, vendor PO, credit note, item price page, reports and P&L, item margins, project history, AMC contract, service calls, automation agents and the phone bottom tab bar. Two fixes came out of it: negative amounts now read -₹ instead of ₹-, and list filters fold behind a Filters button on phones. Still to do by a person: dark mode, every A4 print in a real print preview, and client UAT.
 - Real Office 365 sending (needs the client's mailbox, A-04).
 - The new UAT rows in [guides/tester.md](guides/tester.md) that need manual data entry.
 
