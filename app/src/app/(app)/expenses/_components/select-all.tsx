@@ -10,5 +10,5 @@ export function SelectAll({ name = "ids", label = "Select all" }: { name?: strin
       if (!cb.disabled) cb.checked = e.currentTarget.checked;
     });
   };
-  return <input type="checkbox" aria-label={label} onChange={onChange} className="h-4 w-4 accent-brand-600" />;
+  return <input type="checkbox" aria-label={label} onChange={onChange} className="icon-sm accent-brand-600" />;
 }

@@ -6,7 +6,8 @@ import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
 import { fmtDate } from "@/lib/format";
 import { returnableInvoiceLines, returnableOrderLines, type ReturnableLine } from "@/lib/returns";
-import { Flash, PageHeader } from "@/components/ui";
+import { Flash } from "@/components/ui";
+import { FormPage } from "@/components/patterns";
 import { SalesReturnForm } from "../../_components/sales-return-form";
 import { toEditorLines } from "../../_components/lines";
 
@@ -45,10 +46,10 @@ export default async function EditCustomerReturnPage({ params, searchParams }: {
     : undefined;
 
   return (
-    <>
-      <PageHeader title="Edit draft credit note" subtitle={row.customerName} back={{ href: `/returns/${returnId}`, label: "Draft credit note" }} />
-      <Flash err={sp.err} />
+    <FormPage title="Edit draft credit note" subtitle={row.customerName} back={{ href: `/returns/${returnId}`, label: "Draft credit note" }} width="wide"
+      notices={<Flash err={sp.err} />}>
       <SalesReturnForm
+        cancelHref={`/returns/${returnId}`}
         returnId={returnId}
         orderId={r.orderId}
         invoiceId={r.orderId ? undefined : r.salesInvoiceId}
@@ -64,6 +65,6 @@ export default async function EditCustomerReturnPage({ params, searchParams }: {
         reason={r.reason}
         notes={r.notes}
       />
-    </>
+    </FormPage>
   );
 }

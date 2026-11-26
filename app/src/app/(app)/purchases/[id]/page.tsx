@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, asc, desc, eq, inArray, lte, or, isNull, ne } from "drizzle-orm";
-import { Pencil, Undo2 } from "lucide-react";
+import { Ban, CheckCircle2, Pencil, Undo2, Wallet } from "lucide-react";
 import { getDb } from "@/db";
 import { items, payments, priceHistory, projects, purchaseInvoiceLines, purchaseInvoices, purchaseOrders, users, vendors } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
@@ -9,9 +9,14 @@ import { canRead, canWrite } from "@/lib/rbac";
 import { PAYMENT_MODES } from "@/lib/constants";
 import { fmtDate, fmtDateTime, money, pct, qty, todayIST } from "@/lib/format";
 import { PRICE_JUMP_PCT, purchaseOutstanding } from "@/lib/purchasing";
-import { Card, DL, Field, Flash, Input, LinkButton, PageHeader, Select, Stat, StatusBadge, Table, Td, Th, cx } from "@/components/ui";
+import { Field, Flash, Input, LinkButton, Select, Td, cx } from "@/components/ui";
+import {
+  Callout, ConfirmButton, DetailPage, KeyValueGrid, MetaChip, ResponsiveTable, SectionCard, StatusPill, SummaryRows, type Column,
+} from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { cancelPurchase, postPurchase, recordPayment } from "../actions";
+
+export const metadata = { title: "Purchase invoice" };
 
 export default async function PurchaseDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
   const user = await requireUser("purchases");
@@ -58,111 +63,176 @@ export default async function PurchaseDetailPage({ params, searchParams }: { par
   const overdue = out > 0.5 && inv.dueDate != null && inv.dueDate < today;
   const status = inv.status === "posted" ? (out <= 0.5 ? "paid" : inv.paidAmount > 0 ? "partially_paid" : "posted") : inv.status;
   const jumps = lines.filter((x) => { const p = prev.get(x.l.itemId); return p && Math.abs((x.l.rate - p.rate) / p.rate) * 100 >= PRICE_JUMP_PCT; }).length;
+  const canPay = write && inv.status === "posted" && out > 0.5;
+  const canReturn = inv.status === "posted" && canWrite(user.role, "returns");
+  const isDraft = write && inv.status === "draft";
+
+  type L = (typeof lines)[number];
+  const lineCols: Column<L>[] = [
+    {
+      key: "item", header: "Item", card: "title", className: "max-w-80 whitespace-normal",
+      cell: ({ l, code, name }) => (
+        <>
+          <Link href={`/items/${l.itemId}`} className="hover:underline">{name}</Link>
+          <div className="font-mono text-caption font-normal text-ink-faint">{code}</div>
+          {l.description && <div className="text-caption font-normal text-ink-soft">{l.description}</div>}
+          {po && l.poLineId != null && <div className="text-caption font-normal text-info">Against {po.number}</div>}
+        </>
+      ),
+    },
+    { key: "qty", header: "Qty", align: "right", nowrap: true, cell: ({ l, uom }) => <>{qty(l.qty)} <span className="text-caption text-ink-faint">{uom}</span></> },
+    { key: "rate", header: "Rate", align: "right", nowrap: true, cell: ({ l }) => money(l.rate) },
+    {
+      key: "prev", header: "Previous rate", align: "right", priority: 3, className: "text-ink-soft",
+      cell: ({ l }) => {
+        const p = prev.get(l.itemId);
+        return p
+          ? <>{money(p.rate)}<div className="text-caption text-ink-faint">{fmtDate(p.date)}{p.vendorName ? ` · ${p.vendorName}` : ""}</div></>
+          : <span className="text-caption">First purchase</span>;
+      },
+    },
+    {
+      key: "change", header: "Change", align: "right",
+      cell: ({ l }) => {
+        const p = prev.get(l.itemId);
+        const ch = p && p.rate ? ((l.rate - p.rate) / p.rate) * 100 : null;
+        return (
+          <span className={cx(ch != null && Math.abs(ch) >= PRICE_JUMP_PCT && (ch > 0 ? "font-semibold text-danger" : "font-semibold text-success"))}>
+            {ch == null ? "-" : `${ch > 0 ? "+" : ""}${pct(ch)}`}
+          </span>
+        );
+      },
+    },
+    { key: "gst", header: "GST", align: "right", priority: 3, cell: ({ l }) => pct(l.gstRate, 0) },
+    { key: "amount", header: "Amount", align: "right", card: "amount", nowrap: true, cell: ({ l }) => money(l.amount) },
+  ];
+  type P = (typeof pays)[number];
+  const payCols: Column<P>[] = [
+    { key: "date", header: "Date", card: "title", nowrap: true, cell: ({ p }) => fmtDate(p.date) },
+    { key: "mode", header: "Mode", card: "subtitle", className: "uppercase", cell: ({ p }) => p.mode },
+    { key: "ref", header: "Reference", cell: ({ p }) => <>{p.reference ?? "-"}{p.notes && <div className="text-caption text-ink-faint">{p.notes}</div>}</> },
+    { key: "by", header: "By", priority: 3, cell: ({ by }) => by ?? "-" },
+    { key: "amount", header: "Amount", align: "right", card: "amount", nowrap: true, cell: ({ p }) => money(p.amount) },
+  ];
+
+  const primary = isDraft ? (
+    <form action={postPurchase.bind(null, inv.id)}>
+      <SubmitButton pendingText="Posting…" confirm="Post this invoice? It will update latest prices, vendor rates and stock. This cannot be undone.">
+        <CheckCircle2 className="icon-sm" aria-hidden /> Post invoice
+      </SubmitButton>
+    </form>
+  ) : canPay ? (
+    <LinkButton href="#record-payment"><Wallet className="icon-sm" aria-hidden /> Record payment</LinkButton>
+  ) : null;
+  const secondary = (isDraft || canReturn) ? (
+    <>
+      {isDraft && <LinkButton href={`/purchases/${inv.id}/edit`} variant="secondary"><Pencil className="icon-sm" aria-hidden /> Edit</LinkButton>}
+      {canReturn && <LinkButton href={`/returns/vendor/new?invoiceId=${inv.id}`} variant="secondary"><Undo2 className="icon-sm" aria-hidden /> Return to vendor</LinkButton>}
+    </>
+  ) : undefined;
+  const more = isDraft ? (
+    <form action={cancelPurchase.bind(null, inv.id)}>
+      <ConfirmButton variant="ghost" className="text-danger" confirmVariant="danger" stacked pendingText="Cancelling…" confirmLabel="Yes, cancel draft"
+        confirm="Cancel this draft invoice?">
+        <Ban className="icon-sm" aria-hidden /> Cancel draft
+      </ConfirmButton>
+    </form>
+  ) : undefined;
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title={<span className="flex flex-wrap items-center gap-2">Invoice {inv.invoiceNo} <StatusBadge status={status} /></span>}
-        subtitle={<>{vendor ? (canRead(user.role, "vendors") ? <Link href={`/vendors/${vendor.id}`} className="hover:underline">{vendor.name}</Link> : vendor.name) : "Unknown vendor"} · {fmtDate(inv.invoiceDate)}</>}
-        back={{ href: "/purchases", label: "Purchase invoices" }}
-        actions={<>
-          {inv.status === "posted" && canWrite(user.role, "returns") && (
-            <LinkButton href={`/returns/vendor/new?invoiceId=${inv.id}`} variant="secondary"><Undo2 size={16} aria-hidden /> Return to vendor</LinkButton>
+    <DetailPage
+      back={{ href: "/purchases", label: "Purchase invoices" }}
+      eyebrow="Purchase invoice"
+      title={inv.invoiceNo}
+      status={<StatusPill status={status} />}
+      meta={
+        <>
+          <MetaChip label="Vendor" href={vendor && canRead(user.role, "vendors") ? `/vendors/${vendor.id}` : undefined}>{vendor ? vendor.name : "Unknown vendor"}</MetaChip>
+          <MetaChip label="Date">{fmtDate(inv.invoiceDate)}</MetaChip>
+          <MetaChip label="Cost centre" href={inv.projectId && canRead(user.role, "projects") ? `/projects/${inv.projectId}` : undefined}>{row.projectCode ?? "Stock"}</MetaChip>
+          {po && <MetaChip label="PO" href={canSeePo ? `/purchase-orders/${po.id}` : undefined}>{po.number}</MetaChip>}
+          <MetaChip label="Total">{money(inv.total)}</MetaChip>
+        </>
+      }
+      primaryAction={primary}
+      secondaryActions={secondary}
+      moreActions={more}
+      notices={
+        <>
+          <Flash ok={sp.ok} err={sp.err} />
+          {inv.status === "draft" && (
+            <Callout tone="warning" title="This invoice is a draft">
+              Item prices, vendor rates{po ? ", the PO's received quantity" : ""} and stock are updated only when it is posted.
+              {jumps > 0 && <> {jumps} line{jumps === 1 ? " differs" : "s differ"} by {PRICE_JUMP_PCT}% or more from the previous purchase price.</>}
+            </Callout>
           )}
-          {write && inv.status === "draft" && <>
-            <LinkButton href={`/purchases/${inv.id}/edit`} variant="secondary"><Pencil size={16} aria-hidden /> Edit</LinkButton>
-            <form action={cancelPurchase.bind(null, inv.id)}><SubmitButton variant="ghost" pendingText="Cancelling…" confirm="Cancel this draft invoice?">Cancel draft</SubmitButton></form>
-            <form action={postPurchase.bind(null, inv.id)}><SubmitButton pendingText="Posting…" confirm="Post this invoice? It will update latest prices, vendor rates and stock. This cannot be undone.">Post invoice</SubmitButton></form>
-          </>}
-        </>}
-      />
-      <Flash ok={sp.ok} err={sp.err} />
-      {inv.status === "draft" && (
-        <div role="note" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-          This invoice is a <strong>draft</strong>. Item prices, vendor rates{po ? ", the PO's received quantity" : ""} and stock are updated only when it is posted.
-          {jumps > 0 && <> {jumps} line{jumps === 1 ? "" : "s"} differ ≥{PRICE_JUMP_PCT}% from the previous purchase price.</>}
-        </div>
+          {overdue && (
+            <Callout tone="danger" title="Payment is overdue">
+              {money(out)} was due on {fmtDate(inv.dueDate)}.
+            </Callout>
+          )}
+        </>
+      }
+      aside={
+        <>
+          <SectionCard title="Summary">
+            <SummaryRows rows={[
+              ["Subtotal", money(inv.subtotal)],
+              ["GST", money(inv.taxAmount)],
+              ["Invoice total", <strong key="t">{money(inv.total)}</strong>],
+              ["Paid", `${money(inv.paidAmount)} · ${pays.length} payment${pays.length === 1 ? "" : "s"}`],
+              ["Outstanding", <span key="o" className={cx(overdue ? "text-danger" : out > 0.5 ? "text-warning" : inv.status === "posted" && "text-success")}>{inv.status === "posted" ? money(out) : "-"}</span>],
+              ["Due date", fmtDate(inv.dueDate)],
+            ]} />
+          </SectionCard>
+          <SectionCard title="Details">
+            <KeyValueGrid columns={1} items={[
+              { label: "Vendor GSTIN", value: vendor?.gstin ? <span className="font-mono">{vendor.gstin}</span> : null },
+              { label: "Payment terms", value: vendor ? `${vendor.paymentTermsDays} days` : null },
+              { label: "Cost centre", value: row.projectCode ? `${row.projectCode} · ${row.projectName ?? ""}` : "Received into store" },
+              { label: "Purchase order", value: po ? (canSeePo ? <Link href={`/purchase-orders/${po.id}`} className="text-brand-700 hover:underline dark:text-brand-300">{po.number}</Link> : po.number) : null },
+              { label: "Entered by", value: row.createdByName },
+              { label: "Entered at", value: fmtDateTime(inv.createdAt) },
+              { label: "Notes", value: inv.notes },
+            ]} />
+          </SectionCard>
+        </>
+      }
+    >
+      <SectionCard title="Lines" count={lines.length} flush empty={lines.length === 0 && "No lines on this invoice."}>
+        <ResponsiveTable flush rows={lines} columns={lineCols} rowKey={(x) => x.l.id} caption="Invoice lines"
+          footer={
+            <>
+              <tr><Td colSpan={6} className="text-right text-ink-soft">Subtotal</Td><Td className="text-right tabular-nums">{money(inv.subtotal)}</Td></tr>
+              <tr><Td colSpan={6} className="text-right text-ink-soft">GST</Td><Td className="text-right tabular-nums">{money(inv.taxAmount)}</Td></tr>
+              <tr><Td colSpan={6} className="text-right font-semibold">Total</Td><Td className="text-right font-semibold tabular-nums">{money(inv.total)}</Td></tr>
+            </>
+          } />
+      </SectionCard>
+
+      <SectionCard title="Payments" count={pays.length} icon={Wallet} flush
+        empty={pays.length === 0 && (inv.status === "draft" ? "No payments yet. Payments can be recorded after the invoice is posted." : "No payments yet.")}>
+        <ResponsiveTable flush rows={pays} columns={payCols} rowKey={(x) => x.p.id} caption="Payments" />
+      </SectionCard>
+
+      {canPay && (
+        <SectionCard id="record-payment" title="Record payment to vendor" icon={Wallet} description={`Defaults to the full outstanding amount of ${money(out)}.`}>
+          <form action={recordPayment.bind(null, inv.id)} className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Field label="Amount (₹)" required><Input name="amount" type="number" inputMode="decimal" step="0.01" min={0.01} max={out + 0.5} required defaultValue={out} className="text-right" /></Field>
+              <Field label="Date" required><Input name="date" type="date" required defaultValue={today} max={today} /></Field>
+              <Field label="Mode" required>
+                <Select name="mode" defaultValue="bank">{PAYMENT_MODES.map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}</Select>
+              </Field>
+              <Field label="Reference"><Input name="reference" maxLength={80} placeholder="UTR or cheque no." /></Field>
+              <Field label="Notes" className="sm:col-span-2 lg:col-span-4"><Input name="notes" maxLength={500} /></Field>
+            </div>
+            <div className="flex justify-end">
+              <SubmitButton pendingText="Recording…" className="max-sm:w-full">Record payment</SubmitButton>
+            </div>
+          </form>
+        </SectionCard>
       )}
-
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Invoice total" value={money(inv.total)} hint={`${money(inv.subtotal)} + GST ${money(inv.taxAmount)}`} />
-        <Stat label="Paid" value={money(inv.paidAmount)} hint={`${pays.length} payment${pays.length === 1 ? "" : "s"}`} />
-        <Stat label="Outstanding" value={inv.status === "posted" ? money(out) : "-"} tone={overdue ? "bad" : out > 0.5 ? "warn" : "good"}
-          hint={inv.dueDate ? `${overdue ? "Overdue since" : "Due"} ${fmtDate(inv.dueDate)}` : undefined} />
-        <Stat label="Cost center" value={row.projectCode ?? "Stock"} hint={row.projectName ?? "Received into store"}
-          href={inv.projectId && canRead(user.role, "projects") ? `/projects/${inv.projectId}` : undefined} />
-      </div>
-
-      <Card title={`Lines (${lines.length})`} bodyClassName="p-0">
-        <Table className="rounded-none border-0 shadow-none">
-          <thead><tr><Th>Item</Th><Th className="text-right">Qty</Th><Th className="text-right">Rate</Th><Th className="text-right">Previous rate</Th><Th className="text-right">Change</Th><Th className="text-right">GST</Th><Th className="text-right">Amount</Th></tr></thead>
-          <tbody>
-            {lines.map(({ l, code, name, uom }) => {
-              const p = prev.get(l.itemId);
-              const ch = p && p.rate ? ((l.rate - p.rate) / p.rate) * 100 : null;
-              return (
-                <tr key={l.id}>
-                  <Td className="max-w-80 whitespace-normal"><Link href={`/items/${l.itemId}`} className="hover:underline">{name}</Link>
-                    <div className="font-mono text-xs text-ink-faint">{code}</div>{l.description && <div className="text-xs text-ink-soft">{l.description}</div>}
-                    {po && l.poLineId != null && <div className="text-xs text-blue-700 dark:text-blue-300">Against {po.number}</div>}</Td>
-                  <Td className="text-right tabular-nums">{qty(l.qty)} <span className="text-xs text-ink-faint">{uom}</span></Td>
-                  <Td className="text-right tabular-nums">{money(l.rate)}</Td>
-                  <Td className="text-right tabular-nums text-ink-soft">{p ? <>{money(p.rate)}<div className="text-xs text-ink-faint">{fmtDate(p.date)}{p.vendorName ? ` · ${p.vendorName}` : ""}</div></> : <span className="text-xs">first purchase</span>}</Td>
-                  <Td className={cx("text-right tabular-nums", ch != null && Math.abs(ch) >= PRICE_JUMP_PCT && (ch > 0 ? "font-semibold text-red-600" : "font-semibold text-emerald-600"))}>
-                    {ch == null ? "-" : `${ch > 0 ? "+" : ""}${pct(ch)}`}</Td>
-                  <Td className="text-right">{pct(l.gstRate, 0)}</Td>
-                  <Td className="text-right tabular-nums">{money(l.amount)}</Td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr><Td colSpan={6} className="text-right text-ink-soft">Subtotal</Td><Td className="text-right tabular-nums">{money(inv.subtotal)}</Td></tr>
-            <tr><Td colSpan={6} className="text-right text-ink-soft">GST</Td><Td className="text-right tabular-nums">{money(inv.taxAmount)}</Td></tr>
-            <tr><Td colSpan={6} className="text-right font-semibold">Total</Td><Td className="text-right font-semibold tabular-nums">{money(inv.total)}</Td></tr>
-          </tfoot>
-        </Table>
-      </Card>
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card title="Details" className="lg:col-span-1">
-          <DL items={[
-            ["Vendor GSTIN", vendor?.gstin ? <span className="font-mono">{vendor.gstin}</span> : null],
-            ["Payment terms", vendor ? `${vendor.paymentTermsDays} days` : null],
-            ["Due date", fmtDate(inv.dueDate)],
-            ["Purchase order", po ? (canSeePo ? <Link href={`/purchase-orders/${po.id}`} className="text-brand-700 hover:underline">{po.number}</Link> : po.number) : null],
-            ["Entered by", row.createdByName],
-            ["Entered at", fmtDateTime(inv.createdAt)],
-            ["Notes", inv.notes],
-          ]} />
-        </Card>
-        <Card title={`Payments (${pays.length})`} className="lg:col-span-2" bodyClassName="space-y-4">
-          {pays.length > 0 ? (
-            <Table>
-              <thead><tr><Th>Date</Th><Th>Mode</Th><Th>Reference</Th><Th>By</Th><Th className="text-right">Amount</Th></tr></thead>
-              <tbody>{pays.map(({ p, by }) => (
-                <tr key={p.id}><Td>{fmtDate(p.date)}</Td><Td className="uppercase">{p.mode}</Td><Td>{p.reference ?? "-"}{p.notes && <div className="text-xs text-ink-faint">{p.notes}</div>}</Td><Td>{by ?? "-"}</Td><Td className="text-right tabular-nums">{money(p.amount)}</Td></tr>
-              ))}</tbody>
-            </Table>
-          ) : <p className="text-sm text-ink-soft">No payments recorded.</p>}
-          {write && inv.status === "posted" && out > 0.5 && (
-            <form action={recordPayment.bind(null, inv.id)} className="rounded-lg border border-line p-3">
-              <h3 className="mb-3 text-sm font-semibold text-ink">Record payment to vendor</h3>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Field label="Amount (₹)" required><Input name="amount" type="number" step="0.01" min={0.01} max={out + 0.5} required defaultValue={out} /></Field>
-                <Field label="Date" required><Input name="date" type="date" required defaultValue={today} max={today} /></Field>
-                <Field label="Mode" required>
-                  <Select name="mode" defaultValue="bank">{PAYMENT_MODES.map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}</Select>
-                </Field>
-                <Field label="Reference"><Input name="reference" maxLength={80} placeholder="UTR / cheque no." /></Field>
-                <Field label="Notes" className="sm:col-span-2 lg:col-span-4"><Input name="notes" maxLength={500} /></Field>
-              </div>
-              <div className="mt-3"><SubmitButton size="sm" pendingText="Recording…">Record payment</SubmitButton></div>
-            </form>
-          )}
-          {inv.status === "draft" && <p className="text-xs text-ink-faint">Payments can be recorded after the invoice is posted.</p>}
-        </Card>
-      </div>
-    </div>
+    </DetailPage>
   );
 }

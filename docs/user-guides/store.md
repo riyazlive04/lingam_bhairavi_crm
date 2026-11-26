@@ -24,7 +24,7 @@ A **pop-up lists all undelivered PO lines**: customer, PO number, item (for exam
 4. Enter the date, the DC number (filled in for you, like `LBE/DC/2026-27/0001`) and the vehicle or transporter.
 5. **Save**, and print the delivery challan if needed.
 
-The line status updates by itself: **Pending → Partial → Delivered**.
+The line status updates by itself: **Pending**, then **Partial**, then **Delivered**.
 
 ### Item not available yet or coming later
 On the order line, set the status to **In transit** and enter the **expected date**, with a note if useful (for example, "Supplier dispatch on Monday"). The system will remind you on that date.

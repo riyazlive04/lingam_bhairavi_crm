@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { Card, Field, Input, LinkButton, Select, Textarea } from "@/components/ui";
+import { Field, Input, Select, Textarea } from "@/components/ui";
+import { FormFooter, FormSection } from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { createCall } from "../actions";
 
@@ -38,48 +39,45 @@ export function CallForm(p: {
   };
 
   return (
-    <form action={createCall} className="space-y-6">
-      <Card title="Who and where">
-        <div className="grid gap-4 sm:grid-cols-2">
+    <form action={createCall} className="space-y-4">
+      <FormSection title="Who and where" description="The customer, their AMC and who reported the problem.">
           <Field label="Customer" required>
-            <Select name="customerId" required value={customerId || ""} onChange={(e) => onCustomer(Number(e.target.value))}>
+            <Select className="h-11 sm:h-9.5" name="customerId" required value={customerId || ""} onChange={(e) => onCustomer(Number(e.target.value))}>
               <option value="" disabled>Select customer</option>
               {p.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
           </Field>
           <Field label="AMC contract" hint={customerId ? (own.length ? `Response due within ${hours} hours.` : `No active AMC. Chargeable call, response due within ${DEFAULT_HOURS} hours.`) : undefined}>
-            <Select name="contractId" value={contractId || ""} onChange={(e) => setContractId(Number(e.target.value))} disabled={!own.length}>
+            <Select className="h-11 sm:h-9.5" name="contractId" value={contractId || ""} onChange={(e) => setContractId(Number(e.target.value))} disabled={!own.length}>
               <option value="">No contract (chargeable)</option>
               {own.map((c) => <option key={c.id} value={c.id}>{c.number} · {c.responseHours} h response</option>)}
             </Select>
           </Field>
           <Field label="Reported by" hint="Name and phone of the person who called.">
-            <Input name="reportedBy" maxLength={120} autoComplete="off" placeholder="e.g. Mr. Ravi, maintenance, 98400 12345" />
+            <Input className="h-11 sm:h-9.5" name="reportedBy" maxLength={120} autoComplete="off" placeholder="e.g. Mr. Ravi, maintenance, 98400 12345" />
           </Field>
           <Field label="System">
-            <Select name="system" value={system} onChange={(e) => setSystem(e.target.value)}>
+            <Select className="h-11 sm:h-9.5" name="system" value={system} onChange={(e) => setSystem(e.target.value)}>
               <option value="">Not sure</option>
               {Object.entries(p.systems).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </Select>
           </Field>
-        </div>
-      </Card>
+      </FormSection>
 
-      <Card title="Problem">
-        <div className="grid gap-4 sm:grid-cols-2">
+      <FormSection title="Problem" description="How urgent it is and what the customer told you.">
           <Field label="Priority" required>
-            <Select name="priority" defaultValue="normal">
+            <Select className="h-11 sm:h-9.5" name="priority" defaultValue="normal">
               {Object.entries(p.priorities).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </Select>
           </Field>
           <Field label="Engineer">
             {p.canAssign ? (
-              <Select name="engineerId" defaultValue="">
+              <Select className="h-11 sm:h-9.5" name="engineerId" defaultValue="">
                 <option value="">Assign later</option>
                 {p.engineers.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
               </Select>
             ) : (
-              <Select name="engineerId" defaultValue={p.selfId ?? ""}>
+              <Select className="h-11 sm:h-9.5" name="engineerId" defaultValue={p.selfId ?? ""}>
                 <option value="">Leave unassigned</option>
                 {p.selfId && <option value={p.selfId}>Me</option>}
               </Select>
@@ -88,13 +86,11 @@ export function CallForm(p: {
           <Field label="What is wrong?" required className="sm:col-span-2">
             <Textarea name="description" required rows={4} maxLength={4000} placeholder="e.g. Jockey pump not stopping, pressure dropping in the sprinkler line" />
           </Field>
-        </div>
-      </Card>
+      </FormSection>
 
-      <div className="flex flex-wrap gap-2">
-        <SubmitButton size="lg" className="w-full sm:w-auto" pendingText="Logging...">Log call</SubmitButton>
-        <LinkButton size="lg" variant="secondary" href="/service-calls" className="w-full sm:w-auto">Cancel</LinkButton>
-      </div>
+      <FormFooter cancelHref="/service-calls" note={customerId ? `Response due within ${hours} hours.` : undefined}>
+        <SubmitButton size="lg" pendingText="Logging…">Log call</SubmitButton>
+      </FormFooter>
     </form>
   );
 }

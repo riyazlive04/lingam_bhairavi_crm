@@ -6,11 +6,9 @@ import { requireUser } from "@/lib/auth";
 import { fmtDate } from "@/lib/format";
 import { getCompany } from "@/lib/billing";
 import { checklistStats, systemLabel, type ChecklistResult } from "@/lib/amc";
-import { LinkButton } from "@/components/ui";
-import { PrintButton } from "../../../../../orders/_components/print-button";
-import { Letterhead, printCell as td } from "../../../../_components/letterhead";
+import { Callout, DocNotes, DocSignature, DocTable, DocumentSheet } from "@/components/patterns";
 
-export const metadata = { title: "AMC visit report" };
+export const metadata = { title: "Visit report" };
 
 /** Group "Section: item" results by section for the printed table. */
 function groupResults(list: ChecklistResult[]) {
@@ -48,74 +46,61 @@ export default async function VisitReportPrintPage({ params }: { params: Promise
   const stats = checklistStats(v.checklist ?? []);
   const groups = groupResults(v.checklist ?? []);
 
+  const facts: [string, string][] = [
+    ["Systems", (c.systems ?? []).map(systemLabel).join(", ") || "-"],
+    ["Engineer", `${row.engineerName ?? "-"}${row.engineerPhone ? `, ${row.engineerPhone}` : ""}`],
+  ];
+  if (stats.total > 0) facts.push(["Result", `${stats.ok} of ${stats.total} checks OK${stats.notOk ? `, ${stats.notOk} need attention` : ""}`]);
+
   return (
     <>
-      <div className="no-print mb-4 flex flex-wrap items-center justify-between gap-2">
-        <LinkButton href={`/amc/${c.id}/visits/${v.id}`} variant="ghost">Back to visit</LinkButton>
-        <PrintButton label="Print / Save PDF" />
-      </div>
-      {v.status !== "done" && <p className="no-print mb-2 text-center text-sm font-semibold text-amber-700">This visit has not been recorded yet. The report below is blank.</p>}
-      <article className="print-area mx-auto max-w-4xl rounded-xl border border-line bg-surface p-4 text-sm text-ink shadow-sm sm:p-8 print:max-w-none print:p-0">
-        <Letterhead company={company} title="Maintenance Visit Report">
-          <p>Contract: <strong>{c.number}</strong></p>
-          <p>Visit {n} of {siblings.length}</p>
-          <p>Date: {fmtDate(v.doneDate ?? v.scheduledDate)}</p>
-        </Letterhead>
-
-        <section className="grid gap-4 border-b border-line py-4 sm:grid-cols-2">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">Customer</p>
-            <p className="font-semibold">{cu.name}</p>
-            <p className="whitespace-pre-line">{c.siteAddress || cu.address || ""}</p>
-          </div>
-          <div className="space-y-0.5">
-            <p><strong>Systems:</strong> {(c.systems ?? []).map(systemLabel).join(", ") || "-"}</p>
-            <p><strong>Engineer:</strong> {row.engineerName ?? "-"}{row.engineerPhone ? `, ${row.engineerPhone}` : ""}</p>
-            {stats.total > 0 && <p><strong>Result:</strong> {stats.ok} of {stats.total} checks OK{stats.notOk ? `, ${stats.notOk} need attention` : ""}</p>}
-          </div>
-        </section>
-
+      {v.status !== "done" && (
+        <div className="no-print mx-auto mb-4 max-w-[210mm]">
+          <Callout tone="warning" title="This visit has not been recorded yet">The report below is blank. Record the visit first to fill it in.</Callout>
+        </div>
+      )}
+      <DocumentSheet
+        company={company}
+        title="Visit report"
+        numberLabel="Contract no."
+        number={c.number}
+        date={fmtDate(v.doneDate ?? v.scheduledDate)}
+        meta={[["Visit", `${n} of ${siblings.length}`]]}
+        party={{ label: "Customer", name: cu.name, address: c.siteAddress || cu.address, gstin: cu.gstin }}
+        facts={facts}
+        toolbar={{ backHref: `/amc/${c.id}/visits/${v.id}`, backLabel: "Back to visit" }}
+      >
         {groups.length > 0 ? groups.map(([section, items]) => (
-          <section key={section} className="py-3">
-            <p className="mb-1 font-semibold">{section}</p>
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead><tr className="bg-muted print:bg-transparent">
-                  <th className={`${td} w-8 text-left`}>#</th><th className={`${td} text-left`}>Check</th><th className={`${td} w-20 text-left`}>Result</th><th className={`${td} text-left`}>Remark</th>
-                </tr></thead>
-                <tbody>
-                  {items.map((r, i) => (
-                    <tr key={i}>
-                      <td className={td}>{i + 1}</td>
-                      <td className={`${td} whitespace-normal`}>{r.item}</td>
-                      <td className={`${td} font-semibold ${r.ok ? "text-emerald-700" : "text-red-600"} print:text-black`}>{r.ok ? "OK" : "Not OK"}</td>
-                      <td className={`${td} whitespace-normal`}>{r.remark || ""}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <section key={section} className="space-y-1">
+            <p className="font-semibold">{section}</p>
+            <DocTable>
+              <thead>
+                <tr><th className="w-8">#</th><th>Check</th><th className="w-20">Result</th><th>Remark</th></tr>
+              </thead>
+              <tbody>
+                {items.map((r, i) => (
+                  <tr key={i}>
+                    <td>{i + 1}</td>
+                    <td className="whitespace-normal">{r.item}</td>
+                    <td className="font-semibold">{r.ok ? "OK" : "Not OK"}</td>
+                    <td className="whitespace-normal">{r.remark || ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </DocTable>
           </section>
-        )) : <p className="py-4 text-ink-soft">No checklist recorded.</p>}
+        )) : <p className="text-[var(--doc-soft)]">No checklist recorded.</p>}
 
-        <section className="space-y-3 border-t border-line py-4">
-          <div><p className="font-semibold">Findings</p><p className="whitespace-pre-line">{v.findings || "-"}</p></div>
-          <div><p className="font-semibold">Recommendations</p><p className="whitespace-pre-line">{v.recommendations || "-"}</p></div>
-        </section>
+        <DocNotes title="Findings">
+          <p className="whitespace-pre-line text-[var(--doc-ink)]">{v.findings || "-"}</p>
+        </DocNotes>
+        <DocNotes title="Recommendations">
+          <p className="whitespace-pre-line text-[var(--doc-ink)]">{v.recommendations || "-"}</p>
+        </DocNotes>
 
-        <footer className="mt-8 grid grid-cols-2 gap-8">
-          <div>
-            <p className="text-xs">Customer sign-off</p>
-            <div className="h-12" />
-            <p className="border-t border-line pt-1">{v.customerSignoff || "Name and signature"}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs">For {company.name}</p>
-            <div className="h-12" />
-            <p className="border-t border-line pt-1">{row.engineerName ?? "Service engineer"}</p>
-          </div>
-        </footer>
-      </article>
+        <DocSignature company={company.name} rightLabel={row.engineerName ?? "Service engineer"}
+          left={<>Customer sign-off: {v.customerSignoff || "name and signature"}</>} />
+      </DocumentSheet>
     </>
   );
 }

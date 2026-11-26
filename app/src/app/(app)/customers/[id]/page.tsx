@@ -1,21 +1,27 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { Pencil, Plus } from "lucide-react";
+import { FileText, FolderKanban, Pencil, Plus, ReceiptText, Tag, Truck, Wallet } from "lucide-react";
 import { getDb } from "@/db";
 import { customers, extinguisherAssets, items, priceHistory, projects, quotationLines, quotations, salesInvoices, salesOrders } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canRead, canWrite } from "@/lib/rbac";
 import { fmtDate, money, qty, round2, todayIST } from "@/lib/format";
-import { Badge, Card, DL, EmptyState, Flash, LinkButton, PageHeader, Stat, StatusBadge, Table, Td, Th, cx } from "@/components/ui";
+import { Badge, Flash, LinkButton, cx } from "@/components/ui";
+import {
+  DetailPage, KeyValueGrid, MetaChip, Metric, MetricStrip, ResponsiveTable, SectionCard, StatusPill, SummaryRows, Tabs, activeTab,
+  type Column, type TabItem,
+} from "@/components/patterns";
 import { customerAdvances, netDueOf } from "@/lib/billing";
 import { openCreditNotes } from "@/lib/returns";
 import { CUSTOMER_TYPES } from "../_components/customer-form";
-import { LinkTabs } from "../../items/_components/tabs";
+
+export const metadata = { title: "Customer" };
 
 const TABS = ["overview", "quotations", "orders", "invoices", "assets", "projects", "prices"] as const;
-type Tab = (typeof TABS)[number];
 const OPEN_SI = ["issued", "partially_paid"];
+const TYPE_TONE = { customer: "blue", consultant: "violet", builder: "amber" } as const;
+const linkCls = "font-medium text-brand-700 hover:underline dark:text-brand-300";
 
 export default async function CustomerDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; ok?: string; err?: string }> }) {
   const user = await requireUser("customers");
@@ -26,7 +32,7 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
   const db = await getDb();
   const [c] = await db.select().from(customers).where(eq(customers.id, customerId));
   if (!c) notFound();
-  const tab: Tab = (TABS as readonly string[]).includes(sp.tab ?? "") ? (sp.tab as Tab) : "overview";
+  const tab = activeTab(sp.tab, TABS);
   const today = todayIST();
   const r = user.role;
 
@@ -76,155 +82,225 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
   }
   const prices = [...priceMap.entries()].sort((a, b) => a[1].code.localeCompare(b[1].code));
 
-  const tabs = [
-    { key: "overview", label: "Overview" },
-    { key: "quotations", label: "Quotations", count: quotes.length },
-    { key: "orders", label: "Orders", count: orders.length },
-    { key: "invoices", label: "Invoices & outstanding", count: invoices.length },
-    { key: "assets", label: "Extinguishers", count: assetQty },
-    { key: "projects", label: "Projects", count: projs.length },
-    { key: "prices", label: "Price history", count: prices.length },
-  ].map((t) => ({ href: `/customers/${c.id}${t.key === "overview" ? "" : `?tab=${t.key}`}`, label: t.label, count: t.count, active: tab === t.key }));
+  const base = `/customers/${c.id}`;
+  const tabItems: TabItem[] = [
+    { id: "overview", label: "Overview" },
+    { id: "quotations", label: "Quotations", count: quotes.length },
+    { id: "orders", label: "Orders", count: orders.length },
+    { id: "invoices", label: "Invoices and dues", count: invoices.length, alert: overdue > 0 },
+    { id: "assets", label: "Extinguishers", count: assetQty, alert: dueSoon > 0 },
+    { id: "projects", label: "Projects", count: projs.length },
+    { id: "prices", label: "Price history", count: prices.length },
+  ];
 
-  const L = (mod: Parameters<typeof canRead>[1], href: string, text: string) =>
-    canRead(r, mod) ? <Link href={href} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{text}</Link> : <span>{text}</span>;
+  const L = (mod: Parameters<typeof canRead>[1], href: string, text: string, stretch = false) =>
+    canRead(r, mod) ? <Link href={href} className={cx(linkCls, stretch && "rt-stretch")}>{text}</Link> : <span className="font-medium">{text}</span>;
 
-  const quotesTable = (list: typeof quotes) => list.length === 0 ? <EmptyState title="No quotations yet" /> : (
-    <Table>
-      <thead><tr><Th>Number</Th><Th>Date</Th><Th>Project</Th><Th>Status</Th><Th className="text-right">Grand total</Th></tr></thead>
-      <tbody>{list.map((q) => (
-        <tr key={q.id}><Td>{L("quotations", `/quotations/${q.id}`, q.number + (q.revision ? ` R${q.revision}` : ""))}</Td><Td>{fmtDate(q.quoteDate)}</Td>
-          <Td className="max-w-64 whitespace-normal">{q.projectName ?? "-"}</Td><Td><StatusBadge status={q.status} /></Td><Td className="text-right tabular-nums">{money(q.grandTotal)}</Td></tr>
-      ))}</tbody>
-    </Table>
-  );
-  const invoicesTable = (list: typeof invoices) => list.length === 0 ? <EmptyState title="No invoices yet" /> : (
-    <Table>
-      <thead><tr><Th>Invoice</Th><Th>Date</Th><Th>Due</Th><Th>Status</Th><Th className="text-right">Total</Th><Th className="text-right">Paid</Th><Th className="text-right">Outstanding</Th></tr></thead>
-      <tbody>{list.map((i) => {
-        const out = OPEN_SI.includes(i.status) ? Math.max(0, i.total - i.paidAmount) : 0;
-        const od = out > 0.5 && i.dueDate < today;
-        return (
-          <tr key={i.id}><Td>{L("billing", `/billing/invoices/${i.id}`, i.number)}</Td><Td>{fmtDate(i.invoiceDate)}</Td>
-            <Td className={cx(od && "font-medium text-red-600")}>{fmtDate(i.dueDate)}{od && <div className="text-xs">overdue</div>}</Td>
-            <Td><StatusBadge status={i.status} /></Td><Td className="text-right tabular-nums">{money(i.total)}</Td>
-            <Td className="text-right tabular-nums">{money(i.paidAmount)}</Td><Td className="text-right tabular-nums">{out > 0.5 ? money(out) : "-"}</Td></tr>
-        );
-      })}</tbody>
-    </Table>
-  );
+  // ------------------------------------------------------------------ table columns
+  type Q = (typeof quotes)[number];
+  const quoteCols: Column<Q>[] = [
+    { key: "no", header: "Quotation", card: "title", nowrap: true, cell: (q) => L("quotations", `/quotations/${q.id}`, q.number + (q.revision ? ` R${q.revision}` : ""), true) },
+    { key: "date", header: "Date", card: "subtitle", nowrap: true, cell: (q) => fmtDate(q.quoteDate) },
+    { key: "project", header: "Project", className: "max-w-64 whitespace-normal", cell: (q) => q.projectName ?? "-" },
+    { key: "status", header: "Status", card: "badge", cell: (q) => <StatusPill status={q.status} /> },
+    { key: "total", header: "Grand total", align: "right", card: "amount", nowrap: true, cell: (q) => money(q.grandTotal) },
+  ];
+  type O = (typeof orders)[number];
+  const orderCols: Column<O>[] = [
+    { key: "no", header: "Order", card: "title", nowrap: true, cell: (o) => L("orders", `/orders/${o.id}`, o.number, true) },
+    { key: "po", header: "Customer PO", cell: (o) => <>{o.customerPoNumber ?? "-"}{o.customerPoDate && <div className="text-caption text-ink-faint">{fmtDate(o.customerPoDate)}</div>}</> },
+    { key: "date", header: "Date", card: "subtitle", nowrap: true, cell: (o) => fmtDate(o.orderDate) },
+    { key: "expected", header: "Expected", nowrap: true, priority: 3, cell: (o) => fmtDate(o.expectedDelivery) },
+    { key: "status", header: "Status", card: "badge", cell: (o) => <StatusPill status={o.status} /> },
+    { key: "total", header: "Total", align: "right", card: "amount", nowrap: true, cell: (o) => money(o.total) },
+  ];
+  type I = (typeof invoices)[number];
+  const invOut = (i: I) => (OPEN_SI.includes(i.status) ? Math.max(0, i.total - i.paidAmount) : 0);
+  const invCols: Column<I>[] = [
+    { key: "no", header: "Invoice", card: "title", nowrap: true, cell: (i) => L("billing", `/billing/invoices/${i.id}`, i.number, true) },
+    { key: "date", header: "Date", card: "subtitle", nowrap: true, cell: (i) => fmtDate(i.invoiceDate) },
+    {
+      key: "due", header: "Due", nowrap: true,
+      cell: (i) => {
+        const od = invOut(i) > 0.5 && i.dueDate < today;
+        return <span className="inline-flex flex-col items-end gap-0.5 sm:items-start">{fmtDate(i.dueDate)}{od && <StatusPill status="overdue" />}</span>;
+      },
+    },
+    { key: "status", header: "Status", card: "badge", cell: (i) => <StatusPill status={i.status} /> },
+    { key: "total", header: "Total", align: "right", nowrap: true, cell: (i) => money(i.total) },
+    { key: "paid", header: "Paid", align: "right", nowrap: true, priority: 3, cell: (i) => money(i.paidAmount) },
+    { key: "out", header: "Outstanding", align: "right", card: "amount", nowrap: true, cell: (i) => (invOut(i) > 0.5 ? money(invOut(i)) : "-") },
+  ];
+  type A = (typeof assets)[number];
+  const assetCols: Column<A>[] = [
+    { key: "type", header: "Type", card: "title", cell: (a) => <>{a.extType}<div className="text-caption font-normal text-ink-faint">{[a.make, a.serialNo].filter(Boolean).join(" · ")}</div></> },
+    { key: "loc", header: "Location", card: "subtitle", className: "max-w-56 whitespace-normal", cell: (a) => a.location ?? "-" },
+    { key: "qty", header: "Qty", align: "right", card: "amount", cell: (a) => a.qty },
+    { key: "last", header: "Last refill", nowrap: true, priority: 3, cell: (a) => fmtDate(a.lastRefillDate) },
+    {
+      key: "next", header: "Next due", nowrap: true,
+      cell: (a) => <span className={cx(a.status === "active" && a.nextDueDate <= today && "font-medium text-danger")}>{fmtDate(a.nextDueDate)}</span>,
+    },
+    { key: "hpt", header: "HPT due", nowrap: true, priority: 3, cell: (a) => fmtDate(a.hptDueDate) },
+    { key: "status", header: "Status", card: "badge", cell: (a) => <StatusPill status={a.status} /> },
+  ];
+  type P = (typeof projs)[number];
+  const projCols: Column<P>[] = [
+    { key: "code", header: "Code", card: "title", nowrap: true, cell: (p) => L("projects", `/projects/${p.id}`, p.code, true) },
+    { key: "name", header: "Project", card: "subtitle", className: "max-w-64 whitespace-normal", cell: (p) => p.name },
+    { key: "status", header: "Status", card: "badge", cell: (p) => <StatusPill status={p.status} /> },
+    { key: "start", header: "Start", nowrap: true, cell: (p) => fmtDate(p.startDate) },
+    { key: "end", header: "End", nowrap: true, cell: (p) => fmtDate(p.endDate) },
+    { key: "value", header: "Contract value", align: "right", card: "amount", nowrap: true, cell: (p) => money(p.contractValue) },
+  ];
+  type Pr = (typeof prices)[number];
+  const priceCols: Column<Pr>[] = [
+    {
+      key: "item", header: "Item", card: "title", className: "max-w-72 whitespace-normal",
+      cell: ([itemId, p]) => <><Link href={`/items/${itemId}`} className="hover:underline">{p.name}</Link><div className="font-mono text-caption font-normal text-ink-faint">{p.code}</div></>,
+    },
+    {
+      key: "quoted", header: "Last quoted", align: "right", nowrap: true,
+      cell: ([, p]) => (p.q ? <>{money(p.q.rate)}<span className="text-caption text-ink-faint">/{p.uom}</span></> : "-"),
+    },
+    {
+      key: "quote", header: "Quotation", priority: 3,
+      cell: ([, p]) => (p.q ? <>{L("quotations", `/quotations/${p.q.qid}`, p.q.number)}<div className="text-caption text-ink-faint">{fmtDate(p.q.date)}</div></> : "-"),
+    },
+    {
+      key: "sold", header: "Last sold", align: "right", card: "amount", nowrap: true,
+      cell: ([, p]) => (p.s ? <>{money(p.s.rate)}<span className="text-caption text-ink-faint">/{p.uom}</span></> : "-"),
+    },
+    {
+      key: "inv", header: "Invoice", priority: 3,
+      cell: ([, p]) => (p.s
+        ? <>{p.s.refType === "sales_invoice" && p.s.refId ? L("billing", `/billing/invoices/${p.s.refId}`, `Invoice #${p.s.refId}`) : "-"}<div className="text-caption text-ink-faint">{fmtDate(p.s.date)}</div></>
+        : "-"),
+    },
+  ];
+
+  const quoteWrite = canWrite(r, "quotations");
+  const custWrite = canWrite(r, "customers");
+  const typeLabel = CUSTOMER_TYPES[c.type as keyof typeof CUSTOMER_TYPES] ?? c.type;
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title={c.name}
-        subtitle={<><Badge tone="blue">{CUSTOMER_TYPES[c.type as keyof typeof CUSTOMER_TYPES] ?? c.type}</Badge> {c.city ?? ""}{!c.active && <> · <Badge>inactive</Badge></>}</>}
-        back={{ href: "/customers", label: "Customers" }}
-        actions={<>
-          {canWrite(r, "quotations") && <LinkButton href={`/quotations/new?customerId=${c.id}`} variant="secondary"><Plus size={16} aria-hidden /> Quotation</LinkButton>}
-          {canWrite(r, "customers") && <LinkButton href={`/customers/${c.id}/edit`}><Pencil size={16} aria-hidden /> Edit</LinkButton>}
-        </>}
-      />
-      <Flash ok={sp.ok} err={sp.err} />
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Net due" value={money(netDue)} tone={overdue > 0 ? "bad" : netDue > 0.5 ? "warn" : "default"}
-          hint={`Invoices due ${money(outstanding)}${lessText ? `, less ${lessText}` : ""}${overdue > 0 ? ` · ${money(overdue)} overdue` : ""}`} />
-        <Stat label="Quotations" value={quotes.length} hint={`${openQuotes.length} open · ${won.length} won (${money(won.reduce((s, q) => s + q.grandTotal, 0))})`} />
-        <Stat label="Extinguishers" value={qty(assetQty)} tone={dueSoon > 0 ? "warn" : "default"} hint={nextDue ? `Next refill due ${fmtDate(nextDue)}${dueSoon ? ` · ${dueSoon} due now` : ""}` : "No assets tracked"} />
-        <Stat label="Projects" value={projs.length} hint={`${projs.filter((p) => p.status === "active").length} active`} />
-      </div>
-      <LinkTabs tabs={tabs} label="Customer sections" />
-
+    <DetailPage
+      back={{ href: "/customers", label: "Customers" }}
+      eyebrow={typeLabel}
+      title={c.name}
+      status={<>
+        <Badge tone={TYPE_TONE[c.type as keyof typeof TYPE_TONE] ?? "gray"}>{typeLabel}</Badge>
+        {!c.active && <StatusPill semantic="neutral" label="Inactive" />}
+      </>}
+      meta={<>
+        {c.city && <MetaChip label="City">{c.city}</MetaChip>}
+        {c.contactPerson && <MetaChip label="Contact">{c.contactPerson}</MetaChip>}
+        {c.phone && <MetaChip label="Phone" href={`tel:${c.phone}`}>{c.phone}</MetaChip>}
+        {c.gstin && <MetaChip label="GSTIN">{c.gstin}</MetaChip>}
+        <MetaChip label="Terms">{c.paymentTermsDays} days</MetaChip>
+      </>}
+      primaryAction={quoteWrite && <LinkButton href={`/quotations/new?customerId=${c.id}`}><Plus className="icon-sm" aria-hidden /> New quotation</LinkButton>}
+      secondaryActions={custWrite && <LinkButton href={`/customers/${c.id}/edit`} variant="secondary"><Pencil className="icon-sm" aria-hidden /> Edit customer</LinkButton>}
+      notices={<Flash ok={sp.ok} err={sp.err} />}
+      tabs={
+        <div className="space-y-4">
+          <MetricStrip>
+            <Metric label="Net due" value={money(netDue)} tone={overdue > 0 ? "bad" : netDue > 0.5 ? "warn" : "default"}
+              hint={`Invoices due ${money(outstanding)}${lessText ? `, less ${lessText}` : ""}${overdue > 0 ? ` · ${money(overdue)} overdue` : ""}`} />
+            <Metric label="Quotations" value={quotes.length} hint={`${openQuotes.length} open · ${won.length} won (${money(won.reduce((s, q) => s + q.grandTotal, 0))})`} />
+            <Metric label="Extinguishers" value={qty(assetQty)} tone={dueSoon > 0 ? "warn" : "default"} hint={nextDue ? `Next refill due ${fmtDate(nextDue)}${dueSoon ? ` · ${dueSoon} due now` : ""}` : "None tracked yet"} />
+            <Metric label="Projects" value={projs.length} hint={`${projs.filter((p) => p.status === "active").length} active`} />
+          </MetricStrip>
+          <Tabs label="Customer sections" basePath={base} params={{ tab: sp.tab }} active={tab} items={tabItems} />
+        </div>
+      }
+      aside={
+        <SectionCard title="Open receivables" icon={Wallet} count={openInv.length}
+          empty={openInv.length === 0 && "Nothing outstanding. Unpaid invoices for this customer appear here."}>
+          <SummaryRows rows={[
+            ["Invoices due", money(outstanding)],
+            ...(lessText ? [["Less credits and advances", money(round2(credits + advanceBal))] as [string, string]] : []),
+            ["Net due", <span key="n" className="font-semibold">{money(netDue)}</span>],
+            ["Overdue", <span key="o" className={cx(overdue > 0 && "text-danger")}>{money(overdue)}</span>],
+          ]} />
+          <ul className="mt-4 divide-y divide-line border-t border-line text-sm">
+            {openInv.slice(0, 8).map((i) => (
+              <li key={i.id} className="flex items-center justify-between gap-2 py-2">
+                <span>{L("billing", `/billing/invoices/${i.id}`, i.number)}<span className={cx("block text-caption", i.dueDate < today ? "text-danger" : "text-ink-faint")}>Due {fmtDate(i.dueDate)}</span></span>
+                <span className="tabular-nums">{money(Math.max(0, i.total - i.paidAmount))}</span>
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      }
+    >
       {tab === "overview" && (
-        <div className="grid gap-6 lg:grid-cols-3">
-          <Card title="Details" className="lg:col-span-2">
-            <DL items={[
-              ["Contact person", c.contactPerson],
-              ["Phone", c.phone ? <a href={`tel:${c.phone}`} className="hover:underline">{c.phone}</a> : null],
-              ["Email", c.email ? <a href={`mailto:${c.email}`} className="hover:underline">{c.email}</a> : null],
-              ["GSTIN", c.gstin ? <span className="font-mono">{c.gstin}</span> : null],
-              ["Address", [c.address, c.city, c.state].filter(Boolean).join(", ") || null],
-              ["Payment terms", `${c.paymentTermsDays} days`],
-              ["Credit limit", c.creditLimit > 0 ? money(c.creditLimit) : "No limit"],
-              ["Auto reminders", c.autoReminders ? "On" : "Off"],
-              ["Notes", c.notes],
-            ]} />
-          </Card>
-          <Card title="Open receivables">
-            {openInv.length === 0 ? <p className="text-sm text-ink-soft">Nothing outstanding.</p> : (
-              <ul className="divide-y divide-line text-sm">
-                {openInv.slice(0, 8).map((i) => (
-                  <li key={i.id} className="flex items-center justify-between gap-2 py-2">
-                    <span>{L("billing", `/billing/invoices/${i.id}`, i.number)}<span className={cx("block text-xs", i.dueDate < today ? "text-red-600" : "text-ink-faint")}>due {fmtDate(i.dueDate)}</span></span>
-                    <span className="tabular-nums">{money(Math.max(0, i.total - i.paidAmount))}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-          <div className="lg:col-span-3">
-            <h2 className="mb-2 text-sm font-semibold text-ink">Recent quotations</h2>
-            {quotesTable(quotes.slice(0, 5))}
-          </div>
-        </div>
-      )}
-      {tab === "quotations" && quotesTable(quotes)}
-      {tab === "orders" && (orders.length === 0 ? <EmptyState title="No orders yet" /> : (
-        <Table>
-          <thead><tr><Th>Order</Th><Th>Customer PO</Th><Th>Date</Th><Th>Expected</Th><Th>Status</Th><Th className="text-right">Total</Th></tr></thead>
-          <tbody>{orders.map((o) => (
-            <tr key={o.id}><Td>{L("orders", `/orders/${o.id}`, o.number)}</Td><Td>{o.customerPoNumber ?? "-"}{o.customerPoDate && <div className="text-xs text-ink-faint">{fmtDate(o.customerPoDate)}</div>}</Td>
-              <Td>{fmtDate(o.orderDate)}</Td><Td>{fmtDate(o.expectedDelivery)}</Td><Td><StatusBadge status={o.status} /></Td><Td className="text-right tabular-nums">{money(o.total)}</Td></tr>
-          ))}</tbody>
-        </Table>
-      ))}
-      {tab === "invoices" && (
-        <div className="space-y-3">
-          <p className="text-sm text-ink-soft">Invoices due {money(outstanding)}{lessText && <> · less {lessText}</>} · <span className="font-medium text-ink">Net due {money(netDue)}</span>{overdue > 0 && <> · <span className="font-medium text-red-600">{money(overdue)} overdue</span></>}</p>
-          {invoicesTable(invoices)}
-        </div>
-      )}
-      {tab === "assets" && (assets.length === 0 ? (
-        <EmptyState title="No extinguishers tracked" action={canWrite(r, "refills") && <LinkButton href={`/refills?customerId=${c.id}`}>Open refill tracker</LinkButton>}>
-          Add this customer&apos;s extinguishers in the refill tracker to get due-date reminders.
-        </EmptyState>
-      ) : (
-        <Table>
-          <thead><tr><Th>Type</Th><Th>Location</Th><Th className="text-right">Qty</Th><Th>Last refill</Th><Th>Next due</Th><Th>HPT due</Th><Th>Status</Th></tr></thead>
-          <tbody>{assets.map((a) => (
-            <tr key={a.id}><Td className="font-medium">{a.extType}<div className="text-xs text-ink-faint">{[a.make, a.serialNo].filter(Boolean).join(" · ")}</div></Td>
-              <Td className="max-w-56 whitespace-normal">{a.location ?? "-"}</Td><Td className="text-right">{a.qty}</Td><Td>{fmtDate(a.lastRefillDate)}</Td>
-              <Td className={cx(a.status === "active" && a.nextDueDate <= today && "font-medium text-red-600")}>{fmtDate(a.nextDueDate)}</Td>
-              <Td>{fmtDate(a.hptDueDate)}</Td><Td><StatusBadge status={a.status} /></Td></tr>
-          ))}</tbody>
-        </Table>
-      ))}
-      {tab === "projects" && (projs.length === 0 ? <EmptyState title="No projects yet" /> : (
-        <Table>
-          <thead><tr><Th>Code</Th><Th>Project</Th><Th>Status</Th><Th>Start</Th><Th>End</Th><Th className="text-right">Contract value</Th></tr></thead>
-          <tbody>{projs.map((p) => (
-            <tr key={p.id}><Td className="font-mono text-xs">{L("projects", `/projects/${p.id}`, p.code)}</Td><Td className="max-w-64 whitespace-normal">{p.name}</Td>
-              <Td><StatusBadge status={p.status} /></Td><Td>{fmtDate(p.startDate)}</Td><Td>{fmtDate(p.endDate)}</Td><Td className="text-right tabular-nums">{money(p.contractValue)}</Td></tr>
-          ))}</tbody>
-        </Table>
-      ))}
-      {tab === "prices" && (prices.length === 0 ? <EmptyState title="No price history with this customer">Last quoted and sold rates per item appear here.</EmptyState> : (
         <>
-          <p className="text-sm text-ink-soft">Last rate quoted and sold to {c.name}, per item. Use this to stay consistent when re-quoting.</p>
-          <Table>
-            <thead><tr><Th>Item</Th><Th className="text-right">Last quoted</Th><Th>Quotation</Th><Th className="text-right">Last sold</Th><Th>Invoice</Th></tr></thead>
-            <tbody>{prices.map(([itemId, p]) => (
-              <tr key={itemId}>
-                <Td className="max-w-72 whitespace-normal"><Link href={`/items/${itemId}`} className="hover:underline">{p.name}</Link><div className="font-mono text-xs text-ink-faint">{p.code}</div></Td>
-                <Td className="text-right tabular-nums">{p.q ? <>{money(p.q.rate)}<span className="text-xs text-ink-faint">/{p.uom}</span></> : "-"}</Td>
-                <Td>{p.q ? <>{L("quotations", `/quotations/${p.q.qid}`, p.q.number)}<div className="text-xs text-ink-faint">{fmtDate(p.q.date)}</div></> : "-"}</Td>
-                <Td className="text-right tabular-nums">{p.s ? <>{money(p.s.rate)}<span className="text-xs text-ink-faint">/{p.uom}</span></> : "-"}</Td>
-                <Td>{p.s ? <>{p.s.refType === "sales_invoice" && p.s.refId ? L("billing", `/billing/invoices/${p.s.refId}`, `Invoice #${p.s.refId}`) : "-"}<div className="text-xs text-ink-faint">{fmtDate(p.s.date)}</div></> : "-"}</Td>
-              </tr>
-            ))}</tbody>
-          </Table>
+          <SectionCard title="Details">
+            <KeyValueGrid columns={2} items={[
+              { label: "Contact person", value: c.contactPerson },
+              { label: "Phone", value: c.phone ? <a href={`tel:${c.phone}`} className="hover:underline">{c.phone}</a> : null },
+              { label: "Email", value: c.email ? <a href={`mailto:${c.email}`} className="hover:underline">{c.email}</a> : null },
+              { label: "GSTIN", value: c.gstin ? <span className="font-mono">{c.gstin}</span> : null },
+              { label: "Address", value: [c.address, c.city, c.state].filter(Boolean).join(", ") || null, wide: true },
+              { label: "Payment terms", value: `${c.paymentTermsDays} days` },
+              { label: "Credit limit", value: c.creditLimit > 0 ? money(c.creditLimit) : "No limit" },
+              { label: "Automatic reminders", value: c.autoReminders ? "On" : "Off" },
+              { label: "Notes", value: c.notes, wide: true },
+            ]} />
+          </SectionCard>
+          <SectionCard title="Recent quotations" icon={FileText} count={quotes.length} flush
+            actions={quotes.length > 5 && <Link href={`${base}?tab=quotations`} className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-300">View all</Link>}
+            empty={quotes.length === 0 && (quoteWrite ? "No quotations yet. Use New quotation to price a BOQ for this customer." : "No quotations yet.")}>
+            <ResponsiveTable flush rows={quotes.slice(0, 5)} columns={quoteCols} rowKey={(q) => q.id} caption="Recent quotations" />
+          </SectionCard>
         </>
-      ))}
-    </div>
+      )}
+
+      {tab === "quotations" && (
+        <SectionCard title="Quotations" icon={FileText} count={quotes.length} flush
+          empty={quotes.length === 0 && (quoteWrite ? "No quotations yet. Use New quotation to price a BOQ for this customer." : "No quotations yet.")}>
+          <ResponsiveTable flush rows={quotes} columns={quoteCols} rowKey={(q) => q.id} caption="Quotations" />
+        </SectionCard>
+      )}
+
+      {tab === "orders" && (
+        <SectionCard title="Orders" icon={Truck} count={orders.length} flush
+          empty={orders.length === 0 && "No orders yet. Orders appear here once a quotation is won."}>
+          <ResponsiveTable flush rows={orders} columns={orderCols} rowKey={(o) => o.id} caption="Orders" />
+        </SectionCard>
+      )}
+
+      {tab === "invoices" && (
+        <SectionCard title="Invoices" icon={ReceiptText} count={invoices.length} flush
+          description={<>Invoices due {money(outstanding)}{lessText && <> · less {lessText}</>} · <span className="font-medium text-ink">Net due {money(netDue)}</span>{overdue > 0 && <> · <span className="font-medium text-danger">{money(overdue)} overdue</span></>}</>}
+          empty={invoices.length === 0 && "No invoices yet. Invoices raised from this customer's orders appear here."}>
+          <ResponsiveTable flush rows={invoices} columns={invCols} rowKey={(i) => i.id} caption="Invoices" />
+        </SectionCard>
+      )}
+
+      {tab === "assets" && (
+        <SectionCard title="Extinguishers" count={assets.length} flush
+          actions={canWrite(r, "refills") && <LinkButton href={`/refills?customerId=${c.id}`} variant="secondary" size="sm">Open refill tracker</LinkButton>}
+          empty={assets.length === 0 && "No extinguishers tracked yet. Add them in the refill tracker to get due date reminders."}>
+          <ResponsiveTable flush rows={assets} columns={assetCols} rowKey={(a) => a.id} caption="Extinguishers" />
+        </SectionCard>
+      )}
+
+      {tab === "projects" && (
+        <SectionCard title="Projects" icon={FolderKanban} count={projs.length} flush
+          empty={projs.length === 0 && "No projects yet. Projects for this customer appear here."}>
+          <ResponsiveTable flush rows={projs} columns={projCols} rowKey={(p) => p.id} caption="Projects" />
+        </SectionCard>
+      )}
+
+      {tab === "prices" && (
+        <SectionCard title="Price history" icon={Tag} count={prices.length} flush
+          description={`Last rate quoted and sold to ${c.name}, per item. Use this to stay consistent when quoting again.`}
+          empty={prices.length === 0 && "No price history yet. Last quoted and sold rates per item appear here."}>
+          <ResponsiveTable flush rows={prices} columns={priceCols} rowKey={([itemId]) => itemId} caption="Price history" />
+        </SectionCard>
+      )}
+    </DetailPage>
   );
 }

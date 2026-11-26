@@ -1,13 +1,39 @@
 "use client";
-/** App chrome: brand sidebar (drawer on mobile), sticky top bar with page context, quick search and alerts. */
+/**
+ * App chrome: brand sidebar with collapsible task groups (drawer on mobile), sticky top bar with
+ * page context, quick create, quick search and alerts, and a bottom tab bar on phones and tablets.
+ */
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
-import { Bell, ChevronRight, ExternalLink, LogOut, Menu, Moon, Search, Sun, X } from "lucide-react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { Bell, ChevronDown, ChevronRight, ExternalLink, LogOut, Menu, Moon, Plus, Search, Sun, X } from "lucide-react";
 import clsx from "clsx";
 import { ROLES, type Role } from "@/lib/constants";
-import { navFor, navMatch } from "./nav";
+import { mobileTabsFor, navFor, navMatch, quickCreateFor } from "./nav";
 import { CommandPalette } from "./command-palette";
+import { ActionMenu, MenuLink } from "./patterns/action-menu";
+
+const COLLAPSE_KEY = "lbe-nav-collapsed";
+
+/** Collapsed sidebar groups, remembered in this browser. The group holding the current page always opens. */
+function useCollapsedGroups() {
+  const [collapsed, setCollapsed] = useState<string[]>([]);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(COLLAPSE_KEY);
+      const v: unknown = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(v)) setCollapsed(v.filter((x): x is string => typeof x === "string"));
+    } catch { /* ignore broken or blocked storage */ }
+  }, []);
+  const toggle = useCallback((id: string) => {
+    setCollapsed((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+  return { collapsed, toggle };
+}
 
 const SIRAH = "https://sirahdigital.in/";
 
@@ -48,6 +74,9 @@ export function AppShell({ user, alertCount, demo, children }: { user: { name: s
   const [open, setOpen] = useState(false);
   const [palette, setPalette] = useState(false);
   const groups = navFor(user.role);
+  const quick = quickCreateFor(user.role);
+  const tabs = mobileTabsFor(user.role);
+  const { collapsed, toggle } = useCollapsedGroups();
   const current = navMatch(path);
   const isActive = (href: string) => current?.item.href === href;
   // Letters only, so "Karthick (Owner)" becomes "KO", not "K(".
@@ -76,11 +105,27 @@ export function AppShell({ user, alertCount, demo, children }: { user: { name: s
   }, [open]);
 
   const nav = (
-    <nav className="flex-1 space-y-5 overflow-y-auto px-3 pb-4 pt-2" aria-label="Main">
-      {groups.map((g) => (
-        <div key={g.group}>
-          <div className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">{g.group}</div>
-          <ul className="space-y-0.5">
+    <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-4 pt-1" aria-label="Main">
+      {groups.map((g) => {
+        const single = g.id === "home";
+        const hasActive = g.items.some((i) => isActive(i.href));
+        const isOpen = single || hasActive || !collapsed.includes(g.id);
+        const listId = `nav-${g.id}`;
+        return (
+        <div key={g.id} className={clsx(!single && "pt-2")}>
+          {!single && (
+            <button
+              type="button"
+              onClick={() => toggle(g.id)}
+              aria-expanded={isOpen}
+              aria-controls={listId}
+              className="flex w-full items-center justify-between rounded-md px-3 py-1 text-overline uppercase text-ink-faint hover:text-ink-soft"
+            >
+              <span>{g.group}</span>
+              <ChevronDown className={clsx("icon-xs transition-transform", !isOpen && "-rotate-90")} aria-hidden />
+            </button>
+          )}
+          <ul id={listId} hidden={!isOpen} className="mt-0.5 space-y-0.5">
             {g.items.map((i) => {
               const active = isActive(i.href);
               return (
@@ -90,14 +135,14 @@ export function AppShell({ user, alertCount, demo, children }: { user: { name: s
                     onClick={() => setOpen(false)}
                     aria-current={active ? "page" : undefined}
                     className={clsx(
-                      "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                      "group relative flex items-center gap-3 rounded-lg px-3 py-[7px] text-sm transition-colors",
                       active
                         ? "bg-brand-50 font-semibold text-brand-800 dark:bg-brand-950/60 dark:text-brand-100"
                         : "font-medium text-ink-soft hover:bg-muted hover:text-ink",
                     )}
                   >
                     <span className={clsx("absolute inset-y-1.5 left-0 w-[3px] rounded-r-full transition-colors", active ? "bg-brand-600" : "bg-transparent")} aria-hidden />
-                    <i.icon className={clsx("h-[18px] w-[18px] shrink-0", active ? "text-brand-600 dark:text-brand-300" : "text-ink-faint group-hover:text-ink-soft")} aria-hidden />
+                    <i.icon className={clsx("icon-md", active ? "text-brand-600 dark:text-brand-300" : "text-ink-faint group-hover:text-ink-soft")} aria-hidden />
                     <span className="truncate">{i.label}</span>
                     {i.href === "/alerts" && alertCount > 0 && (
                       <span className="ml-auto rounded-full bg-brand-600 px-1.5 text-[10px] font-semibold leading-4 text-white">{alertCount > 99 ? "99+" : alertCount}</span>
@@ -108,7 +153,8 @@ export function AppShell({ user, alertCount, demo, children }: { user: { name: s
             })}
           </ul>
         </div>
-      ))}
+        );
+      })}
     </nav>
   );
 
@@ -181,6 +227,13 @@ export function AppShell({ user, alertCount, demo, children }: { user: { name: s
 
             <div className="flex-1" />
 
+            {quick.length > 0 && (
+              <ActionMenu label="New" icon={Plus} variant="primary" className="shrink-0" menuClassName="w-60">
+                <p className="px-2.5 pb-1 pt-1 text-overline uppercase text-ink-faint">Quick create</p>
+                {quick.map((q) => <MenuLink key={q.href} href={q.href} icon={q.icon}>{q.label}</MenuLink>)}
+              </ActionMenu>
+            )}
+
             <button
               type="button"
               onClick={() => setPalette(true)}
@@ -202,9 +255,43 @@ export function AppShell({ user, alertCount, demo, children }: { user: { name: s
             </Link>
           </div>
         </header>
-        <main id="main" tabIndex={-1} className="pb-safe mx-auto max-w-7xl px-4 py-6 focus:outline-none sm:px-6 sm:py-8">{children}</main>
+        <main id="main" tabIndex={-1} className="pb-safe max-lg:pb-nav mx-auto max-w-7xl px-4 py-6 focus:outline-none sm:px-6 sm:py-8">{children}</main>
       </div>
+
+      {/* Phone and tablet tab bar: four role-based destinations plus More (opens the drawer). */}
+      <nav aria-label="Quick navigation" className="no-print fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden">
+        <ul className="mx-auto grid h-[3.75rem] max-w-xl grid-cols-5">
+          {tabs.map((t) => {
+            const active = isActive(t.href);
+            return (
+              <li key={t.href}>
+                <Link href={t.href} aria-current={active ? "page" : undefined}
+                  className={clsx("relative flex h-full flex-col items-center justify-center gap-1 text-[11px] font-medium",
+                    active ? "text-brand-700 dark:text-brand-300" : "text-ink-soft hover:text-ink")}>
+                  {active && <span className="absolute inset-x-5 top-0 h-0.5 rounded-b-full bg-brand-600" aria-hidden />}
+                  <t.icon className="icon-lg" aria-hidden />
+                  <span className="max-w-full truncate px-1">{shortLabel(t.label)}</span>
+                </Link>
+              </li>
+            );
+          })}
+          <li>
+            <button type="button" onClick={() => setOpen(true)} aria-label={alertCount > 0 ? `More pages, ${alertCount} open alerts` : "More pages"} aria-haspopup="dialog"
+              className="relative flex h-full w-full flex-col items-center justify-center gap-1 text-[11px] font-medium text-ink-soft hover:text-ink">
+              <Menu className="icon-lg" aria-hidden />
+              <span aria-hidden>More</span>
+              {alertCount > 0 && <span className="absolute right-[calc(50%-1.1rem)] top-2 h-2 w-2 rounded-full bg-brand-600 ring-2 ring-surface" aria-hidden />}
+            </button>
+          </li>
+        </ul>
+      </nav>
+
       <CommandPalette role={user.role} open={palette} onClose={() => setPalette(false)} />
     </div>
   );
+}
+
+/** Short tab bar labels: "Orders & delivery" becomes "Orders", "Billing & outstanding" becomes "Billing". */
+function shortLabel(label: string) {
+  return label.split(/\s*&\s*/)[0];
 }

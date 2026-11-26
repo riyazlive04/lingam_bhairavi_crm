@@ -1,9 +1,10 @@
 /**
- * Rule 10: "Cost ₹2,460 · 07 Mar 2026 · Sri Balaji Steel" under a quotation line, with an amber "Stale" chip
+ * Rule 10: "Cost ₹2,460 · 07 Mar 2026 · Sri Balaji Steel" under a quotation line, with a warning "Stale" chip
  * when the purchase price is older than the item's stale window. No hooks, so it renders in server and client
  * components alike. Pass `cost = null` to hide the buying price (the date and source are still shown).
  */
 import { cx } from "@/components/ui";
+import { StatusPill } from "@/components/patterns";
 import { fmtDate, money } from "@/lib/format";
 import { costAgeDays, isCostStale, staleDaysFor, type CostSource } from "@/lib/pricing";
 
@@ -43,11 +44,8 @@ export function CostMeta(p: CostMetaProps) {
     <span className={cx("inline-flex flex-wrap items-center gap-1.5 text-xs text-ink-faint", p.className)}>
       <span>{costMetaText(p)}</span>
       {stale && (
-        <span
-          className="rounded-full bg-amber-50 px-1.5 py-px text-[11px] font-medium text-amber-800 ring-1 ring-inset ring-amber-200 dark:bg-amber-950/70 dark:text-amber-300 dark:ring-amber-900"
-          title={`Last bought ${age} days ago. Prices older than ${staleDaysFor(p.volatile)} days are treated as stale${p.volatile ? " for this fast-moving item" : ""}.`}
-        >
-          Stale, {age} days
+        <span title={`Last bought ${age} days ago. Prices older than ${staleDaysFor(p.volatile)} days are treated as stale${p.volatile ? " for this fast-moving item" : ""}.`}>
+          <StatusPill semantic="warning" label={`Stale, ${age} days`} noDot />
         </span>
       )}
     </span>

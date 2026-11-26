@@ -1,5 +1,6 @@
 import { EXTINGUISHER_TYPES } from "@/lib/constants";
-import { Field, Input, LinkButton, Select, Textarea } from "@/components/ui";
+import { Field, Input, Select, Textarea } from "@/components/ui";
+import { FormFooter, FormSection } from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { saveAsset } from "../actions";
 
@@ -23,22 +24,28 @@ export const INTERVAL_OPTIONS = [
   [12, "1 year (12 months)"], [36, "3 years (36 months)"], [6, "6 months"], [24, "2 years"], [60, "5 years"],
 ] as const;
 
-/** Single asset create/edit form (server component). */
-export function AssetForm({ customers, values, today }: { customers: { id: number; name: string }[]; values: AssetFormValues; today: string }) {
+/**
+ * Single asset create/edit form (server component).
+ * `inline` drops the sticky footer for use inside a detail page, whose phone action bar already sits at the bottom.
+ */
+export function AssetForm({ customers, values, today, cancelHref, inline }: {
+  customers: { id: number; name: string }[]; values: AssetFormValues; today: string; cancelHref: string; inline?: boolean;
+}) {
   const v = values;
   const interval = v.refillIntervalMonths ?? 12;
+  const submit = <SubmitButton pendingText="Saving…" className={inline ? "max-sm:w-full" : undefined}>{v.id ? "Save asset" : "Add asset"}</SubmitButton>;
   return (
     <form action={saveAsset} className="space-y-4">
       {v.id && <input type="hidden" name="id" value={v.id} />}
       <datalist id="ext-types">{EXTINGUISHER_TYPES.map((t) => <option key={t} value={t} />)}</datalist>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <FormSection title="Extinguisher" description="Who owns it, where it is and what it is.">
         <Field label="Customer" required>
           <Select name="customerId" required defaultValue={v.customerId ?? ""}>
-            <option value="" disabled>Select customer…</option>
+            <option value="" disabled>Select customer</option>
             {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </Select>
         </Field>
-        <Field label="Location" hint="Site / block / floor">
+        <Field label="Location" hint="Site, block or floor">
           <Input name="location" maxLength={200} defaultValue={v.location ?? ""} placeholder="e.g. Unit 2, Ground floor, Stores" />
         </Field>
         <Field label="Type" required>
@@ -51,8 +58,10 @@ export function AssetForm({ customers, values, today }: { customers: { id: numbe
           <Input name="serialNo" maxLength={60} defaultValue={v.serialNo ?? ""} />
         </Field>
         <Field label="Quantity" required>
-          <Input type="number" name="qty" required min={1} max={10000} step={1} inputMode="numeric" defaultValue={v.qty ?? 1} />
+          <Input type="number" name="qty" required min={1} max={10000} step={1} inputMode="numeric" className="text-right" defaultValue={v.qty ?? 1} />
         </Field>
+      </FormSection>
+      <FormSection title="Refill dates" description="The next refill is due on the last refill (or install) date plus the interval.">
         <Field label="Install date">
           <Input type="date" name="installDate" max={today} defaultValue={v.installDate ?? ""} />
         </Field>
@@ -65,7 +74,7 @@ export function AssetForm({ customers, values, today }: { customers: { id: numbe
             {!INTERVAL_OPTIONS.some(([m]) => m === interval) && <option value={interval}>{interval} months</option>}
           </Select>
         </Field>
-        <Field label="Next refill due" hint={v.id ? "Recalculated automatically when dates or interval change; enter a date only to override." : "Leave blank to calculate: last refill (or install date, or today) + interval."}>
+        <Field label="Next refill due" hint={v.id ? "Recalculated when dates or interval change. Enter a date only to override." : "Leave blank to calculate it: last refill (or install date, or today) plus the interval."}>
           <Input type="date" name="nextDueDate" defaultValue={v.id ? v.nextDueDate ?? "" : ""} />
         </Field>
         <Field label="HPT due (hydraulic pressure test)">
@@ -74,11 +83,10 @@ export function AssetForm({ customers, values, today }: { customers: { id: numbe
         <Field label="Notes" className="sm:col-span-2">
           <Textarea name="notes" rows={2} maxLength={1000} defaultValue={v.notes ?? ""} />
         </Field>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <SubmitButton>{v.id ? "Save asset" : "Add asset"}</SubmitButton>
-        {v.id && <LinkButton variant="secondary" href={`/refills/${v.id}`}>Cancel</LinkButton>}
-      </div>
+      </FormSection>
+      {inline
+        ? <div className="flex justify-end">{submit}</div>
+        : <FormFooter cancelHref={cancelHref}>{submit}</FormFooter>}
     </form>
   );
 }

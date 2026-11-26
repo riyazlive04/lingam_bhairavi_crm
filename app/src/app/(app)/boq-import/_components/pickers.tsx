@@ -30,7 +30,7 @@ function Combobox({
   return (
     <div className="relative">
       <label className="sr-only" htmlFor={`${id}-in`}>{label}</label>
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" aria-hidden />
+      <Search className="icon-sm pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" aria-hidden />
       <input
         id={`${id}-in`}
         ref={inputRef}
@@ -108,7 +108,7 @@ export function CustomerPicker({ customers, value, onChange, name = "customerId"
         <div className="flex h-9.5 items-center justify-between gap-2 rounded-lg border border-line bg-muted px-3 text-sm">
           <span className="min-w-0 truncate font-medium text-ink">{chosen.name}{chosen.city ? <span className="font-normal text-ink-soft">, {chosen.city}</span> : null}</span>
           <button type="button" onClick={() => onChange(null)} className="shrink-0 rounded-md p-1 text-ink-soft hover:bg-surface hover:text-ink" aria-label="Change customer">
-            <X className="h-4 w-4" aria-hidden />
+            <X className="icon-sm" aria-hidden />
           </button>
         </div>
       ) : (
@@ -170,7 +170,7 @@ export function ItemSearch({ catalog, hay, onPick, onCancel, initialQuery }: {
         />
       </div>
       <button type="button" onClick={onCancel} className="mt-1 rounded-md p-1.5 text-ink-soft hover:bg-muted hover:text-ink" aria-label="Close item search">
-        <X className="h-4 w-4" aria-hidden />
+        <X className="icon-sm" aria-hidden />
       </button>
     </div>
   );

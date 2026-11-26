@@ -1,11 +1,11 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db";
 import { requireUser } from "@/lib/auth";
 import { canRead, canWrite } from "@/lib/rbac";
 import { addDays, qty, todayIST } from "@/lib/format";
 import { getPoTerms, soPrefill } from "@/lib/purchase-orders";
-import { Flash, PageHeader } from "@/components/ui";
+import { Flash, LinkButton } from "@/components/ui";
+import { Callout, FormPage } from "@/components/patterns";
 import { PurchaseOrderForm, type POFLine } from "../_components/po-form";
 import { poFormData } from "../_lib/data";
 import { savePurchaseOrder } from "../actions";
@@ -39,27 +39,28 @@ export default async function NewPurchaseOrderPage({ searchParams }: { searchPar
   const ordersLink = so && canRead(user.role, "orders");
 
   return (
-    <div className="max-w-5xl">
-      <PageHeader
-        title={so ? `Vendor PO for ${so.number}` : "New purchase order"}
-        subtitle={so
-          ? <>Lines still to buy for {soLabel?.customerName ?? "the customer"}&apos;s order{so.customerPoNumber ? ` (PO ${so.customerPoNumber})` : ""}. Remove lines you will buy from another vendor; you can raise a second PO for them.</>
-          : "Order material from a vendor. Rates start from this vendor's last price, else the latest cost."}
-        back={so && ordersLink ? { href: `/orders/${so.id}`, label: so.number } : { href: "/purchase-orders", label: "Purchase orders" }}
-      />
-      <Flash err={sp.err} />
-      {pre && (pre.noItem > 0 || pre.covered > 0) && (
-        <p role="note" className="mb-4 rounded-lg border border-line bg-muted px-4 py-3 text-sm text-ink-soft">
-          {pre.covered > 0 && `${pre.covered} line${pre.covered === 1 ? " is" : "s are"} already delivered or fully on other POs. `}
-          {pre.noItem > 0 && `${pre.noItem} free-text line${pre.noItem === 1 ? " is" : "s are"} not linked to the item master, so ${pre.noItem === 1 ? "it" : "they"} can't go on a PO. `}
-          {ordersLink && <Link href={`/orders/${so!.id}`} className="text-brand-700 hover:underline">View the order</Link>}
-        </p>
-      )}
-      {pre && pre.lines.length === 0 && (
-        <p role="status" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-          Nothing is left to buy for this order. You can still add items by hand.
-        </p>
-      )}
+    <FormPage
+      width="wide"
+      title={so ? `Vendor PO for ${so.number}` : "New purchase order"}
+      subtitle={so
+        ? <>Lines still to buy for {soLabel?.customerName ?? "the customer"}&apos;s order{so.customerPoNumber ? ` (PO ${so.customerPoNumber})` : ""}. Remove lines you will buy from another vendor. You can raise a second PO for them.</>
+        : "Order material from a vendor. Rates start from this vendor's last price, else the latest cost."}
+      back={so && ordersLink ? { href: `/orders/${so.id}`, label: so.number } : { href: "/purchase-orders", label: "Purchase orders" }}
+      notices={
+        <>
+          <Flash err={sp.err} />
+          {pre && (pre.noItem > 0 || pre.covered > 0) && (
+            <Callout tone="info" action={ordersLink && <LinkButton href={`/orders/${so!.id}`} variant="secondary" size="sm">View the order</LinkButton>}>
+              {pre.covered > 0 && `${pre.covered} line${pre.covered === 1 ? " is" : "s are"} already delivered or fully on other POs. `}
+              {pre.noItem > 0 && `${pre.noItem} free-text line${pre.noItem === 1 ? " is" : "s are"} not linked to the item master, so ${pre.noItem === 1 ? "it" : "they"} cannot go on a PO.`}
+            </Callout>
+          )}
+          {pre && pre.lines.length === 0 && (
+            <Callout tone="warning">Nothing is left to buy for this order. You can still add items by hand.</Callout>
+          )}
+        </>
+      }
+    >
       <PurchaseOrderForm
         action={savePurchaseOrder}
         vendors={data.vendors.filter((v) => v.active)}
@@ -72,6 +73,6 @@ export default async function NewPurchaseOrderPage({ searchParams }: { searchPar
           projectId: so?.projectId ?? (Number(sp.project) || null), terms, notes: "", lines,
         }}
       />
-    </div>
+    </FormPage>
   );
 }

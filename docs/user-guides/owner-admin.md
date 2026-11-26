@@ -57,7 +57,7 @@ This guide is for the proprietors and partners of Linga Bhairavi Enterprise (sys
 | Payables Due | Vendor invoices due within 5 days |
 | All others | You see every alert, and your team acts on their own |
 
-After a big round of data entry, use **Automation Agents → Run now** to refresh the alerts straight away. The agents also run on their own every morning at 8:00.
+After a big round of data entry, use **Run now** on the **Automation Agents** page to refresh the alerts straight away. The agents also run on their own every morning at 8:00.
 
 ## 5. What you need to enter so the system works
 

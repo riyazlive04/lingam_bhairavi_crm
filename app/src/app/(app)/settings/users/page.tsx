@@ -1,13 +1,18 @@
 import { asc } from "drizzle-orm";
+import { KeyRound, UserPlus } from "lucide-react";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { ROLES } from "@/lib/constants";
 import { fmtDateTime } from "@/lib/format";
-import { Badge, Card, Field, Flash, Input, Select, Table, Td, Th } from "@/components/ui";
+import { Badge, Field, Flash, Input, Select } from "@/components/ui";
+import { ConfirmButton, FormFooter, FormSection, ResponsiveTable, SectionCard, StatusPill, type Column } from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { PasswordInput } from "../_components/password-input";
+import { SettingsTabs } from "../_components/settings-tabs";
 import { changeUserRole, createUser, resetPassword, setUserActive } from "../actions";
+
+export const metadata = { title: "Users" };
 
 export default async function UsersPage({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
   const me = await requireUser("settings");
@@ -18,95 +23,108 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
     .from(users)
     .orderBy(asc(users.active), asc(users.name));
   list.sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name));
+  const activeN = list.filter((u) => u.active).length;
+
+  type U = (typeof list)[number];
+  const columns: Column<U>[] = [
+    {
+      key: "user", header: "User", card: "title",
+      cell: (u) => (
+        <>
+          <div className="font-medium text-ink">{u.name}{u.id === me.id && <span className="ml-1 text-caption font-normal text-ink-soft">(you)</span>}</div>
+          <div className="text-caption font-normal text-ink-soft">{u.email}{u.phone ? ` · ${u.phone}` : ""}</div>
+        </>
+      ),
+    },
+    { key: "status", header: "Status", card: "badge", cell: (u) => <StatusPill status={u.active ? "active" : "inactive"} /> },
+    {
+      key: "role", header: "Role",
+      cell: (u) => u.id === me.id ? (
+        <Badge tone="violet">{ROLES[u.role as keyof typeof ROLES] ?? u.role}</Badge>
+      ) : (
+        <form action={changeUserRole} className="flex w-full items-center gap-1.5 sm:w-auto">
+          <input type="hidden" name="id" value={u.id} />
+          <Select name="role" defaultValue={u.role} aria-label={`Role of ${u.name}`} className="min-w-0 flex-1 sm:w-40 sm:flex-none">
+            {Object.entries(ROLES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </Select>
+          <SubmitButton variant="secondary" pendingText="Saving…">Save role</SubmitButton>
+        </form>
+      ),
+    },
+    { key: "login", header: "Last sign-in", nowrap: true, className: "text-ink-soft", cell: (u) => (u.lastLoginAt ? fmtDateTime(u.lastLoginAt) : "Never") },
+    {
+      key: "actions", header: <span className="sr-only">Actions</span>, label: "Actions", card: "actions",
+      cell: (u) => (
+        <div className="flex flex-col gap-2 sm:items-end">
+          <details className="group w-full sm:w-auto">
+            <summary className="inline-flex h-9.5 cursor-pointer select-none items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-brand-700 hover:bg-muted dark:text-brand-300">
+              <KeyRound className="icon-sm" aria-hidden /> Reset password
+            </summary>
+            <form action={resetPassword} className="mt-2 flex w-full flex-col gap-2 rounded-xl border border-line bg-surface-2 p-3 sm:w-80">
+              <input type="hidden" name="id" value={u.id} />
+              <PasswordInput label={`New password for ${u.name}`} />
+              <SubmitButton pendingText="Saving…" className="w-full">Set new password</SubmitButton>
+            </form>
+          </details>
+          {u.id !== me.id && (
+            <form action={setUserActive}>
+              <input type="hidden" name="id" value={u.id} />
+              <input type="hidden" name="active" value={u.active ? "0" : "1"} />
+              {u.active ? (
+                <ConfirmButton variant="ghost" className="text-danger" confirmVariant="danger" stacked pendingText="Deactivating…"
+                  confirm={`Deactivate ${u.name}? They will not be able to sign in.`} confirmLabel="Yes, deactivate">
+                  Deactivate user
+                </ConfirmButton>
+              ) : (
+                <SubmitButton variant="ghost" pendingText="Activating…">Activate user</SubmitButton>
+              )}
+            </form>
+          )}
+        </div>
+      ),
+    },
+  ];
 
   return (
-    <div className="space-y-6">
-      <Flash ok={sp.ok} err={sp.err} />
+    <>
+      <SettingsTabs active="users" />
+      <div className="space-y-8">
+        <Flash ok={sp.ok} err={sp.err} />
 
-      <Table>
-        <thead><tr><Th>User</Th><Th>Role</Th><Th>Status</Th><Th>Last sign-in</Th><Th>Password</Th></tr></thead>
-        <tbody>
-          {list.map((u) => {
-            const self = u.id === me.id;
-            return (
-              <tr key={u.id} className={u.active ? undefined : "opacity-70"}>
-                <Td>
-                  <div className="font-medium">{u.name}{self && <span className="ml-1 text-xs text-ink-soft">(you)</span>}</div>
-                  <div className="text-xs text-ink-soft">{u.email}{u.phone ? ` · ${u.phone}` : ""}</div>
-                </Td>
-                <Td>
-                  {self ? (
-                    <Badge tone="violet">{ROLES[u.role as keyof typeof ROLES] ?? u.role}</Badge>
-                  ) : (
-                    <form action={changeUserRole} className="flex items-center gap-1">
-                      <input type="hidden" name="id" value={u.id} />
-                      <Select name="role" defaultValue={u.role} aria-label={`Role of ${u.name}`} className="h-8 w-40 py-1">
-                        {Object.entries(ROLES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                      </Select>
-                      <SubmitButton size="sm" variant="secondary" pendingText="…">Set</SubmitButton>
-                    </form>
-                  )}
-                </Td>
-                <Td>
-                  <div className="flex items-center gap-2">
-                    <Badge tone={u.active ? "green" : "gray"}>{u.active ? "Active" : "Inactive"}</Badge>
-                    {!self && (
-                      <form action={setUserActive}>
-                        <input type="hidden" name="id" value={u.id} />
-                        <input type="hidden" name="active" value={u.active ? "0" : "1"} />
-                        <SubmitButton size="sm" variant="ghost" pendingText="…" confirm={u.active ? `Deactivate ${u.name}? They will not be able to sign in.` : undefined}>
-                          {u.active ? "Deactivate" : "Activate"}
-                        </SubmitButton>
-                      </form>
-                    )}
-                  </div>
-                </Td>
-                <Td className="whitespace-nowrap text-ink-soft">{u.lastLoginAt ? fmtDateTime(u.lastLoginAt) : "Never"}</Td>
-                <Td>
-                  <details>
-                    <summary className="cursor-pointer text-sm text-brand-700 dark:text-brand-300">Reset</summary>
-                    <form action={resetPassword} className="mt-2 flex w-72 flex-col gap-2">
-                      <input type="hidden" name="id" value={u.id} />
-                      <PasswordInput label={`New password for ${u.name}`} />
-                      <SubmitButton size="sm" pendingText="Resetting…">Set new password</SubmitButton>
-                    </form>
-                  </details>
-                </Td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </Table>
+        <SectionCard title="Users" count={list.length} description={`${activeN} active`} flush>
+          <ResponsiveTable flush rows={list} columns={columns} rowKey={(u) => u.id} caption="Users" rowClassName={(u) => (!u.active ? "opacity-70" : undefined)} />
+        </SectionCard>
 
-      <form action={createUser}>
-        <Card title="Add user">
-          <div className="grid gap-4 sm:grid-cols-2">
+        <form action={createUser} className="space-y-4">
+          <FormSection title="Add user" description="They sign in with their email and the temporary password you set.">
             <Field label="Name" required><Input name="name" required minLength={2} maxLength={120} autoComplete="off" /></Field>
-            <Field label="Email (login)" required><Input name="email" type="email" required maxLength={160} autoComplete="off" /></Field>
+            <Field label="Email (used to sign in)" required><Input name="email" type="email" required maxLength={160} autoComplete="off" /></Field>
             <Field label="Role" required>
-              <Select name="role" defaultValue="engineer">
+              <Select name="role" defaultValue="engineer" required>
                 {Object.entries(ROLES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </Select>
             </Field>
             <Field label="Phone"><Input name="phone" type="tel" maxLength={20} /></Field>
-            <Field label="Temporary password" required hint="Min 8 characters with letters and numbers. Share it privately; ask the user to keep it safe.">
+            <Field label="Temporary password" required className="sm:col-span-2" hint="At least 8 characters with letters and numbers. Share it privately and ask the user to keep it safe.">
               <PasswordInput />
             </Field>
-          </div>
-          <div className="mt-4"><SubmitButton>Add user</SubmitButton></div>
-        </Card>
-      </form>
+          </FormSection>
+          <FormFooter>
+            <SubmitButton pendingText="Adding…"><UserPlus className="icon-sm" aria-hidden /> Add user</SubmitButton>
+          </FormFooter>
+        </form>
 
-      <Card title="What each role can do">
-        <ul className="grid gap-2 text-sm text-ink-soft sm:grid-cols-2">
-          <li><b className="text-ink">Owner / Admin</b>: everything, approves expenses, settings.</li>
-          <li><b className="text-ink">Sales</b>: quotations, follow-ups, customers, refills, orders.</li>
-          <li><b className="text-ink">Purchase</b>: purchase invoices, items & prices, vendors.</li>
-          <li><b className="text-ink">Accounts</b>: billing, outstanding, approves expenses.</li>
-          <li><b className="text-ink">Site Engineer</b>: own projects, expense vouchers, refills (no buying prices).</li>
-          <li><b className="text-ink">Store</b>: stock, deliveries (no buying prices).</li>
-        </ul>
-      </Card>
-    </div>
+        <SectionCard title="What each role can do">
+          <ul className="grid gap-2 text-sm text-ink-soft sm:grid-cols-2">
+            <li><b className="text-ink">Owner or admin</b>: everything, approves expenses, settings.</li>
+            <li><b className="text-ink">Sales</b>: quotations, follow-ups, customers, refills, orders.</li>
+            <li><b className="text-ink">Purchase</b>: purchase invoices, items and prices, vendors.</li>
+            <li><b className="text-ink">Accounts</b>: billing, outstanding, approves expenses.</li>
+            <li><b className="text-ink">Site engineer</b>: own projects, expense vouchers, refills (no buying prices).</li>
+            <li><b className="text-ink">Store</b>: stock and deliveries (no buying prices).</li>
+          </ul>
+        </SectionCard>
+      </div>
+    </>
   );
 }

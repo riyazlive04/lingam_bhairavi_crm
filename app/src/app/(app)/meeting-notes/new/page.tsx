@@ -5,10 +5,13 @@ import { meetingNotes } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
 import { fmtDate, todayIST } from "@/lib/format";
-import { Card, Flash, LinkButton, PageHeader } from "@/components/ui";
+import { Flash } from "@/components/ui";
+import { FormFooter, FormPage, FormSection } from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { NoteFields } from "../_components/note-fields";
 import { createNote } from "../actions";
+
+export const metadata = { title: "New meeting note" };
 
 export default async function NewMeetingNotePage({ searchParams }: { searchParams: Promise<{ err?: string }> }) {
   const user = await requireUser("meetings");
@@ -23,15 +26,13 @@ export default async function NewMeetingNotePage({ searchParams }: { searchParam
   const openPrev = (prev?.actionItems ?? []).filter((i) => !i.done);
 
   return (
-    <div className="max-w-4xl">
-      <PageHeader title="New meeting note" back={{ href: "/meeting-notes", label: "Meeting notes" }} />
-      <Flash err={sp.err} />
-      <form action={createNote} className="space-y-6">
+    <FormPage title="New meeting note" back={{ href: "/meeting-notes", label: "Meeting notes" }} notices={<Flash err={sp.err} />}>
+      <form action={createNote} className="space-y-4">
         <NoteFields v={{ title: "", meetingDate: todayIST(), attendees: "", summary: "", decisions: "", openQuestions: "", transcript: "", actionItems: [] }} />
         {prev && (
-          <Card>
+          <FormSection title="Carry forward" columns={1}>
             <label className="flex items-start gap-3">
-              <input type="checkbox" name="carryForward" defaultChecked={openPrev.length > 0} disabled={!openPrev.length} className="mt-1 h-4 w-4 accent-brand-600" />
+              <input type="checkbox" name="carryForward" defaultChecked={openPrev.length > 0} disabled={!openPrev.length} className="mt-0.5 h-5 w-5 shrink-0 accent-brand-600" />
               <span className="text-sm text-ink">
                 <span className="font-medium">Carry forward open action items</span>
                 <span className="block text-ink-soft">
@@ -41,13 +42,12 @@ export default async function NewMeetingNotePage({ searchParams }: { searchParam
                 </span>
               </span>
             </label>
-          </Card>
+          </FormSection>
         )}
-        <div className="flex flex-wrap gap-2">
-          <SubmitButton>Create note</SubmitButton>
-          <LinkButton variant="secondary" href="/meeting-notes">Cancel</LinkButton>
-        </div>
+        <FormFooter cancelHref="/meeting-notes">
+          <SubmitButton pendingText="Saving…">Save meeting note</SubmitButton>
+        </FormFooter>
       </form>
-    </div>
+    </FormPage>
   );
 }

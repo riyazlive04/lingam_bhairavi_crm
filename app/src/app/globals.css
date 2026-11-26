@@ -24,6 +24,18 @@
   --shadow-md: 0 4px 12px -2px rgb(16 24 40 / 0.08), 0 2px 4px -2px rgb(16 24 40 / 0.05);
   --shadow-lg: 0 20px 40px -12px rgb(16 24 40 / 0.22);
   --sidebar: #ffffff;
+  /* Semantic text + soft surfaces (use instead of raw red/amber/emerald classes). */
+  --success: #047857; --success-soft: #ecfdf5; --success-line: #a7f3d0;
+  --warning: #b45309; --warning-soft: #fffbeb; --warning-line: #fde68a;
+  --danger: #c81e1e;  --danger-soft: #fef2f2;  --danger-line: #fecaca;
+  --info: #1d4ed8;    --info-soft: #eff6ff;    --info-line: #bfdbfe;
+  /* Charts: categorical order is fixed (validated for colour-blind separation). Never cycle. */
+  --chart-1: #2a78d6; --chart-2: #eb6834; --chart-3: #1baf7a; --chart-4: #eda100;
+  --chart-5: #e87ba4; --chart-6: #008300; --chart-7: #6250d6; --chart-8: #e34948;
+  --chart-good: #0ca30c; --chart-warning: #fab219; --chart-serious: #ec835a; --chart-critical: #d03b3b;
+  --chart-grid: #e6e7ea; --chart-axis: #c7cbd2; --chart-surface: #ffffff;
+  /* Layout: height of the phone bottom tab bar (0 on desktop, see media query below). */
+  --bottom-nav-h: 0px;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -44,6 +56,13 @@
     --shadow-md: 0 6px 16px -4px rgb(0 0 0 / 0.45);
     --shadow-lg: 0 24px 48px -12px rgb(0 0 0 / 0.6);
     --sidebar: #11151d;
+    --success: #34d399; --success-soft: rgb(6 78 59 / 0.35); --success-line: #065f46;
+    --warning: #fbbf24; --warning-soft: rgb(120 53 15 / 0.35); --warning-line: #92400e;
+    --danger: #f87171;  --danger-soft: rgb(127 29 29 / 0.35);  --danger-line: #991b1b;
+    --info: #60a5fa;    --info-soft: rgb(30 58 138 / 0.35);    --info-line: #1e40af;
+    --chart-1: #3987e5; --chart-2: #d95926; --chart-3: #199e70; --chart-4: #c98500;
+    --chart-5: #d55181; --chart-6: #0ca30c; --chart-7: #9085e9; --chart-8: #e66767;
+    --chart-grid: #262d39; --chart-axis: #3a4251; --chart-surface: #141922;
     color-scheme: dark;
   }
 }
@@ -64,6 +83,13 @@
   --shadow-md: 0 6px 16px -4px rgb(0 0 0 / 0.45);
   --shadow-lg: 0 24px 48px -12px rgb(0 0 0 / 0.6);
   --sidebar: #11151d;
+  --success: #34d399; --success-soft: rgb(6 78 59 / 0.35); --success-line: #065f46;
+  --warning: #fbbf24; --warning-soft: rgb(120 53 15 / 0.35); --warning-line: #92400e;
+  --danger: #f87171;  --danger-soft: rgb(127 29 29 / 0.35);  --danger-line: #991b1b;
+  --info: #60a5fa;    --info-soft: rgb(30 58 138 / 0.35);    --info-line: #1e40af;
+  --chart-1: #3987e5; --chart-2: #d95926; --chart-3: #199e70; --chart-4: #c98500;
+  --chart-5: #d55181; --chart-6: #0ca30c; --chart-7: #9085e9; --chart-8: #e66767;
+  --chart-grid: #262d39; --chart-axis: #3a4251; --chart-surface: #141922;
   color-scheme: dark;
 }
 
@@ -78,6 +104,23 @@
   --color-ink-soft: var(--ink-soft);
   --color-ink-faint: var(--ink-faint);
   --color-sidebar: var(--sidebar);
+  --color-success: var(--success); --color-success-soft: var(--success-soft); --color-success-line: var(--success-line);
+  --color-warning: var(--warning); --color-warning-soft: var(--warning-soft); --color-warning-line: var(--warning-line);
+  --color-danger: var(--danger); --color-danger-soft: var(--danger-soft); --color-danger-line: var(--danger-line);
+  --color-info: var(--info); --color-info-soft: var(--info-soft); --color-info-line: var(--info-line);
+  --color-chart-1: var(--chart-1); --color-chart-2: var(--chart-2); --color-chart-3: var(--chart-3); --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5); --color-chart-6: var(--chart-6); --color-chart-7: var(--chart-7); --color-chart-8: var(--chart-8);
+  --color-chart-good: var(--chart-good); --color-chart-warning: var(--chart-warning);
+  --color-chart-serious: var(--chart-serious); --color-chart-critical: var(--chart-critical);
+  --color-chart-grid: var(--chart-grid); --color-chart-axis: var(--chart-axis);
+  /* Type scale. Display face for display/title, Inter for the rest. */
+  --text-display: 1.875rem; --text-display--line-height: 2.25rem; --text-display--letter-spacing: -0.02em; --text-display--font-weight: 700;
+  --text-title: 1.5rem; --text-title--line-height: 2rem; --text-title--letter-spacing: -0.015em; --text-title--font-weight: 700;
+  --text-heading: 1.0625rem; --text-heading--line-height: 1.5rem; --text-heading--font-weight: 600;
+  --text-subheading: 0.9375rem; --text-subheading--line-height: 1.375rem; --text-subheading--font-weight: 600;
+  --text-body: 0.875rem; --text-body--line-height: 1.375rem;
+  --text-caption: 0.75rem; --text-caption--line-height: 1.125rem;
+  --text-overline: 0.6875rem; --text-overline--line-height: 1rem; --text-overline--letter-spacing: 0.06em; --text-overline--font-weight: 600;
   /* Fire red: 600 is the primary action colour (white text contrast 5.6:1). */
   --color-brand-50: #fff3f1;
   --color-brand-100: #ffe3df;
@@ -198,3 +241,117 @@ body {
 
 /* Display face for headings (Plus Jakarta Sans via next/font). */
 @theme inline { --font-display: var(--font-display-app), var(--font-sans-app), ui-sans-serif, system-ui, sans-serif; }
+
+/* ======================================================================== Version 2 design system
+ * Patterns live in src/components/patterns. See docs/DESIGN_SYSTEM.md. Maintainer: Sirah Digital. */
+
+/* Phones and tablets show a bottom tab bar (see app-shell). Fixed or sticky bottom bars sit above it. */
+@media (max-width: 1023.98px) { :root { --bottom-nav-h: calc(3.75rem + env(safe-area-inset-bottom)); } }
+@media print { :root { --bottom-nav-h: 0px; } }
+
+/* Icon sizes: use these instead of h-4 w-4 style pairs. */
+@utility icon-xs { width: 0.875rem; height: 0.875rem; flex-shrink: 0; }
+@utility icon-sm { width: 1rem; height: 1rem; flex-shrink: 0; }
+@utility icon-md { width: 1.125rem; height: 1.125rem; flex-shrink: 0; }
+@utility icon-lg { width: 1.25rem; height: 1.25rem; flex-shrink: 0; }
+/* Bottom offset that clears the phone tab bar (for fixed / sticky footers and action bars). */
+@utility bottom-nav-offset { bottom: var(--bottom-nav-h); }
+@utility pb-nav { padding-bottom: calc(var(--bottom-nav-h) + 1.5rem); }
+
+@layer components {
+/* ------------------------------------------------------------------ density
+ * <html data-density="compact"> tightens every data table. Toggled by <DensityToggle />. */
+[data-density="compact"] .ui-th { padding: 0.4rem 0.625rem; }
+[data-density="compact"] .ui-td { padding: 0.375rem 0.625rem; font-size: 0.8125rem; }
+[data-density="compact"] .ui-table { font-size: 0.8125rem; }
+
+/* Form controls get the same visible ring as links and buttons when reached by keyboard. */
+:where(input, select, textarea):focus-visible { outline: none; }
+
+/* ------------------------------------------------------------------ responsive table
+ * <ResponsiveTable>: a normal table from 640px; below that each row becomes a card.
+ * Cells carry data-slot (title, subtitle, badge, amount, field, hidden) and data-label. */
+@media (min-width: 640px) and (max-width: 1023.98px) { .rt .rt-p3 { display: none; } }
+@media (max-width: 639.98px) {
+  .rt.ui-table { min-width: 0; }
+  .rt thead { display: none; }
+  .rt, .rt > tbody, .rt > tfoot { display: block; }
+  .rt > tbody > tr, .rt > tfoot > tr {
+    position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 0.75rem; row-gap: 0.25rem;
+    padding: 0.875rem 1rem; border-bottom: 1px solid var(--line);
+  }
+  .rt > tbody > tr:last-child { border-bottom: 0; }
+  .rt > tbody > tr > .ui-td, .rt > tfoot > tr > .ui-td { display: block; padding: 0; border: 0; background: transparent !important; text-align: left; }
+  .rt .ui-td[data-slot="title"] { grid-column: 1; grid-row: 1; font-weight: 600; }
+  .rt .ui-td[data-slot="badge"] { grid-column: 2; grid-row: 1; justify-self: end; }
+  .rt .ui-td[data-slot="subtitle"] { grid-column: 1; grid-row: 2; font-size: 0.8125rem; color: var(--ink-soft); }
+  .rt .ui-td[data-slot="amount"] { grid-column: 2; grid-row: 2; justify-self: end; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .rt .ui-td[data-slot="field"] { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 1rem; font-size: 0.8125rem; }
+  .rt .ui-td[data-slot="field"]::before { content: attr(data-label); color: var(--ink-soft); flex-shrink: 0; }
+  .rt .ui-td[data-slot="field"]:empty { display: none; }
+  .rt .ui-td[data-slot="actions"] { grid-column: 1 / -1; margin-top: 0.25rem; }
+  .rt .ui-td[data-slot="hidden"] { display: none; }
+  /* The main link covers the whole card so a tap anywhere opens the record. */
+  .rt .rt-stretch::after { content: ""; position: absolute; inset: 0; }
+  .rt .ui-td[data-slot="actions"] :where(a, button, select, input) { position: relative; z-index: 1; }
+}
+
+/* ------------------------------------------------------------------ editable line grids */
+.li-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 0.875rem; background: var(--surface); }
+.li-table { width: 100%; min-width: max-content; border-collapse: separate; border-spacing: 0; font-size: 0.875rem; }
+.li-table > thead > tr > th {
+  position: sticky; top: 0; z-index: 1; background: var(--muted); border-bottom: 1px solid var(--line);
+  padding: 0.5rem 0.5rem; text-align: left; white-space: nowrap;
+  font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-soft);
+}
+.li-table > tbody > tr > td { border-bottom: 1px solid var(--line); padding: 0.375rem 0.5rem; vertical-align: top; }
+.li-table > tbody > tr:last-child > td { border-bottom: 0; }
+.li-table > tbody > tr:focus-within > td { background: color-mix(in srgb, var(--color-brand-500) 5%, transparent); }
+.li-table > tfoot > tr > td { border-top: 1px solid var(--line); padding: 0.5rem; font-weight: 600; background: var(--surface-2); }
+.li-table .li-num { text-align: right; font-variant-numeric: tabular-nums; }
+.li-input {
+  display: block; width: 100%; height: 2.125rem; border-radius: 0.5rem; border: 1px solid transparent; background: transparent;
+  padding: 0 0.5rem; font-size: 0.875rem; color: var(--ink);
+}
+.li-input:hover { border-color: var(--line); }
+.li-input:focus { outline: none; border-color: var(--color-brand-500); background: var(--surface); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand-500) 20%, transparent); }
+.li-input.li-num { text-align: right; }
+
+/* ------------------------------------------------------------------ document sheet (A4 prints) */
+.doc-sheet {
+  --doc-ink: var(--ink); --doc-soft: var(--ink-soft); --doc-line: var(--line-strong);
+  margin-inline: auto; width: 100%; max-width: 210mm; background: var(--surface); color: var(--doc-ink);
+  border: 1px solid var(--line); border-radius: 1rem; box-shadow: var(--shadow-md);
+  padding: 1.25rem; font-size: 0.8125rem; line-height: 1.45;
+}
+@media (min-width: 640px) { .doc-sheet { padding: 12mm 14mm; } }
+.doc-sheet h1, .doc-sheet h2 { font-family: var(--font-display); }
+.doc-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+.doc-table th, .doc-table td { border: 1px solid var(--doc-line); padding: 0.375rem 0.5rem; vertical-align: top; }
+.doc-table th { background: var(--muted); text-align: left; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--doc-soft); }
+.doc-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.doc-table tfoot td { font-weight: 600; }
+
+}
+
+@media print {
+  @page { size: A4; margin: 12mm; }
+  html, body { background: #fff !important; }
+  .doc-sheet {
+    --doc-ink: #000; --doc-soft: #333; --doc-line: #999;
+    max-width: none; border: 0; border-radius: 0; box-shadow: none; padding: 0; background: #fff; color: #000;
+  }
+  .doc-sheet .doc-brand { color: #000 !important; }
+  .doc-table th { background: #f2f2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .doc-table tr, .doc-avoid-break { break-inside: avoid; }
+  .doc-table thead { display: table-header-group; }
+  #main { padding: 0 !important; max-width: none !important; }
+}
+
+/* Printing from dark mode must still give black text on white paper. */
+@media print {
+  :root, :root[data-theme="dark"], :root:not([data-theme="light"]) {
+    --bg: #fff; --surface: #fff; --surface-2: #fff; --muted: #f2f2f2; --line: #bbb; --line-strong: #999;
+    --ink: #000; --ink-soft: #333; --ink-faint: #555; --zebra: #fff; color-scheme: light;
+  }
+}

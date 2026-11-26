@@ -1,4 +1,5 @@
-import { Card, Field, Input, LinkButton, Select, Textarea } from "@/components/ui";
+import { Field, Input, Select, Textarea } from "@/components/ui";
+import { FormFooter, FormSection } from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { SYSTEMS } from "@/lib/constants";
 import type { items } from "@/db/schema";
@@ -15,8 +16,7 @@ export function ItemForm({ action, item, groups, makes, cancelHref }: {
 }) {
   return (
     <form action={action} className="space-y-4">
-      <Card title="Identification">
-        <div className="grid gap-4 sm:grid-cols-2">
+      <FormSection title="What the item is" description="Code, name and where it sits in the price master.">
           <Field label="Item code" required hint="Unique, e.g. HS-PGI-150">
             <Input name="code" required maxLength={40} defaultValue={item?.code} autoCapitalize="characters" />
           </Field>
@@ -35,7 +35,7 @@ export function ItemForm({ action, item, groups, makes, cancelHref }: {
           <Field label="Size" hint="Use NB for pipe sizes (150NB) so they appear in the size matrix">
             <Input name="size" maxLength={40} defaultValue={item?.size ?? ""} />
           </Field>
-          <Field label="Make / brand">
+          <Field label="Make or brand">
             <Input name="make" maxLength={80} list="item-makes" defaultValue={item?.make ?? ""} />
             <datalist id="item-makes">{makes.map((m) => <option key={m} value={m} />)}</datalist>
           </Field>
@@ -49,14 +49,12 @@ export function ItemForm({ action, item, groups, makes, cancelHref }: {
           <Field label="Description" className="sm:col-span-2">
             <Textarea name="description" defaultValue={item?.description ?? ""} />
           </Field>
-        </div>
-      </Card>
-      <Card title="Pricing & stock">
-        <div className="grid gap-4 sm:grid-cols-2">
+      </FormSection>
+      <FormSection title="Pricing and stock" description="Tax, markup and when to reorder.">
           <Field label="GST %" required>
             <Input name="gstRate" type="number" step="0.01" min={0} max={28} required defaultValue={item?.gstRate ?? 18} />
           </Field>
-          <Field label="List price (₹)" hint={item ? "Use “Update list price” on the item page to record history" : "Used until the first purchase invoice is posted"}>
+          <Field label="List price (₹)" hint={item ? "Use Update list price on the item page so the change is kept in the history" : "Used until the first purchase invoice is posted"}>
             <Input name="listPrice" type="number" step="0.01" min={0} defaultValue={item?.listPrice ?? ""} disabled={!!item} />
           </Field>
           <Field label="Default markup %" required>
@@ -70,22 +68,20 @@ export function ItemForm({ action, item, groups, makes, cancelHref }: {
           </Field>
           <div className="flex flex-col justify-end gap-2">
             <label className="flex items-center gap-2 text-sm text-ink">
-              <input type="checkbox" name="volatilePrice" defaultChecked={item?.volatilePrice ?? false} className="h-4 w-4 accent-brand-600" />
+              <input type="checkbox" name="volatilePrice" defaultChecked={item?.volatilePrice ?? false} className="icon-sm accent-brand-600" />
               Volatile price (pipes): flag as stale after 7 days
             </label>
             {item && (
               <label className="flex items-center gap-2 text-sm text-ink">
-                <input type="checkbox" name="active" defaultChecked={item.active} className="h-4 w-4 accent-brand-600" />
+                <input type="checkbox" name="active" defaultChecked={item.active} className="icon-sm accent-brand-600" />
                 Active
               </label>
             )}
           </div>
-        </div>
-      </Card>
-      <div className="flex flex-wrap gap-2">
-        <SubmitButton>{item ? "Save changes" : "Create item"}</SubmitButton>
-        <LinkButton href={cancelHref} variant="secondary">Cancel</LinkButton>
-      </div>
+      </FormSection>
+      <FormFooter cancelHref={cancelHref}>
+        <SubmitButton pendingText="Saving…">{item ? "Save changes" : "Save item"}</SubmitButton>
+      </FormFooter>
     </form>
   );
 }

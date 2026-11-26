@@ -25,10 +25,10 @@ export function PasswordInput({ name = "password", label = "Temporary password",
         value={value} onChange={(e) => setValue(e.target.value)} aria-label={label} className="font-mono"
       />
       <Button type="button" variant="secondary" onClick={() => setShow((s) => !s)} aria-label={show ? "Hide password" : "Show password"}>
-        {show ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
+        {show ? <EyeOff className="icon-sm" aria-hidden /> : <Eye className="icon-sm" aria-hidden />}
       </Button>
-      <Button type="button" variant="secondary" onClick={() => { setValue(generate()); setShow(true); }} aria-label="Generate password" title="Generate">
-        <Wand2 className="h-4 w-4" aria-hidden />
+      <Button type="button" variant="secondary" onClick={() => { setValue(generate()); setShow(true); }} aria-label="Generate password" title="Generate a password">
+        <Wand2 className="icon-sm" aria-hidden />
       </Button>
     </div>
   );

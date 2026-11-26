@@ -5,7 +5,8 @@ import { customers, projects, quotations, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { todayIST } from "@/lib/format";
 import { AMC_SYSTEMS, BILLING_FREQUENCIES, COVERAGE, SCOPE_PARTS, defaultEndDate, toAmcSystem } from "@/lib/amc";
-import { Flash, PageHeader } from "@/components/ui";
+import { Flash } from "@/components/ui";
+import { FormPage } from "@/components/patterns";
 import { ContractForm, type ProjectOpt } from "../_components/contract-form";
 import { amcAccess } from "../_lib/access";
 
@@ -31,13 +32,12 @@ export default async function NewContractPage({ searchParams }: { searchParams: 
   });
 
   return (
-    <div className="max-w-4xl">
-      <PageHeader
-        title="New AMC contract"
-        subtitle="Preventive visits are scheduled automatically and spread evenly over the contract term."
-        back={{ href: "/amc", label: "AMC contracts" }}
-      />
-      <Flash ok={sp.ok} err={sp.err} />
+    <FormPage
+      title="New AMC contract"
+      subtitle="Preventive visits are scheduled automatically and spread evenly over the contract term."
+      back={{ href: "/amc", label: "AMC contracts" }}
+      notices={<Flash ok={sp.ok} err={sp.err} />}
+    >
       <ContractForm
         customers={customerList.map((c) => ({ id: c.id, name: c.name, address: [c.address, c.city].filter(Boolean).join(", ") || null }))}
         projects={projectOpts}
@@ -51,6 +51,6 @@ export default async function NewContractPage({ searchParams }: { searchParams: 
         initialCustomerId={Number(sp.customerId) || undefined}
         initialProjectId={Number(sp.projectId) || undefined}
       />
-    </div>
+    </FormPage>
   );
 }

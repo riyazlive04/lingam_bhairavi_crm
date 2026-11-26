@@ -1,6 +1,5 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { FileSpreadsheet } from "lucide-react";
+import { ChevronRight, FileSpreadsheet, UserPlus } from "lucide-react";
 import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { boqTemplates, customers } from "@/db/schema";
@@ -10,7 +9,8 @@ import { SYSTEMS, type SystemKey } from "@/lib/constants";
 import { addDays, todayIST } from "@/lib/format";
 import { getPricingSettings } from "@/lib/pricing";
 import { getCompanySettings } from "@/lib/quotations";
-import { Card, Field, Flash, Input, PageHeader, Select } from "@/components/ui";
+import { Field, Flash, Input, LinkButton, Select } from "@/components/ui";
+import { Callout, FormFooter, FormPage, FormSection } from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { startQuotation, saveQuotation } from "../actions";
 import { QuoteEditor } from "../_components/quote-editor";
@@ -64,14 +64,16 @@ export default async function NewQuotationPage({ searchParams }: { searchParams:
     const lines = [...refillLines, ...tmplLines];
     const today = todayIST();
     const back = `/quotations/new?${new URLSearchParams(Object.entries(sp).filter(([k, v]) => k !== "err" && k !== "ok" && typeof v === "string") as [string, string][]).toString()}`;
+    const step1 = `/quotations/new?${new URLSearchParams({ customerId: String(cust.id), ...(templateId ? { templateId: String(templateId) } : {}) }).toString()}`;
     return (
-      <div>
-        <PageHeader
-          title="New quotation: enter quantities"
-          subtitle={<>Step 2 of 2 · {cust.name}{tmpl ? <> · {tmpl.name}</> : " · blank quotation"}. Only lines with a quantity are saved.</>}
-          back={{ href: `/quotations/new?${new URLSearchParams({ customerId: String(cust.id), ...(templateId ? { templateId: String(templateId) } : {}) }).toString()}`, label: "Back to step 1" }}
-        />
-        <Flash err={sp.err} />
+      <FormPage
+        width="wide"
+        eyebrow="Step 2 of 2"
+        title="Enter quantities"
+        subtitle={<>{cust.name}{tmpl ? <> · {tmpl.name}</> : " · blank quotation"}. Only lines with a quantity are saved.</>}
+        back={{ href: step1, label: "Back to step 1" }}
+        notices={<Flash err={sp.err} />}
+      >
         <QuoteEditor
           action={saveQuotation}
           back={back}
@@ -89,8 +91,9 @@ export default async function NewQuotationPage({ searchParams }: { searchParams:
           canChangeMarkup={showCost}
           today={today}
           approvalMode={pricing.approvalMode}
+          cancelHref={step1}
         />
-      </div>
+      </FormPage>
     );
   }
 
@@ -103,26 +106,34 @@ export default async function NewQuotationPage({ searchParams }: { searchParams:
   for (const t of templates) bySystem.set(t.system, [...(bySystem.get(t.system) ?? []), t]);
 
   return (
-    <div>
-      <PageHeader title="New quotation" subtitle="Step 1 of 2 · customer, project and standard BOQ" back={{ href: "/quotations", label: "Quotations" }} />
-      <Flash err={sp.err} ok={sp.ok} />
-      <p className="mb-4 flex items-center gap-2 rounded-lg border border-line bg-muted px-4 py-2.5 text-sm text-ink-soft">
-        <FileSpreadsheet className="h-4 w-4 shrink-0 text-brand-700 dark:text-brand-300" aria-hidden />
-        <span>Have the consultant&apos;s Excel? <Link href="/boq-import" className="font-medium text-brand-700 hover:underline dark:text-brand-300">Import it instead</Link></span>
-      </p>
-      <form action={startQuotation} className="space-y-6">
-        <Card title="Customer">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Existing customer" className="sm:col-span-2" hint="Or leave this empty and quick-create a new customer below">
-              <Select name="customerId" defaultValue={customerId ?? ""}>
-                <option value="">Select a customer</option>
-                {custs.map((c) => <option key={c.id} value={c.id}>{c.name}{c.city ? `, ${c.city}` : ""}</option>)}
-              </Select>
-            </Field>
-          </div>
-          <details className="mt-4 rounded-lg border border-line p-4">
-            <summary className="cursor-pointer text-sm font-medium text-brand-700">+ Quick-create a new customer</summary>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+    <FormPage
+      eyebrow="Step 1 of 2"
+      title="New quotation"
+      subtitle="Choose the customer, the project and a standard BOQ. You enter quantities in the next step."
+      back={{ href: "/quotations", label: "Quotations" }}
+      notices={
+        <>
+          <Flash err={sp.err} ok={sp.ok} />
+          <Callout tone="info" icon={FileSpreadsheet} title="Have the consultant's Excel?"
+            action={<LinkButton href="/boq-import" variant="secondary" size="sm">Import BOQ instead</LinkButton>}>
+            Upload it and each row is matched to your items with the latest price.
+          </Callout>
+        </>
+      }
+    >
+      <form action={startQuotation} className="space-y-4">
+        <FormSection title="Customer" description="Pick an existing customer, or add a new one here.">
+          <Field label="Existing customer" className="sm:col-span-2" hint="Or leave this empty and add a new customer below">
+            <Select name="customerId" defaultValue={customerId ?? ""}>
+              <option value="">Select a customer</option>
+              {custs.map((c) => <option key={c.id} value={c.id}>{c.name}{c.city ? `, ${c.city}` : ""}</option>)}
+            </Select>
+          </Field>
+          <details className="group rounded-xl border border-line sm:col-span-2">
+            <summary className="flex cursor-pointer select-none items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-brand-700 hover:bg-muted dark:text-brand-300">
+              <UserPlus className="icon-sm" aria-hidden /> Add a new customer instead
+            </summary>
+            <div className="grid gap-4 border-t border-line p-4 sm:grid-cols-2">
               <Field label="Customer name" hint="If filled, a new customer is created and used for this quotation">
                 <Input name="newName" maxLength={200} autoComplete="organization" />
               </Field>
@@ -137,38 +148,37 @@ export default async function NewQuotationPage({ searchParams }: { searchParams:
               </Field>
             </div>
           </details>
-        </Card>
+        </FormSection>
 
-        <Card title="Project & BOQ">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Project name">
-              <Input name="projectName" maxLength={200} defaultValue={sp.projectName} placeholder="e.g. Hydrant & sprinkler for new warehouse" />
-            </Field>
-            <Field label="Site location">
-              <Input name="siteLocation" maxLength={200} defaultValue={sp.site} placeholder="e.g. SIPCOT Phase II, Hosur" />
-            </Field>
-            <Field label="Standard BOQ template" className="sm:col-span-2" hint="All lines of the template appear in the next step. Enter quantities; lines with zero qty are left out.">
-              <Select name="templateId" defaultValue={templateId ?? ""}>
-                <option value="">Blank quotation (add items manually)</option>
-                {[...bySystem.entries()].map(([sys, list]) => (
-                  <optgroup key={sys} label={SYSTEMS[sys as SystemKey] ?? sys}>
-                    {list.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </optgroup>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Markup % over latest cost" hint={`Default ${pricing.defaultMarkupPct}% from pricing settings`}>
-              <Input name="markupPct" type="number" min={0} max={500} step="0.5" defaultValue={markup} required />
-            </Field>
-            <Field label="Validity (days)">
-              <Input name="validityDays" type="number" min={1} max={365} step={1} defaultValue={validity} required />
-            </Field>
-          </div>
-        </Card>
-        <div className="flex justify-end">
-          <SubmitButton pendingText="Loading BOQ…">Next: enter quantities →</SubmitButton>
-        </div>
+        <FormSection title="Project and BOQ" description="Every line of the template appears in the next step. Lines left at zero are not saved.">
+          <Field label="Project name">
+            <Input name="projectName" maxLength={200} defaultValue={sp.projectName} placeholder="For example: hydrant and sprinkler for new warehouse" />
+          </Field>
+          <Field label="Site location">
+            <Input name="siteLocation" maxLength={200} defaultValue={sp.site} placeholder="For example: SIPCOT Phase II, Hosur" />
+          </Field>
+          <Field label="Standard BOQ template" className="sm:col-span-2">
+            <Select name="templateId" defaultValue={templateId ?? ""}>
+              <option value="">Blank quotation (add items yourself)</option>
+              {[...bySystem.entries()].map(([sys, list]) => (
+                <optgroup key={sys} label={SYSTEMS[sys as SystemKey] ?? sys}>
+                  {list.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </optgroup>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Markup % over latest cost" hint={`Default ${pricing.defaultMarkupPct}% from pricing settings`} required>
+            <Input name="markupPct" type="number" inputMode="decimal" min={0} max={500} step="0.5" defaultValue={markup} required className="text-right" />
+          </Field>
+          <Field label="Validity (days)" required>
+            <Input name="validityDays" type="number" inputMode="numeric" min={1} max={365} step={1} defaultValue={validity} required className="text-right" />
+          </Field>
+        </FormSection>
+
+        <FormFooter cancelHref="/quotations">
+          <SubmitButton pendingText="Loading BOQ…">Next: enter quantities <ChevronRight className="icon-sm" aria-hidden /></SubmitButton>
+        </FormFooter>
       </form>
-    </div>
+    </FormPage>
   );
 }

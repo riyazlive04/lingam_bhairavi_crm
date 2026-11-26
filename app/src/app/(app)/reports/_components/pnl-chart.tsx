@@ -4,12 +4,12 @@ import { monthLabel, type PnlMonth } from "@/lib/reports";
 /**
  * Monthly P&L chart, inline SVG (no chart library). One money axis:
  * grouped bars for sales, cost of goods and expenses, a line for net profit.
- * Palette checked with the dataviz validator for light and dark surfaces.
+ * Colours are the shared chart tokens (chart-1 to chart-4, in fixed order), which switch for dark mode.
  */
 const SERIES = [
-  { key: "sales", label: "Sales", cls: "fill-blue-600 dark:fill-blue-500", swatch: "bg-blue-600 dark:bg-blue-500" },
-  { key: "cogs", label: "Cost of goods", cls: "fill-amber-600", swatch: "bg-amber-600" },
-  { key: "expenses", label: "Expenses", cls: "fill-violet-600 dark:fill-violet-500", swatch: "bg-violet-600 dark:bg-violet-500" },
+  { key: "sales", label: "Sales", cls: "fill-chart-1", swatch: "bg-chart-1" },
+  { key: "cogs", label: "Cost of goods", cls: "fill-chart-2", swatch: "bg-chart-2" },
+  { key: "expenses", label: "Expenses", cls: "fill-chart-3", swatch: "bg-chart-3" },
 ] as const;
 
 export function PnlChart({ months }: { months: PnlMonth[] }) {
@@ -40,16 +40,16 @@ export function PnlChart({ months }: { months: PnlMonth[] }) {
 
   return (
     <figure>
-      <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-soft">
+      <figcaption className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-caption text-ink-soft">
         {SERIES.map((s) => (
           <span key={s.key} className="flex items-center gap-1.5"><span className={`h-2.5 w-2.5 rounded-sm ${s.swatch}`} aria-hidden /> {s.label}</span>
         ))}
-        <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded bg-emerald-600" aria-hidden /> Net profit</span>
-      </div>
+        <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded bg-chart-4" aria-hidden /> Net profit</span>
+      </figcaption>
       <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Monthly sales, cost of goods, expenses and net profit. The table below has the same numbers.">
         {ticks.map((t) => (
           <g key={t}>
-            <line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} className={t === 0 ? "stroke-line-strong" : "stroke-line"} strokeWidth={1} />
+            <line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} className={t === 0 ? "stroke-chart-axis" : "stroke-chart-grid"} strokeWidth={1} />
             <text x={padL - 6} y={y(t) + 4} textAnchor="end" className="fill-ink-soft text-[11px]">{moneyShort(t)}</text>
           </g>
         ))}
@@ -62,9 +62,9 @@ export function PnlChart({ months }: { months: PnlMonth[] }) {
             </g>
           );
         })}
-        {!empty && <path d={line} fill="none" className="stroke-emerald-600" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />}
+        {!empty && <path d={line} fill="none" className="stroke-chart-4" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />}
         {!empty && months.map((m, i) => (
-          <circle key={m.month} cx={cx(i)} cy={y(m.netProfit)} r={4} className="fill-emerald-600 stroke-surface" strokeWidth={2} />
+          <circle key={m.month} cx={cx(i)} cy={y(m.netProfit)} r={4} className="fill-chart-4 stroke-surface" strokeWidth={2} />
         ))}
         {/* hover targets: one per month, with the full numbers in a native tooltip */}
         {months.map((m, i) => (

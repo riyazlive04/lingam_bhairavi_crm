@@ -3,7 +3,8 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { projects } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { Flash, PageHeader } from "@/components/ui";
+import { Flash } from "@/components/ui";
+import { FormPage } from "@/components/patterns";
 import { ProjectForm } from "../../_components/project-form";
 import { projectAccess } from "../../_lib/access";
 
@@ -19,10 +20,8 @@ export default async function EditProjectPage({ params, searchParams }: { params
   const acc = projectAccess(user, p);
   if (!acc.edit) redirect("/forbidden");
   return (
-    <div className="max-w-3xl">
-      <PageHeader title={`Edit ${p.code}`} subtitle={p.name} back={{ href: `/projects/${p.id}`, label: "Costing sheet" }} />
-      <Flash err={sp.err} />
+    <FormPage eyebrow={p.code} title={`Edit ${p.name}`} back={{ href: `/projects/${p.id}`, label: "Costing sheet" }} notices={<Flash err={sp.err} />}>
       <ProjectForm db={db} values={p} showFinancials={acc.full} canAssign={user.role === "admin"} />
-    </div>
+    </FormPage>
   );
 }

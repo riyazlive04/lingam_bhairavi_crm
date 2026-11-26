@@ -11,7 +11,7 @@ import { fmtDate, money0 } from "@/lib/format";
 import { poReceivedPct } from "@/lib/purchase-orders";
 import { canRead, canSeeCost } from "@/lib/rbac";
 import type { Role } from "@/lib/constants";
-import { Card, EmptyState, Table, Td, Th } from "@/components/ui";
+import { ResponsiveTable, SectionCard, type Column } from "@/components/patterns";
 import { PoStatusBadge, ReceivedBar } from "./po-bits";
 
 export async function LinkedPosCard({ role, salesOrderId, projectId, className, hideWhenEmpty = false }: {
@@ -32,27 +32,21 @@ export async function LinkedPosCard({ role, salesOrderId, projectId, className, 
   // PO totals are buying prices: hidden from roles that may not see cost (engineers on the order / project page)
   const showTotal = link || canSeeCost(role);
 
+  type Po = (typeof pos)[number];
+  const columns: Column<Po>[] = [
+    { key: "no", header: "PO", card: "title", nowrap: true,
+      cell: (p) => link ? <Link href={`/purchase-orders/${p.id}`} className="rt-stretch font-medium text-brand-700 hover:underline dark:text-brand-300">{p.number}</Link> : p.number },
+    { key: "vendor", header: "Vendor", card: "subtitle", className: "max-w-48 truncate", cell: (p) => p.vendorName ?? "-" },
+    { key: "date", header: "Date", nowrap: true, cell: (p) => fmtDate(p.poDate) },
+    ...(showTotal ? [{ key: "total", header: "Total", align: "right" as const, card: "amount" as const, nowrap: true, cell: (p: Po) => money0(p.total) }] : []),
+    { key: "status", header: "Status", card: "badge", cell: (p) => <PoStatusBadge status={p.status} /> },
+    { key: "recv", header: "Received", cell: (p) => <ReceivedBar pct={poReceivedPct(lines.filter((l) => l.poId === p.id))} /> },
+  ];
+
   return (
-    <Card title={`Vendor POs (${pos.length})`} icon={ClipboardList} className={className} bodyClassName={pos.length ? "p-0" : undefined}>
-      {pos.length === 0 ? (
-        <EmptyState title="No vendor POs yet">Purchase orders placed with suppliers for this {salesOrderId != null ? "order" : "project"} appear here.</EmptyState>
-      ) : (
-        <Table className="rounded-none border-0 shadow-none">
-          <thead><tr><Th>PO</Th><Th>Vendor</Th><Th>Date</Th>{showTotal && <Th className="text-right">Total</Th>}<Th>Status</Th><Th>Received</Th></tr></thead>
-          <tbody>
-            {pos.map((p) => (
-              <tr key={p.id}>
-                <Td>{link ? <Link href={`/purchase-orders/${p.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{p.number}</Link> : p.number}</Td>
-                <Td className="max-w-48 truncate">{p.vendorName ?? "-"}</Td>
-                <Td className="whitespace-nowrap">{fmtDate(p.poDate)}</Td>
-                {showTotal && <Td className="text-right tabular-nums">{money0(p.total)}</Td>}
-                <Td><PoStatusBadge status={p.status} /></Td>
-                <Td><ReceivedBar pct={poReceivedPct(lines.filter((l) => l.poId === p.id))} /></Td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
-      )}
-    </Card>
+    <SectionCard title="Vendor POs" count={pos.length} icon={ClipboardList} className={className} flush
+      empty={pos.length === 0 && `No vendor POs yet. Purchase orders placed with suppliers for this ${salesOrderId != null ? "order" : "project"} appear here.`}>
+      <ResponsiveTable flush rows={pos} columns={columns} rowKey={(p) => p.id} caption="Vendor POs" />
+    </SectionCard>
   );
 }

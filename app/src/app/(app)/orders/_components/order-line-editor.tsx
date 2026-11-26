@@ -1,7 +1,8 @@
 "use client";
 import { useId, useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { Button, inputClass } from "@/components/ui";
+import { Button } from "@/components/ui";
+import { LineItemsTable, li } from "@/components/patterns";
 import { money, round2 } from "@/lib/format";
 
 export type PickItem = { id: number; code: string; name: string; uom: string; rate: number };
@@ -28,64 +29,77 @@ export function OrderLineEditor({ items, initial, defaultExpected }: { items: Pi
   const total = round2(valid.reduce((s, l) => s + l.qty * l.rate, 0));
 
   return (
-    <div>
+    <div className="space-y-3">
       <datalist id={listId}>
         {items.map((i) => <option key={i.id} value={label(i)} />)}
       </datalist>
       <input type="hidden" name="lines" value={JSON.stringify(valid)} />
-      <ol className="space-y-3">
-        {lines.map((l, idx) => {
-          const it = l.itemId ? byId.get(l.itemId) : undefined;
-          return (
-            <li key={idx} className="rounded-lg border border-line bg-muted/40 p-3">
-              <div className="grid gap-3 sm:grid-cols-12">
-                <label className="block sm:col-span-5">
-                  <span className="mb-1 block text-xs font-medium text-ink-soft">Item / description #{idx + 1}</span>
+      <LineItemsTable minWidth={880} caption="Order lines">
+        <thead>
+          <tr>
+            <th className="w-8">#</th>
+            <th>Item or description</th>
+            <th className={li.num}>Qty</th>
+            <th>UOM</th>
+            <th className={li.num}>Rate (ex-GST)</th>
+            <th>Expected</th>
+            <th className={li.num}>Amount</th>
+            <th><span className="sr-only">Remove</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((l, idx) => {
+            const it = l.itemId ? byId.get(l.itemId) : undefined;
+            return (
+              <tr key={idx}>
+                <td className="pt-2.5 text-caption text-ink-soft tabular-nums">{idx + 1}</td>
+                <td className="min-w-72">
                   <input
-                    className={inputClass} list={listId} value={it ? label(it) : l.description}
+                    className={li.input} list={listId} value={it ? label(it) : l.description}
                     onChange={(e) => pickText(idx, e.target.value)} placeholder="Type item code or name, or free text"
-                    aria-describedby={it ? undefined : `${listId}-free-${idx}`}
+                    aria-label={`Line ${idx + 1} item`} aria-describedby={it ? undefined : `${listId}-free-${idx}`}
                   />
-                  {!it && l.description && <span id={`${listId}-free-${idx}`} className="mt-1 block text-xs text-ink-faint">Free-text line (not linked to item master)</span>}
-                </label>
-                <label className="block sm:col-span-2">
-                  <span className="mb-1 block text-xs font-medium text-ink-soft">Qty</span>
-                  <input className={inputClass} type="number" inputMode="decimal" min={0} step="any" value={Number.isFinite(l.qty) ? l.qty : ""}
-                    onChange={(e) => set(idx, { qty: Number(e.target.value) })} />
-                </label>
-                <label className="block sm:col-span-1">
-                  <span className="mb-1 block text-xs font-medium text-ink-soft">UOM</span>
-                  <input className={inputClass} value={l.uom} maxLength={20} onChange={(e) => set(idx, { uom: e.target.value })} />
-                </label>
-                <label className="block sm:col-span-2">
-                  <span className="mb-1 block text-xs font-medium text-ink-soft">Rate (₹, ex-GST)</span>
-                  <input className={inputClass} type="number" inputMode="decimal" min={0} step="any" value={Number.isFinite(l.rate) ? l.rate : ""}
-                    onChange={(e) => set(idx, { rate: Number(e.target.value) })} />
-                </label>
-                <label className="block sm:col-span-2">
-                  <span className="mb-1 block text-xs font-medium text-ink-soft">Expected</span>
-                  <input className={inputClass} type="date" value={l.expectedDate} onChange={(e) => set(idx, { expectedDate: e.target.value })} />
-                </label>
-              </div>
-              <div className="mt-2 flex items-center justify-between text-sm">
-                <span className="text-ink-soft">Amount: <span className="font-medium text-ink tabular-nums">{money(round2((l.qty || 0) * (l.rate || 0)))}</span></span>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setLines((ls) => ls.filter((_, i) => i !== idx))} aria-label={`Remove line ${idx + 1}`} disabled={lines.length === 1}>
-                  <Trash2 className="h-4 w-4" aria-hidden /> Remove
-                </Button>
-              </div>
-            </li>
-          );
-        })}
-      </ol>
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  {!it && l.description && <span id={`${listId}-free-${idx}`} className="block px-2 text-caption text-ink-faint">Free-text line, not linked to the item master</span>}
+                </td>
+                <td className="w-24">
+                  <input className={li.numInput} type="number" inputMode="decimal" min={0} step="any" value={Number.isFinite(l.qty) ? l.qty : ""}
+                    onChange={(e) => set(idx, { qty: Number(e.target.value) })} aria-label={`Line ${idx + 1} quantity`} />
+                </td>
+                <td className="w-20">
+                  <input className={li.input} value={l.uom} maxLength={20} onChange={(e) => set(idx, { uom: e.target.value })} aria-label={`Line ${idx + 1} unit`} />
+                </td>
+                <td className="w-32">
+                  <input className={li.numInput} type="number" inputMode="decimal" min={0} step="any" value={Number.isFinite(l.rate) ? l.rate : ""}
+                    onChange={(e) => set(idx, { rate: Number(e.target.value) })} aria-label={`Line ${idx + 1} rate`} />
+                </td>
+                <td className="w-40">
+                  <input className={li.input} type="date" value={l.expectedDate} onChange={(e) => set(idx, { expectedDate: e.target.value })} aria-label={`Line ${idx + 1} expected date`} />
+                </td>
+                <td className={`${li.num} w-32 whitespace-nowrap pt-2.5 font-medium text-ink`}>{money(round2((l.qty || 0) * (l.rate || 0)))}</td>
+                <td className="w-10">
+                  <Button type="button" variant="ghost" size="sm" className="w-8 px-0" onClick={() => setLines((ls) => ls.filter((_, i) => i !== idx))}
+                    aria-label={`Remove line ${idx + 1}`} title="Remove line" disabled={lines.length === 1}>
+                    <Trash2 className="icon-sm" aria-hidden />
+                  </Button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colSpan={6} className="text-ink-soft">{valid.length} line{valid.length === 1 ? "" : "s"} · Order value (ex-GST)</td>
+            <td className={`${li.num} whitespace-nowrap text-ink`} aria-live="polite">{money(total)}</td>
+            <td />
+          </tr>
+        </tfoot>
+      </LineItemsTable>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <Button type="button" variant="secondary" onClick={() => setLines((ls) => [...ls, blank(defaultExpected)])}>
-          <Plus className="h-4 w-4" aria-hidden /> Add line
+          <Plus className="icon-sm" aria-hidden /> Add line
         </Button>
-        <div className="text-sm text-ink-soft" aria-live="polite">
-          {valid.length} line{valid.length === 1 ? "" : "s"} · Order value (ex-GST): <span className="text-base font-semibold text-ink tabular-nums">{money(total)}</span>
-        </div>
+        <p className="text-caption text-ink-faint">Lines with zero quantity or no description are not saved.</p>
       </div>
-      <p className="mt-2 text-xs text-ink-faint">Lines with zero quantity or no description are not saved.</p>
     </div>
   );
 }

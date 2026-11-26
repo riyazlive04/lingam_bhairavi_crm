@@ -4,7 +4,8 @@ import { getDb } from "@/db";
 import { boqTemplateLines, boqTemplates } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
-import { Flash, PageHeader } from "@/components/ui";
+import { Flash } from "@/components/ui";
+import { FormPage } from "@/components/patterns";
 import { saveTemplate } from "../../actions";
 import { TemplateEditor } from "../../_components/template-editor";
 import { loadPickerItems } from "../../../quotations/_lib/data";
@@ -26,10 +27,9 @@ export default async function EditTemplatePage({ params, searchParams }: { param
     loadPickerItems(db),
   ]);
   return (
-    <div>
-      <PageHeader title={`Edit: ${t.name}`} back={{ href: `/boq-templates/${id}`, label: "Template" }} />
-      <Flash ok={sp.ok} err={sp.err} />
+    <FormPage width="wide" eyebrow="Edit BOQ template" title={t.name} back={{ href: `/boq-templates/${id}`, label: t.name }} notices={<Flash ok={sp.ok} err={sp.err} />}>
       <TemplateEditor
+        cancelHref={`/boq-templates/${id}`}
         action={saveTemplate}
         template={{ id: t.id, name: t.name, system: t.system, description: t.description ?? "", active: t.active }}
         initialLines={lines.map((l) => ({
@@ -37,6 +37,6 @@ export default async function EditTemplatePage({ params, searchParams }: { param
         }))}
         items={items}
       />
-    </div>
+    </FormPage>
   );
 }

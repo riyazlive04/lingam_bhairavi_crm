@@ -1,65 +1,83 @@
 import Link from "next/link";
 import { AGEING_LABELS, sumAgeing, type PartyOutstanding } from "@/lib/billing";
 import { money0 } from "@/lib/format";
-import { Badge, EmptyState, Table, Td, Th, cx } from "@/components/ui";
+import { EmptyState, Td, cx } from "@/components/ui";
+import { ResponsiveTable, StatusPill, type Column } from "@/components/patterns";
 
 /**
- * Party-wise outstanding with ageing buckets (days past due).
+ * Party-wise outstanding with ageing buckets (days past due), on the shared ResponsiveTable.
  * `kind` adds the version 2 columns: customers show credit notes and advances, vendors show debit notes, both show net due.
+ * Phones show the party, net due, overdue and the oldest bill; the buckets stay on tablet and desktop.
  */
-export function AgeingTable({ rows, hrefFor, emptyTitle, limit, kind }: {
-  rows: PartyOutstanding[]; hrefFor?: (id: number) => string; emptyTitle: string; limit?: number; kind?: "customer" | "vendor";
+export function AgeingTable({ rows, hrefFor, emptyTitle, emptyText, limit, kind, flush }: {
+  rows: PartyOutstanding[]; hrefFor?: (id: number) => string; emptyTitle: string; emptyText?: string; limit?: number;
+  kind?: "customer" | "vendor"; flush?: boolean;
 }) {
-  if (!rows.length) return <EmptyState title={emptyTitle} />;
+  if (!rows.length) return <EmptyState title={emptyTitle}>{emptyText}</EmptyState>;
   const shown = limit ? rows.slice(0, limit) : rows;
   const t = sumAgeing(rows);
   const cust = kind === "customer", vend = kind === "vendor";
-  const credit = (v: number) => (v ? <span className="text-emerald-700 dark:text-emerald-400">−{money0(v)}</span> : "-");
-  const net = (v: number) => (v < -0.5 ? <span className="text-emerald-700 dark:text-emerald-400">{money0(-v)} credit</span> : money0(v));
+  const credit = (v: number) => (v ? <span className="text-success">- {money0(v)}</span> : "-");
+  const net = (v: number) => (v < -0.5 ? <span className="text-success">{money0(-v)} credit</span> : money0(v));
+  const num = "text-right tabular-nums";
+
+  const columns: Column<PartyOutstanding>[] = [
+    {
+      key: "party", header: "Party", card: "title", className: "max-w-60",
+      cell: (r) => (
+        <>
+          {hrefFor
+            ? <Link href={hrefFor(r.partyId)} className="rt-stretch font-medium text-brand-700 hover:underline dark:text-brand-300">{r.name}</Link>
+            : <span className="font-medium">{r.name}</span>}
+          <div className="text-caption font-normal text-ink-soft">
+            {r.invoiceCount ? `${r.invoiceCount} invoice${r.invoiceCount === 1 ? "" : "s"}` : "No open invoices"}{r.autoReminders === false ? " · reminders off" : ""}
+          </div>
+        </>
+      ),
+    },
+    {
+      key: "outstanding", header: kind ? (vend ? "Bills due" : "Invoices due") : "Outstanding", align: "right", nowrap: true,
+      card: kind ? "field" : "amount", className: cx(!kind && "font-medium"),
+      cell: (r) => (r.outstanding ? money0(r.outstanding) : "-"),
+    },
+    ...(cust ? [
+      { key: "cn", header: "Credit notes", align: "right" as const, nowrap: true, priority: 3 as const, cell: (r: PartyOutstanding) => credit(r.creditNotes) },
+      { key: "adv", header: "Advances", align: "right" as const, nowrap: true, priority: 3 as const, cell: (r: PartyOutstanding) => credit(r.advances) },
+    ] : []),
+    ...(vend ? [{ key: "dn", header: "Debit notes", align: "right" as const, nowrap: true, priority: 3 as const, cell: (r: PartyOutstanding) => credit(r.debitNotes) }] : []),
+    ...(kind ? [{ key: "net", header: "Net due", align: "right" as const, nowrap: true, card: "amount" as const, className: "font-medium", cell: (r: PartyOutstanding) => net(r.netDue) }] : []),
+    {
+      key: "overdue", header: "Overdue", align: "right", nowrap: true,
+      cell: (r) => (r.overdue ? <span className="font-medium text-danger">{money0(r.overdue)}</span> : "-"),
+    },
+    ...AGEING_LABELS.map(([k, l]): Column<PartyOutstanding> => ({
+      key: k, header: l, align: "right", nowrap: true, priority: 3, card: k === "d90p" ? "field" : "hidden",
+      label: `${l} days`,
+      cell: (r) => (r.ageing[k] ? <span className={cx(k === "d90p" && "text-danger")}>{money0(r.ageing[k])}</span> : "-"),
+    })),
+    {
+      key: "oldest", header: "Oldest", card: "badge", align: "right",
+      cell: (r) => r.maxDaysOverdue > 0
+        ? <StatusPill semantic={r.maxDaysOverdue > 60 ? "danger" : "warning"} label={`${r.maxDaysOverdue} days late`} />
+        : <span className="text-ink-faint">-</span>,
+    },
+  ];
+
+  const footer = (
+    <tr className="bg-muted font-semibold">
+      <Td data-slot="title">Total{limit && rows.length > limit ? ` (all ${rows.length})` : ""}</Td>
+      <Td data-slot="field" data-label={kind ? (vend ? "Bills due" : "Invoices due") : "Outstanding"} className={num}>{money0(t.outstanding)}</Td>
+      {cust && <><Td data-slot="field" data-label="Credit notes" className={cx(num, "rt-p3")}>{credit(t.creditNotes)}</Td><Td data-slot="field" data-label="Advances" className={cx(num, "rt-p3")}>{credit(t.advances)}</Td></>}
+      {vend && <Td data-slot="field" data-label="Debit notes" className={cx(num, "rt-p3")}>{credit(t.debitNotes)}</Td>}
+      {kind && <Td data-slot="field" data-label="Net due" className={num}>{net(t.netDue)}</Td>}
+      <Td data-slot="field" data-label="Overdue" className={cx(num, "text-danger")}>{money0(t.overdue)}</Td>
+      {AGEING_LABELS.map(([k, l]) => <Td key={k} data-slot={k === "d90p" ? "field" : "hidden"} data-label={`${l} days`} className={cx(num, "rt-p3")}>{money0(t[k])}</Td>)}
+      <Td data-slot="hidden" />
+    </tr>
+  );
+
   return (
-    <Table>
-      <thead>
-        <tr>
-          <Th>Party</Th><Th className="text-right">{kind ? (vend ? "Bills due" : "Invoices due") : "Outstanding"}</Th>
-          {cust && <><Th className="text-right">Credit notes</Th><Th className="text-right">Advances</Th></>}
-          {vend && <Th className="text-right">Debit notes</Th>}
-          {kind && <Th className="text-right">Net due</Th>}
-          <Th className="text-right">Overdue</Th>
-          {AGEING_LABELS.map(([k, l]) => <Th key={k} className="text-right">{l}</Th>)}
-          <Th className="text-right">Oldest</Th>
-        </tr>
-      </thead>
-      <tbody>
-        {shown.map((r) => (
-          <tr key={r.partyId} className="hover:bg-muted/50">
-            <Td className="max-w-60">
-              {hrefFor ? <Link href={hrefFor(r.partyId)} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{r.name}</Link> : <span className="font-medium">{r.name}</span>}
-              <div className="text-xs text-ink-soft">{r.invoiceCount ? `${r.invoiceCount} invoice${r.invoiceCount === 1 ? "" : "s"}` : "No open invoices"}{r.autoReminders === false ? " · reminders off" : ""}</div>
-            </Td>
-            <Td className={cx("text-right tabular-nums", !kind && "font-medium")}>{r.outstanding ? money0(r.outstanding) : "-"}</Td>
-            {cust && <><Td className="text-right tabular-nums">{credit(r.creditNotes)}</Td><Td className="text-right tabular-nums">{credit(r.advances)}</Td></>}
-            {vend && <Td className="text-right tabular-nums">{credit(r.debitNotes)}</Td>}
-            {kind && <Td className="text-right font-medium tabular-nums">{net(r.netDue)}</Td>}
-            <Td className={cx("text-right tabular-nums", r.overdue > 0 && "font-medium text-red-600")}>{r.overdue ? money0(r.overdue) : "-"}</Td>
-            {AGEING_LABELS.map(([k]) => (
-              <Td key={k} className={cx("text-right tabular-nums", k === "d90p" && r.ageing[k] > 0 && "text-red-600")}>{r.ageing[k] ? money0(r.ageing[k]) : "-"}</Td>
-            ))}
-            <Td className="text-right">{r.maxDaysOverdue > 0 ? <Badge tone={r.maxDaysOverdue > 60 ? "red" : "amber"}>{r.maxDaysOverdue}d</Badge> : <span className="text-ink-faint">-</span>}</Td>
-          </tr>
-        ))}
-      </tbody>
-      <tfoot>
-        <tr className="bg-muted font-semibold">
-          <Td>Total{limit && rows.length > limit ? ` (all ${rows.length})` : ""}</Td>
-          <Td className="text-right tabular-nums">{money0(t.outstanding)}</Td>
-          {cust && <><Td className="text-right tabular-nums">{credit(t.creditNotes)}</Td><Td className="text-right tabular-nums">{credit(t.advances)}</Td></>}
-          {vend && <Td className="text-right tabular-nums">{credit(t.debitNotes)}</Td>}
-          {kind && <Td className="text-right tabular-nums">{net(t.netDue)}</Td>}
-          <Td className="text-right tabular-nums text-red-600">{money0(t.overdue)}</Td>
-          {AGEING_LABELS.map(([k]) => <Td key={k} className="text-right tabular-nums">{money0(t[k])}</Td>)}
-          <Td />
-        </tr>
-      </tfoot>
-    </Table>
+    <ResponsiveTable rows={shown} columns={columns} rowKey={(r) => r.partyId} footer={footer} flush={flush}
+      caption={vend ? "Vendor payables by ageing" : "Customer receivables by ageing"} />
   );
 }

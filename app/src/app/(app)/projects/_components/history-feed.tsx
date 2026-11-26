@@ -3,7 +3,8 @@ import {
   Activity, ClipboardList, FileText, FolderKanban, History, Package, PhoneCall, Receipt, ShoppingCart, StickyNote, Truck, Undo2, Wallet, Wrench,
   type LucideIcon,
 } from "lucide-react";
-import { Button, EmptyState, Select, StatusBadge, cx } from "@/components/ui";
+import { Button, EmptyState, Select, cx } from "@/components/ui";
+import { StatusPill, StatusTimeline, type StatusSemantic, type TimelineItem } from "@/components/patterns";
 import { fmtDate, money } from "@/lib/format";
 import { HISTORY_TYPES, type HistoryEvent, type HistoryType } from "../_lib/history";
 
@@ -11,16 +12,10 @@ const ICON: Record<HistoryType, LucideIcon> = {
   quotation: FileText, order: FolderKanban, vendor_po: ClipboardList, purchase: ShoppingCart, material: Package, delivery: Truck,
   invoice: Receipt, payment: Wallet, credit_note: Undo2, expense: Receipt, amc: Wrench, service: PhoneCall, note: StickyNote, activity: Activity,
 };
-const TONE: Partial<Record<HistoryType, string>> = {
-  quotation: "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300",
-  order: "bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300",
-  invoice: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300",
-  payment: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300",
-  credit_note: "bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300",
-  expense: "bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300",
-  vendor_po: "bg-violet-50 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300",
-  purchase: "bg-violet-50 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300",
-  material: "bg-violet-50 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300",
+/** Icon colour per event kind: selling is info, buying is progress, money in is success, deductions are warning. */
+const SEMANTIC: Partial<Record<HistoryType, StatusSemantic>> = {
+  quotation: "info", order: "info", invoice: "success", payment: "success", credit_note: "warning", expense: "warning",
+  vendor_po: "progress", purchase: "progress", material: "progress",
 };
 
 const timeIST = (s: string) => new Date(s).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" });
@@ -40,23 +35,29 @@ export function applyHistoryFilter(events: HistoryEvent[], f: ReturnType<typeof 
   return f.oldestFirst ? [...list].reverse() : list;
 }
 
-/** Filter bar (plain GET form, no JS needed). */
+/**
+ * Multi-select filter for the history (plain GET form, works without JavaScript).
+ * Styled like ListFilters and FilterPills; the kit has no multi-select chip filter yet.
+ */
 export function HistoryFilters({ action, events, filter, hidden }: {
   action: string; events: HistoryEvent[]; filter: ReturnType<typeof historyFilter>; hidden?: Record<string, string>;
 }) {
   const counts = new Map<HistoryType, number>();
   for (const e of events) counts.set(e.type, (counts.get(e.type) ?? 0) + 1);
   const present = (Object.keys(HISTORY_TYPES) as HistoryType[]).filter((t) => counts.has(t));
+  const clearHref = action + (hidden ? `?${new URLSearchParams(hidden).toString()}` : "");
+  const active = filter.types.length + (filter.oldestFirst ? 1 : 0);
   return (
-    <form method="get" action={action} className="no-print mb-4 rounded-2xl border border-line bg-surface p-3 shadow-xs">
+    <form method="get" action={action} role="search" className="no-print rounded-2xl border border-line bg-surface p-3 shadow-xs">
       {hidden && Object.entries(hidden).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
       <fieldset>
-        <legend className="mb-2 text-xs font-medium text-ink-soft">Show (leave all unticked to see everything)</legend>
+        <legend className="mb-2 text-caption font-medium text-ink-soft">Show only these (leave all unticked to see everything)</legend>
         <div className="flex flex-wrap gap-2">
           {present.map((t) => (
-            <label key={t} className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-xs text-ink has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50 dark:has-[:checked]:bg-brand-950/60">
-              <input type="checkbox" name="t" value={t} defaultChecked={filter.types.includes(t)} className="h-3.5 w-3.5 accent-brand-600" />
-              {HISTORY_TYPES[t]} <span className="text-ink-faint">{counts.get(t)}</span>
+            <label key={t} className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border border-line bg-surface px-3 text-[13px] font-medium text-ink-soft hover:border-line-strong hover:text-ink has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50 has-[:checked]:text-brand-700 dark:has-[:checked]:bg-brand-950/60 dark:has-[:checked]:text-brand-200">
+              <input type="checkbox" name="t" value={t} defaultChecked={filter.types.includes(t)} className="icon-xs accent-brand-600" />
+              {HISTORY_TYPES[t]}
+              <span className="rounded-full bg-muted px-1.5 text-[11px] leading-[18px] tabular-nums text-ink-soft">{counts.get(t)}</span>
             </label>
           ))}
         </div>
@@ -67,15 +68,44 @@ export function HistoryFilters({ action, events, filter, hidden }: {
           <option value="oldest">Oldest first</option>
         </Select>
         <Button type="submit" variant="secondary">Apply</Button>
+        {active > 0 && (
+          <Link href={clearHref} className="inline-flex h-9.5 items-center justify-center rounded-lg px-3 text-sm font-medium text-ink-soft hover:bg-muted hover:text-ink">Clear</Link>
+        )}
       </div>
     </form>
   );
 }
 
-/** Vertical timeline grouped by day. */
+function toItem(e: HistoryEvent): TimelineItem {
+  const title = e.href
+    ? <Link href={e.href} className="text-brand-700 hover:underline dark:text-brand-300">{e.title}</Link>
+    : e.title;
+  return {
+    id: e.key,
+    icon: ICON[e.type],
+    semantic: SEMANTIC[e.type] ?? "neutral",
+    title: (
+      <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="sr-only">{HISTORY_TYPES[e.type]}: </span>
+        {title}
+        {e.status && <StatusPill status={e.status} />}
+      </span>
+    ),
+    at: e.dateOnly ? undefined : timeIST(e.when),
+    by: [HISTORY_TYPES[e.type], e.who].filter(Boolean).join(" · "),
+    body: (e.detail || e.amount != null) ? (
+      <>
+        {e.detail && <p className="break-words">{e.detail}</p>}
+        {e.amount != null && <p className={cx("font-semibold tabular-nums", e.amount < 0 ? "text-danger" : "text-ink")}>{money(e.amount)}</p>}
+      </>
+    ) : undefined,
+  };
+}
+
+/** Project history: one StatusTimeline per day. */
 export function HistoryFeed({ events }: { events: HistoryEvent[] }) {
   if (!events.length) {
-    return <EmptyState icon={History} title="Nothing to show yet">Quotes, orders, material issues, invoices and payments for this project will appear here as they happen.</EmptyState>;
+    return <EmptyState icon={History} title="Nothing to show yet">Quotes, orders, material issues, invoices and payments for this project appear here as they happen.</EmptyState>;
   }
   const days: { day: string; items: HistoryEvent[] }[] = [];
   for (const e of events) {
@@ -85,40 +115,13 @@ export function HistoryFeed({ events }: { events: HistoryEvent[] }) {
     else days.push({ day: d, items: [e] });
   }
   return (
-    <ol className="space-y-5">
+    <div className="space-y-6">
       {days.map((g) => (
-        <li key={g.day} className="break-inside-avoid">
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-soft">{fmtDate(g.day)}</h3>
-          <ol className="relative space-y-1 border-l border-line pl-5">
-            {g.items.map((e) => {
-              const Icon = ICON[e.type];
-              const title = e.href ? <Link href={e.href} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{e.title}</Link> : <span className="font-medium text-ink">{e.title}</span>;
-              return (
-                <li key={e.key} className="relative rounded-xl px-2 py-2 hover:bg-muted/60">
-                  <span className={cx("absolute -left-[33px] top-2 grid h-6 w-6 place-items-center rounded-full ring-4 ring-surface", TONE[e.type] ?? "bg-muted text-ink-soft")}>
-                    <Icon className="h-3.5 w-3.5" aria-hidden />
-                  </span>
-                  <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                    <div className="min-w-0 text-sm">
-                      <span className="sr-only">{HISTORY_TYPES[e.type]}: </span>
-                      {title}
-                      {e.status && <span className="ml-2 align-middle"><StatusBadge status={e.status} /></span>}
-                      {e.detail && <p className="mt-0.5 break-words text-xs text-ink-soft">{e.detail}</p>}
-                      <p className="mt-0.5 text-xs text-ink-faint">
-                        {e.dateOnly ? HISTORY_TYPES[e.type] : `${HISTORY_TYPES[e.type]} · ${timeIST(e.when)}`}
-                        {e.who ? ` · ${e.who}` : ""}
-                      </p>
-                    </div>
-                    {e.amount != null && (
-                      <div className={cx("shrink-0 text-sm font-semibold tabular-nums", e.amount < 0 ? "text-red-600 dark:text-red-400" : "text-ink")}>{money(e.amount)}</div>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
-        </li>
+        <section key={g.day} aria-label={fmtDate(g.day)}>
+          <h3 className="mb-3 text-overline uppercase text-ink-soft">{fmtDate(g.day)}</h3>
+          <StatusTimeline items={g.items.map(toItem)} />
+        </section>
       ))}
-    </ol>
+    </div>
   );
 }

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, ArrowRight, Bell, CheckCircle2, FireExtinguisher, PhoneCall, Receipt, Truck, Wallet, X, type LucideIcon } from "lucide-react";
 import clsx from "clsx";
+import { buttonClass } from "./ui";
 
 export type DigestItem = { label: string; sub?: string; href: string; tone?: "bad" | "warn" | "info" };
 export type DigestSection = { key: string; title: string; href: string; total?: number; items: DigestItem[] };
@@ -77,13 +78,13 @@ export function StartupDigestDialog({ userName, sections, refreshed }: { userNam
               <p id="digest-desc" className="mt-1 text-sm text-white/85">
                 {nonEmpty.length
                   ? `Here is your day at a glance: ${totalCount} thing${totalCount === 1 ? "" : "s"} could use your attention.`
-                  : "You're all caught up. Nothing is waiting on you right now."}
+                  : "You are all caught up. Nothing is waiting on you right now."}
                 {refreshed && " The automation agents have just refreshed."}
               </p>
             </div>
             <button ref={closeRef} type="button" onClick={dismiss} aria-label="Close daily summary"
               className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-white/80 hover:bg-white/15 hover:text-white focus-visible:outline-2 focus-visible:outline-white">
-              <X className="h-5 w-5" aria-hidden />
+              <X className="icon-lg" aria-hidden />
             </button>
           </div>
         </header>
@@ -91,7 +92,7 @@ export function StartupDigestDialog({ userName, sections, refreshed }: { userNam
         <div className="flex-1 space-y-4 overflow-y-auto bg-bg/60 px-4 py-4 sm:px-6">
           {nonEmpty.length === 0 && (
             <div className="flex flex-col items-center gap-2 py-10 text-center">
-              <CheckCircle2 className="h-10 w-10 text-emerald-600" aria-hidden />
+              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-success-soft text-success"><CheckCircle2 className="h-6 w-6" aria-hidden /></span>
               <p className="font-semibold text-ink">All clear</p>
               <p className="text-sm text-ink-soft">New work will show up here when you sign in.</p>
             </div>
@@ -101,24 +102,24 @@ export function StartupDigestDialog({ userName, sections, refreshed }: { userNam
             return (
               <section key={s.key} aria-labelledby={`dg-${s.key}`} className="rounded-2xl border border-line bg-surface shadow-xs">
                 <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2.5">
-                  <h3 id={`dg-${s.key}`} className="flex min-w-0 items-center gap-2 text-sm font-semibold text-ink">
-                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300"><Icon className="h-4 w-4" aria-hidden /></span>
+                  <h3 id={`dg-${s.key}`} className="flex min-w-0 items-center gap-2 text-subheading text-ink">
+                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300"><Icon className="icon-sm" aria-hidden /></span>
                     <span className="truncate">{s.title}</span>
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-ink-soft">{s.total ?? s.items.length}</span>
+                    <span className="rounded-full bg-muted px-1.5 text-[11px] font-medium leading-[18px] tabular-nums text-ink-soft">{s.total ?? s.items.length}</span>
                   </h3>
                   <Link href={s.href} onClick={dismiss} className="inline-flex shrink-0 items-center gap-1 rounded-md text-xs font-semibold text-brand-700 hover:underline dark:text-brand-300">
-                    View all <ArrowRight className="h-3 w-3" aria-hidden />
+                    View all <ArrowRight className="icon-xs" aria-hidden />
                   </Link>
                 </div>
                 <ul className="divide-y divide-line">
                   {s.items.map((i, idx) => (
                     <li key={idx}>
                       <Link href={i.href} onClick={dismiss} className="flex items-start gap-2.5 px-4 py-2.5 text-sm hover:bg-muted">
-                        {i.tone === "bad" ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" aria-label="Overdue" />
-                          : <span className={clsx("mt-1.5 h-2 w-2 shrink-0 rounded-full", i.tone === "warn" ? "bg-amber-500" : "bg-blue-500")} aria-hidden />}
+                        {i.tone === "bad" ? <AlertTriangle className="icon-sm mt-0.5 text-danger" aria-label="Overdue" />
+                          : <span className={clsx("mt-1.5 h-2 w-2 shrink-0 rounded-full", i.tone === "warn" ? "bg-warning" : "bg-info")} aria-hidden />}
                         <span className="min-w-0">
                           <span className="block text-ink">{i.label}</span>
-                          {i.sub && <span className={clsx("block text-xs", i.tone === "bad" ? "font-medium text-red-700 dark:text-red-400" : "text-ink-soft")}>{i.sub}</span>}
+                          {i.sub && <span className={clsx("block text-caption", i.tone === "bad" ? "font-medium text-danger" : "text-ink-soft")}>{i.sub}</span>}
                         </span>
                       </Link>
                     </li>
@@ -130,9 +131,9 @@ export function StartupDigestDialog({ userName, sections, refreshed }: { userNam
         </div>
 
         <footer className="flex flex-col-reverse gap-2 border-t border-line bg-surface px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <span className="text-xs text-ink-soft">Prepared by your rule-based automation agents</span>
-          <button type="button" onClick={dismiss} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">
-            Got it, let&apos;s start <ArrowRight className="h-4 w-4" aria-hidden />
+          <span className="text-caption text-ink-soft">Prepared by your rule-based automation agents</span>
+          <button type="button" onClick={dismiss} className={buttonClass("primary", "lg", "max-sm:w-full")}>
+            Start my day <ArrowRight className="icon-sm" aria-hidden />
           </button>
         </footer>
       </div>

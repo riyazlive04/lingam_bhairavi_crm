@@ -20,7 +20,7 @@ What changes for you: you **no longer need to call suppliers for every price**. 
 3. **Refill Tracker**: extinguisher customers due in the next 10 days. Call them and create a refill quotation.
 
 ### Making a quotation from a BOQ template
-1. Go to **Quotations → New quotation** and choose a BOQ template.
+1. Go to **Quotations**, click **New quotation** and choose a BOQ template.
 2. Choose the customer. If they are new, create them with company name, contact, phone, email, GSTIN and billing and site address.
 3. Choose the system: **Hydrant**, **Sprinkler**, **Fire Alarm (FAS)**, **PA / Voice Evacuation** or **Extinguishers**. You can add more than one system to the same quotation.
 4. Enter quantities only on the lines you need. For example:

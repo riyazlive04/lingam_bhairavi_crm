@@ -15,12 +15,12 @@ This guide is for accounts staff (system role **accounts**). You will keep using
 ## 1. Daily workflow
 
 ### Morning (15 minutes)
-1. Dashboard → **Ready to invoice**: orders fully delivered but not yet invoiced.
+1. On the dashboard, open **Ready to invoice**: orders fully delivered but not yet invoiced.
 2. **Receivables overdue** and **Payables due this week**.
 3. **Expenses awaiting approval**.
 
 ### Raising a sales invoice
-1. Open **Orders & Delivery**, select the delivered order and click **Create invoice**. For a manual invoice, use **Billing & Outstanding → New tax invoice**.
+1. Open **Orders & Delivery**, select the delivered order and click **Create invoice**. For a manual invoice, use **Billing & Outstanding**, then **New tax invoice**.
 2. Lines and quantities come from what was delivered. Supply and erection amounts are kept separate.
 3. GST is applied for you: **CGST 9 % + SGST 9 %** for Tamil Nadu customers, and **IGST 18 %** for other states. The default is 18 %, but rates can differ by item.
 4. Check the customer's GSTIN, billing address and PO reference.

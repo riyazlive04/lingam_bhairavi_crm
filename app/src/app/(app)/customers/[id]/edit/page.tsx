@@ -4,7 +4,8 @@ import { getDb } from "@/db";
 import { customers } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
-import { Flash, PageHeader } from "@/components/ui";
+import { Flash } from "@/components/ui";
+import { FormPage } from "@/components/patterns";
 import { CustomerForm } from "../../_components/customer-form";
 import { updateCustomer } from "../../actions";
 
@@ -19,10 +20,8 @@ export default async function EditCustomerPage({ params, searchParams }: { param
   const [c] = await db.select().from(customers).where(eq(customers.id, customerId));
   if (!c) notFound();
   return (
-    <div className="max-w-3xl">
-      <PageHeader title={`Edit ${c.name}`} back={{ href: `/customers/${c.id}`, label: c.name }} />
-      <Flash err={sp.err} />
+    <FormPage title={`Edit ${c.name}`} eyebrow="Customer" back={{ href: `/customers/${c.id}`, label: c.name }} notices={<Flash err={sp.err} />}>
       <CustomerForm action={updateCustomer.bind(null, c.id)} customer={c} cancelHref={`/customers/${c.id}`} />
-    </div>
+    </FormPage>
   );
 }

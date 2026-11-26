@@ -14,7 +14,7 @@ export function CreateVendorPoButton({ salesOrderId, label = "Create vendor PO",
 }) {
   return (
     <LinkButton href={`/purchase-orders/new?salesOrderId=${encodeURIComponent(String(salesOrderId))}`} variant={variant} size={size}>
-      <ClipboardList className="h-4 w-4" aria-hidden /> {label}
+      <ClipboardList className="icon-sm" aria-hidden /> {label}
     </LinkButton>
   );
 }

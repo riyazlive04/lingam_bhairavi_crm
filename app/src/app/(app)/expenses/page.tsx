@@ -1,13 +1,17 @@
 import Link from "next/link";
 import { and, asc, desc, eq, gte, inArray, lt, ne, sql, type SQL } from "drizzle-orm";
-import { Check, Plus, X } from "lucide-react";
+import { Check, FolderKanban, Plus, Tags, X } from "lucide-react";
 import { getDb } from "@/db";
 import { expenseAllocations, expenses, projects, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canApproveExpenses, canRead } from "@/lib/rbac";
 import { EXPENSE_CATEGORIES } from "@/lib/constants";
 import { fmtDate, money, money0, todayIST } from "@/lib/format";
-import { Card, EmptyState, Flash, Input, LinkButton, PageHeader, Select, Stat, StatusBadge, Table, Td, Th, Button, cx } from "@/components/ui";
+import { Flash, LinkButton, Select, cx } from "@/components/ui";
+import {
+  ConfirmButton, FilterPills, ListEmpty, ListFilters, ListPage, Metric, MetricStrip, ResponsiveTable, SectionCard, StatusPill, statusLabel,
+  type Column, type FilterPillItem,
+} from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { reviewExpenses } from "./actions";
 import { SelectAll } from "./_components/select-all";
@@ -96,146 +100,170 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
   const periodLabel = bounds ? new Date(`${month}-01T00:00:00`).toLocaleDateString("en-IN", { month: "long", year: "numeric" }) : "All time";
   const qs = new URLSearchParams(Object.entries({ status: sp.status, category: sp.category, projectId: sp.projectId, userId: sp.userId, month: sp.month }).filter(([, v]) => v) as [string, string][]).toString();
 
+  const thisMonth = todayIST().slice(0, 7);
+  const monthOptions: string[] = [];
+  {
+    const [y, m] = thisMonth.split("-").map(Number);
+    for (let k = 0; k < 12; k++) {
+      const d = new Date(Date.UTC(y, m - 1 - k, 1));
+      monthOptions.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`);
+    }
+    if (month !== "all" && !monthOptions.includes(month)) monthOptions.push(month);
+  }
+  const monthName = (mo: string) => new Date(`${mo}-01T00:00:00`).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+  const href = (patch: Partial<SP>) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries({ status: sp.status, category: sp.category, projectId: sp.projectId, userId: sp.userId, month: sp.month, ...patch })) if (v) p.set(k, String(v));
+    const s = p.toString();
+    return s ? `/expenses?${s}` : "/expenses";
+  };
+  const status = sp.status && (STATUSES as readonly string[]).includes(sp.status) ? sp.status : undefined;
+  const activeFilters = [sp.category, projectId || null, approver && Number(sp.userId) ? sp.userId : null, month !== thisMonth ? month : null].filter(Boolean).length;
+  const pills: FilterPillItem[] = [
+    { label: "All", href: href({ status: undefined }), active: !status },
+    ...STATUSES.map((st) => ({
+      label: st === "pending" ? "Awaiting approval" : statusLabel(st), href: href({ status: st }), active: status === st,
+      ...(st === "pending" && approver ? { count: pendingCount, attention: pendingCount > 0 && status !== "pending" } : {}),
+    })),
+  ];
+  const showSelect = approver && reviewable > 0;
+  const projectsReadable = canRead(user.role, "projects");
+
+  type Row = (typeof rows)[number];
+  const projectChip = "relative z-[1] rounded-md bg-muted px-1.5 py-0.5 text-caption text-ink";
+  const columns: Column<Row>[] = [
+    ...(showSelect ? [{
+      key: "select", header: <SelectAll label="Select all awaiting review" />, label: "Select", card: "actions" as const, className: "w-8",
+      cell: (r: Row) => (canReview(r) ? (
+        <label className="relative z-[1] inline-flex items-center gap-2 text-sm text-ink-soft max-sm:h-9">
+          <input type="checkbox" name="ids" value={r.id} aria-label={`Select ${r.voucherNo}`} className="icon-sm accent-brand-600 max-sm:h-5 max-sm:w-5" />
+          <span className="sm:hidden" aria-hidden>Select for review</span>
+        </label>
+      ) : null),
+    }] : []),
+    {
+      key: "voucher", header: "Voucher", card: "title", nowrap: true,
+      cell: (r) => (
+        <>
+          <Link href={`/expenses/${r.id}`} className="rt-stretch font-medium text-brand-700 hover:underline dark:text-brand-300">{r.voucherNo}</Link>
+          {(r.description || r.paidTo) && <div className="max-w-60 truncate text-caption font-normal text-ink-soft">{r.paidTo ? `${r.paidTo} · ` : ""}{r.description}</div>}
+        </>
+      ),
+    },
+    { key: "date", header: "Date", card: "subtitle", nowrap: true, cell: (r) => <>{fmtDate(r.date)}<span className="sm:hidden"> · {categoryLabel(r.category)}</span></> },
+    { key: "category", header: "Category", card: "hidden", cell: (r) => categoryLabel(r.category) },
+    ...(approver ? [{ key: "by", header: "Entered by", priority: 3 as const, cell: (r: Row) => r.userName ?? "-" }] : []),
+    {
+      key: "projects", header: "Projects",
+      cell: (r) => {
+        const allocs = allocByExpense.get(r.id) ?? [];
+        if (!allocs.length) return <span className="text-caption text-ink-faint">Overhead</span>;
+        return (
+          <div className="flex flex-wrap gap-1 max-sm:justify-end">
+            {allocs.map((a) => (projectsReadable ? (
+              <Link key={a.projectId} href={`/projects/${a.projectId}`} className={cx(projectChip, "hover:text-brand-700 dark:hover:text-brand-300")} title={money(a.amount)}>
+                {a.code}{allocs.length > 1 ? ` · ${money0(a.amount)}` : ""}
+              </Link>
+            ) : (
+              <span key={a.projectId} className={projectChip} title={money(a.amount)}>{a.code}{allocs.length > 1 ? ` · ${money0(a.amount)}` : ""}</span>
+            )))}
+          </div>
+        );
+      },
+    },
+    { key: "status", header: "Status", card: "badge", cell: (r) => <StatusPill status={r.status} label={r.status === "pending" ? "Awaiting approval" : undefined} /> },
+    { key: "amount", header: "Amount", align: "right", card: "amount", nowrap: true, cell: (r) => <span className="font-medium">{money(r.amount)}</span> },
+  ];
+
+  type Total = { key: string; label: string; href?: string; approved: number; pending: number };
+  const totalCols: Column<Total>[] = [
+    { key: "name", header: "Name", card: "title", className: "max-w-56 truncate", cell: (t) => (t.href ? <Link href={t.href} className="hover:text-brand-700 dark:hover:text-brand-300">{t.label}</Link> : t.label) },
+    { key: "approved", header: "Approved", align: "right", card: "amount", nowrap: true, cell: (t) => money0(t.approved) },
+    { key: "pending", header: "Pending", align: "right", nowrap: true, cell: (t) => <span className={cx(t.pending ? "text-warning" : "text-ink-faint")}>{money0(t.pending)}</span> },
+  ];
+  const sortTotals = (list: Total[]) => [...list].sort((a, b) => b.approved + b.pending - (a.approved + a.pending));
+  const catRows = sortTotals([...byCat.entries()].map(([k, t]) => ({ key: k, label: categoryLabel(k), ...t })));
+  const projRows = sortTotals([...byProj.entries()].map(([id, t]) => ({ key: String(id), label: `${t.code} · ${t.name}`, href: `/projects/${id}`, ...t })));
+  const filtered = activeFilters > 0 || !!status;
+
   return (
-    <div>
-      <PageHeader
-        title={approver ? "Expenses" : "My expense vouchers"}
-        subtitle={approver ? "Review site vouchers. Approved amounts are added to each project's cost centre." : "Vouchers you submitted. Approved amounts are added to the project cost."}
-        actions={<LinkButton href="/expenses/new"><Plus className="h-4 w-4" aria-hidden /> New voucher</LinkButton>}
-      />
-      <Flash ok={sp.ok} err={sp.err} />
-
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label={`Approved · ${periodLabel}`} value={money0(approvedTotal)} tone="good" />
-        <Stat label="Awaiting approval" value={money0(pendingTotal)} hint={`${pendingCount} voucher${pendingCount === 1 ? "" : "s"}`} tone={pendingCount ? "warn" : "default"} href={`/expenses?status=pending&month=${month}`} />
-        <Stat label="Charged to projects" value={money0(allocatedTotal)} />
-        <Stat label="Office overhead" value={money0(overhead)} hint="not allocated to any project" />
-      </div>
-
-      <form method="get" className="mb-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
-        <Input type="month" name="month" defaultValue={month === "all" ? "" : month} aria-label="Month" className="col-span-2 sm:w-44" />
-        <Select name="status" defaultValue={sp.status ?? ""} aria-label="Status" className="sm:w-36">
-          <option value="">All statuses</option>
-          {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-        </Select>
-        <Select name="category" defaultValue={sp.category ?? ""} aria-label="Category" className="sm:w-48">
-          <option value="">All categories</option>
-          {Object.entries(EXPENSE_CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </Select>
-        <Select name="projectId" defaultValue={sp.projectId ?? ""} aria-label="Project" className="col-span-2 sm:w-56">
-          <option value="">All projects</option>
-          {projectList.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
-        </Select>
-        {approver && (
-          <Select name="userId" defaultValue={sp.userId ?? ""} aria-label="Entered by" className="col-span-2 sm:w-44">
-            <option value="">Everyone</option>
-            {userList.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-          </Select>
-        )}
-        <Button type="submit" variant="secondary">Filter</Button>
-        <Link href="/expenses?month=all" className="self-center text-sm text-ink-soft hover:text-brand-700">All months</Link>
-      </form>
-
-      {rows.length === 0 ? (
-        <EmptyState title="No vouchers for this selection" action={<LinkButton href="/expenses/new">Enter a voucher</LinkButton>}>
+    <ListPage
+      title={approver ? "Expenses" : "My expense vouchers"}
+      subtitle={approver ? "Review site vouchers. Approved amounts are added to each project's cost centre." : "Vouchers you submitted. Approved amounts are added to the project cost."}
+      primaryAction={<LinkButton href="/expenses/new"><Plus className="icon-sm" aria-hidden /> New voucher</LinkButton>}
+      notices={<Flash ok={sp.ok} err={sp.err} />}
+      stats={
+        <MetricStrip>
+          <Metric label="Approved" value={money0(approvedTotal)} hint={periodLabel} tone="good" />
+          <Metric label="Awaiting approval" value={money0(pendingTotal)} hint={`${pendingCount} voucher${pendingCount === 1 ? "" : "s"}`} tone={pendingCount ? "warn" : "default"} href={`/expenses?status=pending&month=${month}`} />
+          <Metric label="Charged to projects" value={money0(allocatedTotal)} />
+          <Metric label="Office overhead" value={money0(overhead)} hint="Not allocated to any project" />
+        </MetricStrip>
+      }
+      filters={
+        <>
+          <FilterPills label="Filter by status" items={pills} />
+          <ListFilters searchName={false} activeCount={activeFilters} clearHref={href({ category: undefined, projectId: undefined, userId: undefined, month: undefined })} hidden={{ status }}>
+            <Select name="month" defaultValue={month} aria-label="Month">
+              {monthOptions.map((mo) => <option key={mo} value={mo}>{mo === thisMonth ? `This month (${monthName(mo)})` : monthName(mo)}</option>)}
+              <option value="all">All months</option>
+            </Select>
+            <Select name="category" defaultValue={sp.category ?? ""} aria-label="Category">
+              <option value="">All categories</option>
+              {Object.entries(EXPENSE_CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </Select>
+            <Select name="projectId" defaultValue={sp.projectId ?? ""} aria-label="Project">
+              <option value="">All projects</option>
+              {projectList.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
+            </Select>
+            {approver && (
+              <Select name="userId" defaultValue={sp.userId ?? ""} aria-label="Entered by">
+                <option value="">Everyone</option>
+                {userList.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </Select>
+            )}
+          </ListFilters>
+        </>
+      }
+      isEmpty={rows.length === 0}
+      empty={
+        <ListEmpty filtered={filtered} noun="vouchers" clearHref="/expenses" title={filtered ? undefined : `No vouchers in ${bounds ? periodLabel : "any month"}`}
+          action={<LinkButton href="/expenses/new"><Plus className="icon-sm" aria-hidden /> Enter a voucher</LinkButton>}>
           Petrol, lodging, food, labour: enter every site expense so the project cost stays complete.
-        </EmptyState>
-      ) : (
-        <form action={reviewExpenses}>
+        </ListEmpty>
+      }
+      resultSummary={`${rows.length} voucher${rows.length === 1 ? "" : "s"} · ${periodLabel}${rows.length >= 500 ? " · showing the latest 500, narrow the filters to see older ones" : ""}`}
+    >
+      <div className="space-y-4">
+        <form action={reviewExpenses} className="space-y-3">
           <input type="hidden" name="back" value={`/expenses${qs ? `?${qs}` : ""}`} />
-          {approver && reviewable > 0 && (
-            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface p-3">
-              <span className="text-sm text-ink-soft">{reviewable} awaiting your review. Tick the vouchers, then</span>
-              <SubmitButton name="decision" value="approve" variant="success" size="sm" pendingText="Approving…"><Check className="h-4 w-4" aria-hidden /> Approve selected</SubmitButton>
-              <SubmitButton name="decision" value="reject" variant="danger" size="sm" pendingText="Rejecting…" confirm="Reject the selected vouchers?"><X className="h-4 w-4" aria-hidden /> Reject selected</SubmitButton>
+          {showSelect && (
+            <div className="flex flex-col gap-2 rounded-2xl border border-warning-line bg-warning-soft p-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-ink">{reviewable} voucher{reviewable === 1 ? "" : "s"} awaiting your review. Tick them, then approve or reject.</p>
+              <div className="flex flex-wrap gap-2 max-sm:[&>*]:flex-1">
+                <SubmitButton name="decision" value="approve" variant="success" size="sm" pendingText="Approving…"><Check className="icon-sm" aria-hidden /> Approve selected</SubmitButton>
+                <ConfirmButton name="decision" value="reject" variant="secondary" size="sm" className="text-danger" confirmVariant="danger" pendingText="Rejecting…"
+                  confirm="Reject the selected vouchers?" confirmLabel="Yes, reject selected">
+                  <X className="icon-sm" aria-hidden /> Reject selected
+                </ConfirmButton>
+              </div>
             </div>
           )}
-          <Table>
-            <thead>
-              <tr>
-                {approver && reviewable > 0 && <Th className="w-8"><SelectAll label="Select all awaiting review" /></Th>}
-                <Th>Voucher</Th><Th>Date</Th><Th>Category</Th>{approver && <Th>Entered by</Th>}<Th>Project(s)</Th><Th>Status</Th><Th className="text-right">Amount</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const allocs = allocByExpense.get(r.id) ?? [];
-                return (
-                  <tr key={r.id} className="hover:bg-muted/60">
-                    {approver && reviewable > 0 && (
-                      <Td>{canReview(r) && <input type="checkbox" name="ids" value={r.id} aria-label={`Select ${r.voucherNo}`} className="h-4 w-4 accent-brand-600" />}</Td>
-                    )}
-                    <Td>
-                      <Link href={`/expenses/${r.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{r.voucherNo}</Link>
-                      {(r.description || r.paidTo) && <div className="max-w-60 truncate text-xs text-ink-soft">{r.paidTo ? `${r.paidTo} · ` : ""}{r.description}</div>}
-                    </Td>
-                    <Td className="whitespace-nowrap">{fmtDate(r.date)}</Td>
-                    <Td>{categoryLabel(r.category)}</Td>
-                    {approver && <Td>{r.userName ?? "-"}</Td>}
-                    <Td>
-                      {allocs.length ? (
-                        <div className="flex flex-wrap gap-1">
-                          {allocs.map((a) => (
-                            canRead(user.role, "projects") ? (
-                            <Link key={a.projectId} href={`/projects/${a.projectId}`} className="rounded bg-muted px-1.5 py-0.5 text-xs text-ink hover:text-brand-700" title={money(a.amount)}>
-                              {a.code}{allocs.length > 1 ? ` · ${money0(a.amount)}` : ""}
-                            </Link>
-                          ) : (
-                            <span key={a.projectId} className="rounded bg-muted px-1.5 py-0.5 text-xs text-ink" title={money(a.amount)}>
-                              {a.code}{allocs.length > 1 ? ` · ${money0(a.amount)}` : ""}
-                            </span>
-                          )
-                          ))}
-                        </div>
-                      ) : <span className="text-xs text-ink-faint">Overhead</span>}
-                    </Td>
-                    <Td><StatusBadge status={r.status} /></Td>
-                    <Td className="text-right font-medium tabular-nums">{money(r.amount)}</Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
-          {rows.length >= 500 && <p className="mt-2 text-xs text-ink-soft">Showing the latest 500 vouchers. Narrow the filters to see older ones.</p>}
+          <ResponsiveTable rows={rows} columns={columns} rowKey={(r) => r.id} caption="Expense vouchers" />
         </form>
-      )}
 
-      {(byCat.size > 0 || byProj.size > 0) && (
-        <div className="mt-6 grid gap-6 lg:grid-cols-2">
-          <Card title={`By category · ${periodLabel}`} bodyClassName="p-0">
-            <TotalsTable rows={[...byCat.entries()].map(([k, t]) => ({ key: k, label: categoryLabel(k), ...t }))} />
-          </Card>
-          <Card title={`By project · ${periodLabel}`} bodyClassName="p-0">
-            {byProj.size ? (
-              <TotalsTable rows={[...byProj.entries()].map(([id, t]) => ({ key: String(id), label: `${t.code} · ${t.name}`, href: `/projects/${id}`, ...t }))} />
-            ) : <p className="p-4 text-sm text-ink-soft">No project allocations.</p>}
-          </Card>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TotalsTable({ rows }: { rows: { key: string; label: string; href?: string; approved: number; pending: number }[] }) {
-  const sorted = [...rows].sort((a, b) => b.approved + b.pending - (a.approved + a.pending));
-  return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="text-left text-xs uppercase tracking-wide text-ink-soft">
-          <th className="px-4 py-2 font-semibold">Name</th>
-          <th className="px-4 py-2 text-right font-semibold">Approved</th>
-          <th className="px-4 py-2 text-right font-semibold">Pending</th>
-        </tr>
-      </thead>
-      <tbody>
-        {sorted.map((r) => (
-          <tr key={r.key} className="border-t border-line">
-            <td className="max-w-56 truncate px-4 py-2 text-ink">{r.href ? <Link href={r.href} className="hover:text-brand-700">{r.label}</Link> : r.label}</td>
-            <td className="px-4 py-2 text-right tabular-nums text-ink">{money0(r.approved)}</td>
-            <td className={cx("px-4 py-2 text-right tabular-nums", r.pending ? "text-amber-700 dark:text-amber-400" : "text-ink-faint")}>{money0(r.pending)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+        {(byCat.size > 0 || byProj.size > 0) && (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <SectionCard title="By category" description={periodLabel} icon={Tags} flush>
+              <ResponsiveTable flush rows={catRows} columns={totalCols} rowKey={(t) => t.key} caption="Totals by category" />
+            </SectionCard>
+            <SectionCard title="By project" description={periodLabel} icon={FolderKanban} flush={projRows.length > 0}
+              empty={projRows.length === 0 && "No project allocations in this period."}>
+              <ResponsiveTable flush rows={projRows} columns={totalCols} rowKey={(t) => t.key} caption="Totals by project" />
+            </SectionCard>
+          </div>
+        )}
+      </div>
+    </ListPage>
   );
 }

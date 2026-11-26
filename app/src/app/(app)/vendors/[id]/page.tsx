@@ -1,19 +1,25 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { FileText, Package, Pencil, Plus, Trash2 } from "lucide-react";
 import { getDb } from "@/db";
 import { items, projects, purchaseInvoices, vendorItems, vendors } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canRead, canWrite } from "@/lib/rbac";
 import { SYSTEMS } from "@/lib/constants";
-import { fmtDate, money, pct, round2, todayIST } from "@/lib/format";
+import { fmtDate, money, moneyShort, pct, round2, todayIST } from "@/lib/format";
 import { purchaseOutstanding } from "@/lib/purchasing";
-import { Badge, Button, Card, DL, EmptyState, Field, Flash, Input, LinkButton, PageHeader, Select, Stat, StatusBadge, Table, Td, Th, cx } from "@/components/ui";
+import { Badge, Field, Flash, Input, LinkButton, Select, cx } from "@/components/ui";
+import {
+  ConfirmButton, DetailPage, KeyValueGrid, MetaChip, Metric, MetricStrip, ResponsiveTable, SectionCard, StatusPill, Tabs, activeTab,
+  type Column,
+} from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { linkVendorItem, unlinkVendorItem } from "../actions";
 
-export default async function VendorDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
+export const metadata = { title: "Vendor" };
+
+export default async function VendorDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string; tab?: string }> }) {
   const user = await requireUser("vendors");
   const { id } = await params;
   const sp = await searchParams;
@@ -76,115 +82,150 @@ export default async function VendorDetailPage({ params, searchParams }: { param
     : [];
   const canPurchases = canRead(user.role, "purchases");
 
+  const tab = activeTab(sp.tab, ["items", "invoices"] as const);
+  const base = `/vendors/${v.id}`;
+
+  type R = (typeof rows)[number];
+  const itemCols: Column<R>[] = [
+    {
+      key: "item", header: "Item", card: "title", className: "max-w-72 whitespace-normal",
+      cell: (r) => (
+        <>
+          <Link href={`/items/${r.itemId}`} className="hover:underline">{r.name}</Link>
+          <div className="font-mono text-caption font-normal text-ink-faint">{r.code} · {SYSTEMS[r.system as keyof typeof SYSTEMS] ?? r.system}</div>
+        </>
+      ),
+    },
+    { key: "size", header: "Size / make", priority: 3, cell: (r) => <>{r.size ?? "-"}<div className="text-caption text-ink-faint">{r.make ?? ""}</div></> },
+    {
+      key: "rate", header: "Last rate", align: "right", card: "amount", nowrap: true,
+      cell: (r) => <>{money(r.lastRate)} <span className="text-caption text-ink-faint">/{r.uom}</span>{r.itemLatestVendor === v.id && <div><StatusPill semantic="success" label="Current latest" /></div>}</>,
+    },
+    { key: "date", header: "Last date", nowrap: true, cell: (r) => fmtDate(r.lastDate) },
+    { key: "lead", header: "Lead time", align: "right", priority: 3, cell: (r) => (r.leadTimeDays != null ? `${r.leadTimeDays} d` : "-") },
+    {
+      key: "diff", header: "vs other vendors", label: "Compared with other vendors", align: "right",
+      cell: (r) => r.diff == null ? <span className="text-ink-faint">Only vendor</span> : (
+        <span className={cx(r.diff <= 0 ? "text-success" : "text-danger")}>
+          {r.diff > 0 ? "+" : ""}{pct(r.diff)}
+          <span className="block text-caption text-ink-faint">Best {money(r.other!.min)} · {r.other!.minVendor}</span>
+        </span>
+      ),
+    },
+    ...(write ? [{
+      key: "actions", header: <span className="sr-only">Actions</span>, label: "Actions", card: "actions" as const,
+      cell: (r: R) => (
+        <form action={unlinkVendorItem.bind(null, v.id, r.itemId)}>
+          <ConfirmButton variant="ghost" size="sm" stacked className="text-danger" confirmVariant="danger" pendingText="Removing…" confirmLabel="Yes, remove"
+            confirm={`Remove ${r.code} from this vendor's list?`} aria-label={`Remove ${r.code} from vendor`} title="Remove from vendor list">
+            <Trash2 className="icon-xs" aria-hidden /><span className="sm:sr-only">Remove</span>
+          </ConfirmButton>
+        </form>
+      ),
+    }] : []),
+  ];
+  type I = (typeof invoices)[number];
+  const invCols: Column<I>[] = [
+    {
+      key: "no", header: "Invoice", card: "title", nowrap: true,
+      cell: ({ inv }) => canPurchases ? <Link href={`/purchases/${inv.id}`} className="rt-stretch font-medium text-brand-700 hover:underline dark:text-brand-300">{inv.invoiceNo}</Link> : inv.invoiceNo,
+    },
+    { key: "date", header: "Date", card: "subtitle", nowrap: true, cell: ({ inv }) => fmtDate(inv.invoiceDate) },
+    {
+      key: "due", header: "Due", nowrap: true,
+      cell: ({ inv }) => {
+        const out = inv.status === "posted" ? purchaseOutstanding(inv) : 0;
+        const od = inv.status === "posted" && out > 0.5 && inv.dueDate && inv.dueDate < today;
+        return <span className={cx(od && "font-medium text-danger")}>{fmtDate(inv.dueDate)}</span>;
+      },
+    },
+    { key: "project", header: "Project", priority: 3, cell: ({ projectName }) => projectName ?? <span className="text-ink-faint">Stock</span> },
+    {
+      key: "status", header: "Status", card: "badge",
+      cell: ({ inv }) => <StatusPill status={inv.status === "posted" && purchaseOutstanding(inv) <= 0.5 ? "paid" : inv.status} />,
+    },
+    { key: "total", header: "Total", align: "right", nowrap: true, cell: ({ inv }) => money(inv.total) },
+    { key: "out", header: "Outstanding", align: "right", card: "amount", nowrap: true, cell: ({ inv }) => (inv.status === "posted" ? money(purchaseOutstanding(inv)) : "-") },
+  ];
+
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title={v.name}
-        subtitle={<>{v.city ?? ""}{v.gstin && <> · GSTIN <span className="font-mono">{v.gstin}</span></>}{!v.active && <> · <Badge>inactive</Badge></>}</>}
-        back={{ href: "/vendors", label: "Vendors" }}
-        actions={<>
-          {canWrite(user.role, "purchases") && <LinkButton href={`/purchases/new?vendor=${v.id}`} variant="secondary"><Plus size={16} aria-hidden /> Purchase invoice</LinkButton>}
-          {write && <LinkButton href={`/vendors/${v.id}/edit`}><Pencil size={16} aria-hidden /> Edit</LinkButton>}
-        </>}
-      />
-      <Flash ok={sp.ok} err={sp.err} />
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Outstanding payable" value={money(outstanding)} tone={overdue > 0 ? "bad" : outstanding > 0 ? "warn" : "default"} hint={overdue > 0 ? `${money(overdue)} overdue` : "Posted invoices − payments"} />
-        <Stat label="Purchases this FY" value={money(fyPurchases)} hint={`${posted.length} posted invoice${posted.length === 1 ? "" : "s"} in total`} />
-        <Stat label="Items supplied" value={supplied.length} hint={`${cheapestCount} where this vendor is cheapest`} />
-        <Stat label="Price competitiveness" value={avgDiff == null ? "-" : `${avgDiff > 0 ? "+" : ""}${pct(avgDiff)}`}
+    <DetailPage
+      back={{ href: "/vendors", label: "Vendors" }}
+      eyebrow="Vendor"
+      title={v.name}
+      status={!v.active ? <StatusPill status="inactive" /> : undefined}
+      meta={
+        <>
+          {v.city && <MetaChip label="City">{v.city}</MetaChip>}
+          {v.gstin && <MetaChip label="GSTIN"><span className="font-mono">{v.gstin}</span></MetaChip>}
+          <MetaChip label="Terms">{v.paymentTermsDays} days</MetaChip>
+          {v.phone && <MetaChip label="Phone">{v.phone}</MetaChip>}
+        </>
+      }
+      primaryAction={canWrite(user.role, "purchases") && <LinkButton href={`/purchases/new?vendor=${v.id}`}><Plus className="icon-sm" aria-hidden /> New purchase invoice</LinkButton>}
+      secondaryActions={write && <LinkButton href={`/vendors/${v.id}/edit`} variant="secondary"><Pencil className="icon-sm" aria-hidden /> Edit</LinkButton>}
+      notices={<Flash ok={sp.ok} err={sp.err} />}
+      tabs={
+        <Tabs label="Vendor sections" basePath={base} params={{ tab: sp.tab }} active={tab} items={[
+          { id: "items", label: "Items supplied", count: supplied.length },
+          { id: "invoices", label: "Purchase invoices", count: invoices.length, alert: overdue > 0 },
+        ]} />
+      }
+      aside={
+        <>
+          <SectionCard title="Details">
+            <KeyValueGrid columns={1} items={[
+              { label: "Contact person", value: v.contactPerson },
+              { label: "Phone", value: v.phone ? <a href={`tel:${v.phone}`} className="hover:underline">{v.phone}</a> : null },
+              { label: "Email", value: v.email ? <a href={`mailto:${v.email}`} className="hover:underline">{v.email}</a> : null },
+              { label: "Payment terms", value: `${v.paymentTermsDays} days` },
+              { label: "Address", value: v.address ? <span className="whitespace-pre-line">{v.address}</span> : null },
+              { label: "Systems", value: v.systems.length ? <div className="flex flex-wrap gap-1">{v.systems.map((s) => <Badge key={s} tone="blue">{SYSTEMS[s as keyof typeof SYSTEMS] ?? s}</Badge>)}</div> : null },
+              { label: "Notes", value: v.notes },
+            ]} />
+          </SectionCard>
+          {write && (
+            <SectionCard title="Link item or update rate" description="Rates from posted purchase invoices update automatically. Use this for quoted rates or new suppliers.">
+              <form action={linkVendorItem.bind(null, v.id)} className="space-y-3">
+                <Field label="Item" required>
+                  <Select name="itemId" required defaultValue="">
+                    <option value="" disabled>Choose item…</option>
+                    {allItems.map((i) => <option key={i.id} value={i.id}>{i.code} · {i.name}</option>)}
+                  </Select>
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Quoted rate (₹)"><Input name="lastRate" type="number" inputMode="decimal" step="0.01" min={0} className="text-right" /></Field>
+                  <Field label="Lead time (days)"><Input name="leadTimeDays" type="number" inputMode="numeric" min={0} max={365} className="text-right" /></Field>
+                </div>
+                <SubmitButton size="sm" pendingText="Saving…">Save rate</SubmitButton>
+              </form>
+            </SectionCard>
+          )}
+        </>
+      }
+    >
+      <MetricStrip>
+        <Metric label="Outstanding payable" value={moneyShort(outstanding)} tone={overdue > 0 ? "bad" : outstanding > 0 ? "warn" : "default"} hint={overdue > 0 ? `${money(overdue)} overdue` : "Posted invoices less payments"} />
+        <Metric label="Purchases this FY" value={moneyShort(fyPurchases)} hint={`${posted.length} posted invoice${posted.length === 1 ? "" : "s"} in total`} />
+        <Metric label="Items supplied" value={supplied.length} hint={`${cheapestCount} where this vendor is cheapest`} />
+        <Metric label="Price competitiveness" value={avgDiff == null ? "-" : `${avgDiff > 0 ? "+" : ""}${pct(avgDiff)}`}
           tone={avgDiff == null ? "default" : avgDiff <= 0 ? "good" : avgDiff > 5 ? "bad" : "warn"}
-          hint={avgDiff == null ? "No other vendor supplies the same items" : `Avg vs other vendors on ${diffs.length} common item${diffs.length === 1 ? "" : "s"} (negative = cheaper)`} />
-      </div>
+          hint={avgDiff == null ? "No other vendor supplies the same items" : `Average vs other vendors on ${diffs.length} common item${diffs.length === 1 ? "" : "s"} (negative is cheaper)`} />
+      </MetricStrip>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card title="Details" className="lg:col-span-2">
-          <DL items={[
-            ["Contact person", v.contactPerson],
-            ["Phone", v.phone ? <a href={`tel:${v.phone}`} className="hover:underline">{v.phone}</a> : null],
-            ["Email", v.email ? <a href={`mailto:${v.email}`} className="hover:underline">{v.email}</a> : null],
-            ["Payment terms", `${v.paymentTermsDays} days`],
-            ["Address", v.address],
-            ["Systems", v.systems.length ? <div className="flex flex-wrap gap-1">{v.systems.map((s) => <Badge key={s} tone="blue">{SYSTEMS[s as keyof typeof SYSTEMS] ?? s}</Badge>)}</div> : null],
-            ["Notes", v.notes],
-          ]} />
-        </Card>
-        {write && (
-          <Card title="Link item / update rate">
-            <form action={linkVendorItem.bind(null, v.id)} className="space-y-3">
-              <Field label="Item" required>
-                <Select name="itemId" required defaultValue="">
-                  <option value="" disabled>Choose item…</option>
-                  {allItems.map((i) => <option key={i.id} value={i.id}>{i.code} · {i.name}</option>)}
-                </Select>
-              </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Quoted rate (₹)"><Input name="lastRate" type="number" step="0.01" min={0} /></Field>
-                <Field label="Lead time (days)"><Input name="leadTimeDays" type="number" min={0} max={365} /></Field>
-              </div>
-              <p className="text-xs text-ink-soft">Rates from posted purchase invoices update automatically; use this for quoted rates or new suppliers.</p>
-              <SubmitButton size="sm">Save</SubmitButton>
-            </form>
-          </Card>
-        )}
-      </div>
+      {tab === "items" && (
+        <SectionCard title="Items supplied" count={supplied.length} icon={Package} flush
+          empty={rows.length === 0 && "No items linked yet. Items are added automatically when a purchase invoice from this vendor is posted."}>
+          <ResponsiveTable flush rows={rows} columns={itemCols} rowKey={(r) => r.itemId} caption="Items supplied" />
+        </SectionCard>
+      )}
 
-      <Card title={`Items supplied (${supplied.length})`} bodyClassName="p-0">
-        {rows.length === 0 ? <div className="p-4"><EmptyState title="No items linked yet">Items are added automatically when a purchase invoice from this vendor is posted.</EmptyState></div> : (
-          <Table className="rounded-none border-0 shadow-none">
-            <thead><tr><Th>Item</Th><Th>Size / make</Th><Th className="text-right">Last rate</Th><Th>Last date</Th><Th className="text-right">Lead time</Th><Th className="text-right">vs other vendors</Th>{write && <Th><span className="sr-only">Actions</span></Th>}</tr></thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.itemId} className="hover:bg-muted/50">
-                  <Td className="max-w-72 whitespace-normal"><Link href={`/items/${r.itemId}`} className="hover:underline">{r.name}</Link>
-                    <div className="font-mono text-xs text-ink-faint">{r.code} · {SYSTEMS[r.system as keyof typeof SYSTEMS] ?? r.system}</div></Td>
-                  <Td>{r.size ?? "-"}<div className="text-xs text-ink-faint">{r.make ?? ""}</div></Td>
-                  <Td className="text-right tabular-nums">{money(r.lastRate)} <span className="text-xs text-ink-faint">/{r.uom}</span>
-                    {r.itemLatestVendor === v.id && <div><Badge tone="green">current latest</Badge></div>}</Td>
-                  <Td>{fmtDate(r.lastDate)}</Td>
-                  <Td className="text-right">{r.leadTimeDays != null ? `${r.leadTimeDays} d` : "-"}</Td>
-                  <Td className={cx("text-right tabular-nums", r.diff != null && (r.diff <= 0 ? "text-emerald-600" : "text-red-600"))}>
-                    {r.diff == null ? <span className="text-ink-faint">only vendor</span> : <>{r.diff > 0 ? "+" : ""}{pct(r.diff)}
-                      <div className="text-xs text-ink-faint">best {money(r.other!.min)} · {r.other!.minVendor}</div></>}
-                  </Td>
-                  {write && (
-                    <Td>
-                      <form action={unlinkVendorItem.bind(null, v.id, r.itemId)}>
-                        <Button type="submit" variant="ghost" size="sm" aria-label={`Remove ${r.code} from vendor`} title="Remove from vendor list"><Trash2 size={14} aria-hidden /></Button>
-                      </form>
-                    </Td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        )}
-      </Card>
-
-      <Card title={`Purchase invoices (${invoices.length})`} bodyClassName="p-0">
-        {invoices.length === 0 ? <div className="p-4 text-sm text-ink-soft">No purchase invoices yet.</div> : (
-          <Table className="rounded-none border-0 shadow-none">
-            <thead><tr><Th>Invoice</Th><Th>Date</Th><Th>Due</Th><Th>Project</Th><Th>Status</Th><Th className="text-right">Total</Th><Th className="text-right">Outstanding</Th></tr></thead>
-            <tbody>
-              {invoices.map(({ inv, projectName }) => {
-                const out = inv.status === "posted" ? purchaseOutstanding(inv) : 0;
-                const od = inv.status === "posted" && out > 0.5 && inv.dueDate && inv.dueDate < today;
-                return (
-                  <tr key={inv.id} className="hover:bg-muted/50">
-                    <Td>{canPurchases ? <Link href={`/purchases/${inv.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{inv.invoiceNo}</Link> : inv.invoiceNo}</Td>
-                    <Td>{fmtDate(inv.invoiceDate)}</Td>
-                    <Td className={cx(od && "font-medium text-red-600")}>{fmtDate(inv.dueDate)}</Td>
-                    <Td>{projectName ?? <span className="text-ink-faint">Stock</span>}</Td>
-                    <Td><StatusBadge status={inv.status === "posted" && out <= 0.5 ? "paid" : inv.status} /></Td>
-                    <Td className="text-right tabular-nums">{money(inv.total)}</Td>
-                    <Td className="text-right tabular-nums">{inv.status === "posted" ? money(out) : "-"}</Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
-        )}
-      </Card>
-    </div>
+      {tab === "invoices" && (
+        <SectionCard title="Purchase invoices" count={invoices.length} icon={FileText} flush
+          empty={invoices.length === 0 && "No purchase invoices yet."}>
+          <ResponsiveTable flush rows={invoices} columns={invCols} rowKey={(r) => r.inv.id} caption="Purchase invoices" />
+        </SectionCard>
+      )}
+    </DetailPage>
   );
 }

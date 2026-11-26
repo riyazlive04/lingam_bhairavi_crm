@@ -6,7 +6,8 @@ import { canWrite } from "@/lib/rbac";
 import { todayIST } from "@/lib/format";
 import { CALL_PRIORITIES } from "@/lib/amc";
 import { SYSTEMS } from "@/lib/constants";
-import { EmptyState, Flash, LinkButton, PageHeader } from "@/components/ui";
+import { EmptyState, Flash, LinkButton } from "@/components/ui";
+import { FormPage } from "@/components/patterns";
 import { CallForm } from "../_components/call-form";
 import { amcAccess } from "../../amc/_lib/access";
 
@@ -32,9 +33,9 @@ export default async function NewCallPage({ searchParams }: { searchParams: Prom
   const systems = Object.fromEntries(Object.entries(SYSTEMS).filter(([k]) => k !== "spares"));
 
   return (
-    <div className="max-w-3xl">
-      <PageHeader title="Log a service call" subtitle="Breakdown or complaint from a customer. The response deadline is set from their AMC, or 48 hours without one." back={{ href: "/service-calls", label: "Service calls" }} />
-      <Flash ok={sp.ok} err={sp.err} />
+    <FormPage title="Log a service call" width="narrow"
+      subtitle="Breakdown or complaint from a customer. The response deadline is set from their AMC, or 48 hours without one."
+      back={{ href: "/service-calls", label: "Service calls" }} notices={<Flash ok={sp.ok} err={sp.err} />}>
       <CallForm
         customers={customerList}
         contracts={contracts.map((c) => ({ ...c, systems: c.systems ?? [] }))}
@@ -46,6 +47,6 @@ export default async function NewCallPage({ searchParams }: { searchParams: Prom
         initialCustomerId={Number(sp.customerId) || undefined}
         initialContractId={Number(sp.contractId) || undefined}
       />
-    </div>
+    </FormPage>
   );
 }

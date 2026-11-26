@@ -1,20 +1,21 @@
-import { Download } from "lucide-react";
+import Link from "next/link";
+import { Download, FileText, X } from "lucide-react";
 import { getDb } from "@/db";
 import { requireUser } from "@/lib/auth";
 import { canRead, canWrite } from "@/lib/rbac";
 import { PAYMENT_MODES } from "@/lib/constants";
 import { fmtDate, money, moneyShort, todayIST } from "@/lib/format";
 import { openPurchaseInvoices, sumAgeing, vendorOutstanding } from "@/lib/billing";
-import { Badge, Card, EmptyState, Field, Flash, Input, LinkButton, PageHeader, Select, Stat, Table, Td, Th } from "@/components/ui";
+import { EmptyState, Field, Flash, Input, LinkButton, Select, buttonClass } from "@/components/ui";
+import { ListPage, Metric, MetricStrip, ResponsiveTable, SectionCard, StatusPill, type Column } from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { recordVendorPayment } from "../actions";
 import { AgeingTable } from "../_components/ageing-table";
-import { BillingNav } from "../_components/billing-nav";
-import Link from "next/link";
+import { BillingTabs } from "../_components/billing-tabs";
 
 export const metadata = { title: "Vendor payables" };
 
-export default async function PayablesPage({ searchParams }: { searchParams: Promise<{ vendor?: string; ok?: string; err?: string }> }) {
+export default async function PayablesPage({ searchParams }: { searchParams: Promise<{ vendor?: string; pay?: string; ok?: string; err?: string }> }) {
   const user = await requireUser("billing");
   const sp = await searchParams;
   const db = await getDb();
@@ -26,63 +27,75 @@ export default async function PayablesPage({ searchParams }: { searchParams: Pro
   const purchasesLink = canRead(user.role, "purchases");
   const vendorName = vendorId ? rows.find((r) => r.partyId === vendorId)?.name : undefined;
   const back = vendorId ? `/billing/payables?vendor=${vendorId}` : "/billing/payables";
+  // The bill picked with "Pay" (shown in a full-width form above the bills table).
+  const paying = write ? docs.find((d) => d.id === Number(sp.pay)) : undefined;
+  const payHref = (id: number) => `/billing/payables?${vendorId ? `vendor=${vendorId}&` : ""}pay=${id}#pay`;
+
+  type Doc = (typeof docs)[number];
+  const cols: Column<Doc>[] = [
+    { key: "bill", header: "Bill no.", card: "title", nowrap: true,
+      cell: (d) => purchasesLink ? <Link href={`/purchases/${d.id}`} className="rt-stretch font-medium text-brand-700 hover:underline dark:text-brand-300">{d.number}</Link> : <span className="font-medium">{d.number}</span> },
+    { key: "vendor", header: "Vendor", card: "subtitle", className: "max-w-52 truncate", cell: (d) => d.partyName },
+    { key: "date", header: "Bill date", nowrap: true, priority: 3, cell: (d) => fmtDate(d.invoiceDate) },
+    { key: "due", header: "Due", nowrap: true, cell: (d) => fmtDate(d.dueDate) },
+    { key: "state", header: "Status", card: "badge",
+      cell: (d) => d.daysOverdue > 0 ? <StatusPill status="overdue" label={`${d.daysOverdue} days overdue`} />
+        : d.daysOverdue >= -7 ? <StatusPill status="due_soon" label={d.daysOverdue === 0 ? "Due today" : `Due in ${-d.daysOverdue} days`} />
+          : <StatusPill status="open" label="Not due" /> },
+    { key: "total", header: "Total", align: "right", nowrap: true, priority: 3, cell: (d) => money(d.total) },
+    { key: "paid", header: "Paid", align: "right", nowrap: true, priority: 3, cell: (d) => money(d.paidAmount) },
+    { key: "bal", header: "Balance", align: "right", card: "amount", nowrap: true, className: "font-medium", cell: (d) => money(d.outstanding) },
+    ...(write ? [{ key: "pay", header: <span className="sr-only">Pay</span>, label: "Pay", card: "actions" as const, align: "right" as const,
+      cell: (d: Doc) => <LinkButton href={payHref(d.id)} variant={paying?.id === d.id ? "primary" : "secondary"} size="sm" scroll={false}>Pay bill</LinkButton> }] : []),
+  ];
 
   return (
-    <>
-      <PageHeader title="Vendor outstanding" subtitle="Posted purchase invoices with balance payable. Net payable takes off debit notes not yet adjusted."
-        actions={<a href="/billing/export/payables" className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink hover:bg-muted"><Download className="h-4 w-4" aria-hidden /> Export Excel</a>} />
-      <BillingNav active="/billing/payables" />
-      <Flash ok={sp.ok} err={sp.err} />
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Net payable" value={moneyShort(t.netDue)} hint={t.debitNotes ? `Bills ${moneyShort(t.outstanding)} less debit notes ${moneyShort(t.debitNotes)}` : undefined} />
-        <Stat label="Overdue" value={moneyShort(t.overdue)} tone={t.overdue ? "warn" : "good"} />
-        <Stat label="Due in 7 days" value={moneyShort(t.dueNext7)} />
-        <Stat label="90+ days" value={moneyShort(t.d90p)} tone={t.d90p ? "bad" : "default"} />
-      </div>
-      <div className="mb-6">
-        <AgeingTable kind="vendor" rows={rows} hrefFor={(id) => `/billing/payables?vendor=${id}#bills`} emptyTitle="No vendor payables outstanding." />
-      </div>
+    <ListPage
+      title="Vendor outstanding"
+      subtitle="Posted purchase invoices with a balance to pay. Net payable takes off debit notes not yet adjusted."
+      secondaryActions={<a href="/billing/export/payables" className={buttonClass("secondary")}><Download className="icon-sm" aria-hidden /> Download Excel</a>}
+      notices={<><BillingTabs active="payables" /><Flash ok={sp.ok} err={sp.err} /></>}
+      stats={
+        <MetricStrip>
+          <Metric label="Net payable" value={moneyShort(t.netDue)} hint={t.debitNotes ? `Bills ${moneyShort(t.outstanding)} less debit notes ${moneyShort(t.debitNotes)}` : undefined} />
+          <Metric label="Overdue" value={moneyShort(t.overdue)} tone={t.overdue ? "warn" : "good"} />
+          <Metric label="Due in 7 days" value={moneyShort(t.dueNext7)} />
+          <Metric label="Over 90 days" value={moneyShort(t.d90p)} tone={t.d90p ? "bad" : "default"} />
+        </MetricStrip>
+      }
+    >
+      <div className="space-y-4">
+        <AgeingTable kind="vendor" rows={rows} hrefFor={(id) => `/billing/payables?vendor=${id}#bills`}
+          emptyTitle="No vendor payables outstanding" emptyText="Posted purchase invoices with a balance show up here." />
 
-      <Card
-        title={<span id="bills">Unpaid purchase bills{vendorName ? `: ${vendorName}` : ""} ({docs.length})</span>}
-        actions={vendorId ? <LinkButton href="/billing/payables" variant="ghost" size="sm">All vendors</LinkButton> : undefined}
-        bodyClassName={docs.length ? "p-0" : undefined}
-      >
-        {docs.length === 0 ? <EmptyState title="No unpaid bills" /> : (
-          <Table className="rounded-none border-0 shadow-none">
-            <thead><tr><Th>Vendor</Th><Th>Bill no.</Th><Th>Bill date</Th><Th>Due</Th><Th className="text-right">Total</Th><Th className="text-right">Paid</Th><Th className="text-right">Balance</Th>{write && <Th><span className="sr-only">Pay</span></Th>}</tr></thead>
-            <tbody>
-              {docs.map((d) => (
-                <tr key={d.id}>
-                  <Td className="max-w-52 truncate">{d.partyName}</Td>
-                  <Td>{purchasesLink ? <Link href={`/purchases/${d.id}`} className="text-brand-700 hover:underline dark:text-brand-300">{d.number}</Link> : d.number}</Td>
-                  <Td className="whitespace-nowrap">{fmtDate(d.invoiceDate)}</Td>
-                  <Td className="whitespace-nowrap">{fmtDate(d.dueDate)}{d.daysOverdue > 0 ? <div><Badge tone="red">{d.daysOverdue}d overdue</Badge></div> : d.daysOverdue >= -7 ? <div><Badge tone="amber">{d.daysOverdue === 0 ? "today" : `in ${-d.daysOverdue}d`}</Badge></div> : null}</Td>
-                  <Td className="text-right tabular-nums">{money(d.total)}</Td>
-                  <Td className="text-right tabular-nums">{money(d.paidAmount)}</Td>
-                  <Td className="text-right font-medium tabular-nums">{money(d.outstanding)}</Td>
-                  {write && (
-                    <Td>
-                      <details>
-                        <summary className="cursor-pointer select-none rounded-md px-2 py-1 text-xs font-medium text-brand-700 hover:bg-muted dark:text-brand-300">Pay</summary>
-                        <form action={recordVendorPayment} className="mt-2 grid w-60 gap-2 rounded-lg border border-line bg-surface p-3 shadow-sm">
-                          <input type="hidden" name="purchaseInvoiceId" value={d.id} />
-                          <input type="hidden" name="back" value={back} />
-                          <Field label="Amount (₹)"><Input name="amount" type="number" inputMode="decimal" step="0.01" min="0.01" max={d.outstanding + 0.5} defaultValue={d.outstanding} required /></Field>
-                          <Field label="Date"><Input name="date" type="date" defaultValue={today} max={today} required /></Field>
-                          <Field label="Mode"><Select name="mode" defaultValue="bank">{PAYMENT_MODES.map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}</Select></Field>
-                          <Field label="Reference"><Input name="reference" maxLength={80} placeholder="UTR / cheque no." /></Field>
-                          <SubmitButton size="sm" variant="success" pendingText="Saving…">Record payment</SubmitButton>
-                        </form>
-                      </details>
-                    </Td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </Table>
+        {paying && (
+          <SectionCard id="pay" title={`Pay ${paying.number}`} icon={FileText}
+            description={`${paying.partyName} · balance ${money(paying.outstanding)} · due ${fmtDate(paying.dueDate)}`}
+            actions={<Link href={`${back}#bills`} scroll={false} className="inline-flex items-center gap-1 rounded-md text-sm font-medium text-ink-soft hover:text-ink"><X className="icon-sm" aria-hidden /> Close</Link>}>
+            <form action={recordVendorPayment} className="space-y-4">
+              <input type="hidden" name="purchaseInvoiceId" value={paying.id} />
+              <input type="hidden" name="back" value={back} />
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <Field label="Amount (₹)" required><Input name="amount" type="number" inputMode="decimal" step="0.01" min="0.01" max={paying.outstanding + 0.5} defaultValue={paying.outstanding} className="text-right" required /></Field>
+                <Field label="Date" required><Input name="date" type="date" defaultValue={today} max={today} required /></Field>
+                <Field label="Mode" required><Select name="mode" defaultValue="bank">{PAYMENT_MODES.map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}</Select></Field>
+                <Field label="Reference"><Input name="reference" maxLength={80} placeholder="UTR or cheque no." /></Field>
+              </div>
+              <div className="flex justify-end">
+                <SubmitButton variant="success" pendingText="Saving…" className="max-sm:w-full">Record payment</SubmitButton>
+              </div>
+            </form>
+          </SectionCard>
         )}
-      </Card>
-    </>
+
+        <SectionCard id="bills" title={`Unpaid purchase bills${vendorName ? `: ${vendorName}` : ""}`} count={docs.length} flush={docs.length > 0}
+          actions={vendorId ? <LinkButton href="/billing/payables" variant="ghost" size="sm">All vendors</LinkButton> : undefined}>
+          {docs.length === 0
+            ? <EmptyState title="No unpaid bills">{vendorId ? "This vendor has no posted bills with a balance." : "Posted purchase invoices with a balance show up here."}</EmptyState>
+            : <ResponsiveTable flush rows={docs} columns={cols} rowKey={(d) => d.id} caption="Unpaid purchase bills"
+                rowClassName={(d) => paying?.id === d.id && "bg-brand-50 dark:bg-brand-950/40"} />}
+        </SectionCard>
+      </div>
+    </ListPage>
   );
 }

@@ -2,18 +2,20 @@
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button, Field, Input, Select } from "@/components/ui";
+import { FormFooter, FormSection } from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 
 type Row = { key: number; extType: string; make: string; qty: string; location: string };
 
 /** Bulk-add extinguishers for one customer (e.g. after a site survey). */
-export function BulkAdd({ action, customers, types, intervals, today, defaultCustomerId }: {
+export function BulkAdd({ action, customers, types, intervals, today, defaultCustomerId, cancelHref }: {
   action: (fd: FormData) => Promise<void>;
   customers: { id: number; name: string }[];
   types: readonly string[];
   intervals: readonly (readonly [number, string])[];
   today: string;
   defaultCustomerId?: number;
+  cancelHref: string;
 }) {
   const [rows, setRows] = useState<Row[]>([{ key: 1, extType: "", make: "", qty: "1", location: "" }]);
   const [nextKey, setNextKey] = useState(2);
@@ -32,10 +34,10 @@ export function BulkAdd({ action, customers, types, intervals, today, defaultCus
     <form action={action} className="space-y-4">
       <input type="hidden" name="rows" value={payload} />
       <datalist id="bulk-ext-types">{types.map((t) => <option key={t} value={t} />)}</datalist>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <FormSection title="Customer site and dates" description="These apply to every row below.">
         <Field label="Customer" required>
           <Select name="customerId" required defaultValue={defaultCustomerId ?? ""}>
-            <option value="" disabled>Select customer…</option>
+            <option value="" disabled>Select customer</option>
             {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </Select>
         </Field>
@@ -59,10 +61,9 @@ export function BulkAdd({ action, customers, types, intervals, today, defaultCus
         <Field label="HPT due (optional)">
           <Input type="date" name="hptDueDate" />
         </Field>
-      </div>
+      </FormSection>
 
-      <fieldset className="rounded-xl border border-line p-3">
-        <legend className="px-1 text-sm font-semibold text-ink">Extinguishers</legend>
+      <FormSection title="Extinguishers" columns={1} description="One row per type and location. Make and location carry over to the next row.">
         <div className="space-y-3">
           {rows.map((r, i) => (
             <div key={r.key} className="grid grid-cols-2 gap-2 border-b border-line pb-3 last:border-0 last:pb-0 sm:grid-cols-[1.3fr_1fr_5rem_1.3fr_auto]">
@@ -71,20 +72,21 @@ export function BulkAdd({ action, customers, types, intervals, today, defaultCus
               <Input aria-label={`Quantity, row ${i + 1}`} type="number" min={1} step={1} inputMode="numeric" value={r.qty} onChange={(e) => update(r.key, { qty: e.target.value })} />
               <Input aria-label={`Location, row ${i + 1}`} placeholder="Location (optional)" value={r.location} onChange={(e) => update(r.key, { location: e.target.value })} maxLength={200} className="col-span-2 sm:col-span-1" />
               <Button type="button" variant="ghost" onClick={() => remove(r.key)} disabled={rows.length === 1} aria-label={`Remove row ${i + 1}`} className="col-span-2 sm:col-span-1">
-                <Trash2 className="h-4 w-4" aria-hidden />
+                <Trash2 className="icon-sm" aria-hidden /><span className="sm:sr-only">Remove row</span>
               </Button>
             </div>
           ))}
         </div>
-        <Button type="button" variant="secondary" size="sm" className="mt-3" onClick={add} disabled={rows.length >= 200}>
-          <Plus className="h-4 w-4" aria-hidden /> Add row
-        </Button>
-      </fieldset>
+        <div>
+          <Button type="button" variant="secondary" onClick={add} disabled={rows.length >= 200} className="max-sm:w-full">
+            <Plus className="icon-sm" aria-hidden /> Add row
+          </Button>
+        </div>
+      </FormSection>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <SubmitButton disabled={!valid.length}>Add {valid.length} line{valid.length === 1 ? "" : "s"} ({units} units)</SubmitButton>
-        <span className="text-xs text-ink-soft">Rows without a type are ignored.</span>
-      </div>
+      <FormFooter cancelHref={cancelHref} note="Rows without a type are ignored.">
+        <SubmitButton disabled={!valid.length} pendingText="Adding…">Add {valid.length} line{valid.length === 1 ? "" : "s"} ({units} units)</SubmitButton>
+      </FormFooter>
     </form>
   );
 }

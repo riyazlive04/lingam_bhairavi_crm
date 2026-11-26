@@ -7,8 +7,9 @@ import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
 import { daysBetween, fmtDate, money, todayIST } from "@/lib/format";
 import { OPEN_INVOICE_STATUSES, outstandingOf } from "@/lib/billing";
-import { Badge, Button, EmptyState, Flash, Input, LinkButton, PageHeader, Select, StatusBadge, Table, Td, Th } from "@/components/ui";
-import { BillingNav } from "../_components/billing-nav";
+import { Flash, LinkButton, Select } from "@/components/ui";
+import { FilterPills, ListEmpty, ListFilters, ListPage, ResponsiveTable, StatusPill, statusLabel, type Column, type FilterPillItem } from "@/components/patterns";
+import { BillingTabs } from "../_components/billing-tabs";
 
 export const metadata = { title: "Sales invoices" };
 const STATUSES = ["issued", "partially_paid", "paid", "cancelled"] as const;
@@ -49,66 +50,74 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
   const write = canWrite(user.role, "billing");
   const filtered = !!(q || status || customerId || sp.overdue);
 
-  return (
-    <>
-      <PageHeader title="Sales invoices" subtitle="Tax invoices, payments and reminders"
-        actions={write && <LinkButton href="/billing/invoices/new"><Plus className="h-4 w-4" aria-hidden /> New invoice</LinkButton>} />
-      <BillingNav active="/billing/invoices" />
-      <Flash ok={sp.ok} err={sp.err} />
-      <form method="get" className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5" role="search" aria-label="Filter invoices">
-        <label className="sr-only" htmlFor="i-q">Search</label>
-        <Input id="i-q" name="q" defaultValue={q} placeholder="Invoice no. / customer / PO" />
-        <label className="sr-only" htmlFor="i-status">Status</label>
-        <Select id="i-status" name="status" defaultValue={status ?? ""}>
-          <option value="">All statuses</option>
-          {STATUSES.map((s) => <option key={s} value={s}>{s.replace("_", " ")}</option>)}
-        </Select>
-        <label className="sr-only" htmlFor="i-cust">Customer</label>
-        <Select id="i-cust" name="customer" defaultValue={customerId ? String(customerId) : ""}>
-          <option value="">All customers</option>
-          {custList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </Select>
-        <label className="inline-flex items-center gap-2 text-sm text-ink">
-          <input type="checkbox" name="overdue" value="1" defaultChecked={sp.overdue === "1"} className="h-4 w-4 accent-brand-600" /> Overdue only
-        </label>
-        <div className="flex gap-2">
-          <Button type="submit" variant="secondary">Filter</Button>
-          {filtered && <LinkButton href="/billing/invoices" variant="ghost">Clear</LinkButton>}
-        </div>
-      </form>
+  const overdueOnly = sp.overdue === "1";
+  const qs = (patch: Record<string, string | undefined>) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries({ q, status, customer: customerId ? String(customerId) : undefined, overdue: overdueOnly ? "1" : undefined, ...patch })) if (v) p.set(k, v);
+    const str = p.toString();
+    return str ? `/billing/invoices?${str}` : "/billing/invoices";
+  };
+  const pills: FilterPillItem[] = [
+    { label: "All", href: qs({ status: undefined, overdue: undefined }), active: !status && !overdueOnly },
+    ...STATUSES.map((st) => ({ label: statusLabel(st), href: qs({ status: st, overdue: undefined }), active: status === st && !overdueOnly })),
+    { label: "Overdue", href: qs({ status: undefined, overdue: overdueOnly ? undefined : "1" }), active: overdueOnly, attention: !overdueOnly },
+  ];
 
-      {rows.length === 0 ? (
-        <EmptyState title={filtered ? "No invoices match these filters" : "No invoices yet"}
-          action={write && !filtered ? <LinkButton href="/billing/invoices/new">Create an invoice</LinkButton> : undefined}>
-          {filtered ? "Try clearing the filters." : "Raise invoices from delivered orders, or create a manual invoice."}
-        </EmptyState>
-      ) : (
-        <Table>
-          <thead>
-            <tr><Th>Invoice</Th><Th>Customer</Th><Th className="text-right">Total</Th><Th className="text-right">Outstanding</Th><Th>Due</Th><Th>Status</Th><Th className="text-right">Reminders</Th></tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => {
-              const out = r.status === "cancelled" ? 0 : outstandingOf(r.total, r.paidAmount);
-              const od = (OPEN_INVOICE_STATUSES as readonly string[]).includes(r.status) ? daysBetween(r.dueDate, today) : 0;
-              return (
-                <tr key={r.id} className="hover:bg-muted/50">
-                  <Td>
-                    <Link href={`/billing/invoices/${r.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{r.number}</Link>
-                    <div className="text-xs text-ink-soft">{fmtDate(r.invoiceDate)}{r.orderNumber ? ` · ${r.orderNumber}` : ""}</div>
-                  </Td>
-                  <Td className="max-w-60 truncate"><Link href={`/billing/receivables/${r.customerId}`} className="hover:underline">{r.customerName ?? "-"}</Link></Td>
-                  <Td className="text-right tabular-nums">{money(r.total)}</Td>
-                  <Td className="text-right font-medium tabular-nums">{out > 0 ? money(out) : "-"}</Td>
-                  <Td className="whitespace-nowrap">{fmtDate(r.dueDate)}{od > 0 && <div><Badge tone="red">{od}d overdue</Badge></div>}</Td>
-                  <Td><StatusBadge status={r.status} /></Td>
-                  <Td className="text-right tabular-nums">{r.reminderCount || "-"}</Td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </Table>
-      )}
-    </>
+  type Row = (typeof rows)[number];
+  const columns: Column<Row>[] = [
+    { key: "no", header: "Invoice", card: "title", nowrap: true,
+      cell: (r) => (
+        <>
+          <Link href={`/billing/invoices/${r.id}`} className="rt-stretch font-medium text-brand-700 hover:underline dark:text-brand-300">{r.number}</Link>
+          <div className="text-caption font-normal text-ink-soft">{fmtDate(r.invoiceDate)}{r.orderNumber ? ` · ${r.orderNumber}` : ""}</div>
+        </>
+      ) },
+    { key: "customer", header: "Customer", card: "subtitle", className: "max-w-60 truncate",
+      cell: (r) => <Link href={`/billing/receivables/${r.customerId}`} className="relative z-[1] hover:underline">{r.customerName ?? "-"}</Link> },
+    { key: "total", header: "Total", align: "right", nowrap: true, cell: (r) => money(r.total) },
+    { key: "out", header: "Outstanding", align: "right", card: "amount", nowrap: true,
+      cell: (r) => {
+        const out = r.status === "cancelled" ? 0 : outstandingOf(r.total, r.paidAmount);
+        return <span className="font-medium">{out > 0 ? money(out) : "-"}</span>;
+      } },
+    { key: "due", header: "Due", nowrap: true,
+      cell: (r) => {
+        const od = (OPEN_INVOICE_STATUSES as readonly string[]).includes(r.status) ? daysBetween(r.dueDate, today) : 0;
+        return <>{fmtDate(r.dueDate)}{od > 0 && <div className="mt-0.5"><StatusPill status="overdue" label={`${od} days overdue`} /></div>}</>;
+      } },
+    { key: "status", header: "Status", card: "badge", cell: (r) => <StatusPill status={r.status} /> },
+    { key: "rem", header: "Reminders", align: "right", priority: 3, cell: (r) => r.reminderCount || "-" },
+  ];
+
+  return (
+    <ListPage
+      title="Sales invoices"
+      subtitle="Tax invoices, payments and reminders."
+      primaryAction={write && <LinkButton href="/billing/invoices/new"><Plus className="icon-sm" aria-hidden /> New invoice</LinkButton>}
+      notices={<Flash ok={sp.ok} err={sp.err} />}
+      filters={
+        <>
+          <BillingTabs active="invoices" />
+          <FilterPills label="Filter by status" items={pills} />
+          <ListFilters q={q} placeholder="Search invoice no., customer, PO" clearHref={qs({ q: undefined, customer: undefined })}
+            activeCount={[q, customerId].filter(Boolean).length} hidden={{ status, overdue: overdueOnly ? "1" : undefined }}>
+            <Select name="customer" defaultValue={customerId ? String(customerId) : ""} aria-label="Customer">
+              <option value="">All customers</option>
+              {custList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+          </ListFilters>
+        </>
+      }
+      isEmpty={rows.length === 0}
+      empty={
+        <ListEmpty filtered={filtered} noun="invoices" clearHref="/billing/invoices"
+          action={write && <LinkButton href="/billing/invoices/new"><Plus className="icon-sm" aria-hidden /> Create an invoice</LinkButton>}>
+          Raise invoices from delivered orders, or create a manual invoice.
+        </ListEmpty>
+      }
+      resultSummary={rows.length >= 300 ? "Showing the latest 300 invoices. Search or filter to narrow down." : `${rows.length} invoice${rows.length === 1 ? "" : "s"}`}
+    >
+      <ResponsiveTable rows={rows} columns={columns} rowKey={(r) => r.id} caption="Sales invoices" />
+    </ListPage>
   );
 }

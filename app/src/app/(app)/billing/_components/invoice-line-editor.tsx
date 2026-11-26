@@ -1,7 +1,8 @@
 "use client";
 import { useId, useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { Button, inputClass } from "@/components/ui";
+import { Button, cx } from "@/components/ui";
+import { LineItemsTable, MoneySummary, li } from "@/components/patterns";
 import { money, qty as fmtQty, round2 } from "@/lib/format";
 
 export type InvPickItem = { id: number; code: string; name: string; uom: string; rate: number; gstRate: number };
@@ -13,7 +14,7 @@ export type InvEditorLine = {
   qty: number;
   rate: number;
   gstRate: number;
-  /** order-linked lines: max invoiceable (ordered − invoiced) and info */
+  /** order-linked lines: max invoiceable (ordered minus invoiced) and info */
   maxQty?: number;
   info?: string;
 };
@@ -43,69 +44,80 @@ export function InvoiceLineEditor({ items, initial }: { items: InvPickItem[]; in
   const over = lines.some((l) => l.maxQty != null && l.qty > l.maxQty + 1e-6);
 
   return (
-    <div>
+    <div className="space-y-3">
       <datalist id={listId}>{items.map((i) => <option key={i.id} value={label(i)} />)}</datalist>
       <input type="hidden" name="lines" value={JSON.stringify(valid.map((l) => ({
         orderLineId: l.orderLineId, itemId: l.itemId, description: l.description.trim(), qty: l.qty, rate: l.rate, gstRate: l.gstRate,
       })))} />
-      <ol className="space-y-3">
-        {lines.map((l, idx) => {
-          const it = l.itemId ? byId.get(l.itemId) : undefined;
-          const amt = round2((l.qty || 0) * (l.rate || 0));
-          const tooMuch = l.maxQty != null && l.qty > l.maxQty + 1e-6;
-          return (
-            <li key={idx} className="rounded-lg border border-line bg-muted/40 p-3">
-              <div className="grid gap-3 sm:grid-cols-12">
-                <label className="block sm:col-span-5">
-                  <span className="mb-1 block text-xs font-medium text-ink-soft">Description #{idx + 1}</span>
+      <LineItemsTable minWidth={820} caption="Invoice lines">
+        <thead>
+          <tr>
+            <th className="w-10">#</th>
+            <th>Description</th>
+            <th className={cx(li.num, "w-28")}>Qty</th>
+            <th className={cx(li.num, "w-32")}>Rate (₹)</th>
+            <th className={cx(li.num, "w-24")}>GST %</th>
+            <th className={cx(li.num, "w-32")}>Amount</th>
+            <th className="w-12"><span className="sr-only">Remove</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((l, idx) => {
+            const it = l.itemId ? byId.get(l.itemId) : undefined;
+            const amt = round2((l.qty || 0) * (l.rate || 0));
+            const tooMuch = l.maxQty != null && l.qty > l.maxQty + 1e-6;
+            return (
+              <tr key={idx}>
+                <td className="pt-2.5 text-ink-soft">{idx + 1}</td>
+                <td>
                   {l.orderLineId ? (
-                    <input className={inputClass} value={l.description} maxLength={2000} onChange={(e) => set(idx, { description: e.target.value })} />
+                    <input className={li.input} value={l.description} maxLength={2000} aria-label={`Description, line ${idx + 1}`}
+                      onChange={(e) => set(idx, { description: e.target.value })} />
                   ) : (
-                    <input className={inputClass} list={listId} value={it ? label(it) : l.description} onChange={(e) => pickText(idx, e.target.value)} placeholder="Item code / name or free text (e.g. Transport)" />
+                    <input className={li.input} list={listId} value={it ? label(it) : l.description} aria-label={`Item or description, line ${idx + 1}`}
+                      onChange={(e) => pickText(idx, e.target.value)} placeholder="Item code or name, or free text such as Transport" />
                   )}
-                  {l.info && <span className="mt-1 block text-xs text-ink-soft">{l.info}</span>}
-                </label>
-                <label className="block sm:col-span-2">
-                  <span className="mb-1 block text-xs font-medium text-ink-soft">Qty ({l.uom})</span>
-                  <input className={inputClass} type="number" inputMode="decimal" step="any" min={0} max={l.maxQty} value={Number.isFinite(l.qty) ? l.qty : ""}
-                    aria-invalid={tooMuch || undefined} onChange={(e) => set(idx, { qty: Number(e.target.value) })} />
-                  {tooMuch && <span className="mt-1 block text-xs text-red-600" role="alert">Max {fmtQty(l.maxQty)}</span>}
-                </label>
-                <label className="block sm:col-span-2">
-                  <span className="mb-1 block text-xs font-medium text-ink-soft">Rate (₹)</span>
-                  <input className={inputClass} type="number" inputMode="decimal" step="any" min={0} value={Number.isFinite(l.rate) ? l.rate : ""}
-                    onChange={(e) => set(idx, { rate: Number(e.target.value) })} />
-                </label>
-                <label className="block sm:col-span-1">
-                  <span className="mb-1 block text-xs font-medium text-ink-soft">GST %</span>
-                  <select className={inputClass} value={l.gstRate} onChange={(e) => set(idx, { gstRate: Number(e.target.value) })}>
+                  {l.info && <span className="mt-0.5 block px-2 text-caption text-ink-soft">{l.info}</span>}
+                </td>
+                <td>
+                  <input className={li.numInput} type="number" inputMode="decimal" step="any" min={0} max={l.maxQty} value={Number.isFinite(l.qty) ? l.qty : ""}
+                    aria-label={`Quantity in ${l.uom}, line ${idx + 1}`} aria-invalid={tooMuch || undefined} onChange={(e) => set(idx, { qty: Number(e.target.value) })} />
+                  <span className={cx("mt-0.5 block px-2 text-right text-caption", tooMuch ? "text-danger" : "text-ink-faint")} role={tooMuch ? "alert" : undefined}>
+                    {tooMuch ? `Max ${fmtQty(l.maxQty)}` : l.uom}
+                  </span>
+                </td>
+                <td>
+                  <input className={li.numInput} type="number" inputMode="decimal" step="any" min={0} value={Number.isFinite(l.rate) ? l.rate : ""}
+                    aria-label={`Rate, line ${idx + 1}`} onChange={(e) => set(idx, { rate: Number(e.target.value) })} />
+                </td>
+                <td>
+                  <select className={li.numInput} value={l.gstRate} aria-label={`GST rate, line ${idx + 1}`} onChange={(e) => set(idx, { gstRate: Number(e.target.value) })}>
                     {[...new Set([...GST_RATES, l.gstRate])].sort((a, b) => a - b).map((g) => <option key={g} value={g}>{g}</option>)}
                   </select>
-                </label>
-                <div className="flex items-end justify-between gap-2 sm:col-span-2 sm:flex-col sm:items-end">
-                  <span className="text-sm tabular-nums text-ink">{money(amt)}</span>
+                </td>
+                <td className={cx(li.num, "pt-2.5")}>{money(amt)}</td>
+                <td>
                   <Button type="button" variant="ghost" size="sm" onClick={() => setLines((ls) => ls.filter((_, i) => i !== idx))} aria-label={`Remove line ${idx + 1}`}>
-                    <Trash2 className="h-4 w-4" aria-hidden />
+                    <Trash2 className="icon-sm" aria-hidden />
                   </Button>
-                </div>
-              </div>
-            </li>
-          );
-        })}
-      </ol>
-      {lines.length === 0 && <p className="rounded-lg border border-dashed border-line p-4 text-center text-sm text-ink-soft">No lines. Add a line to invoice.</p>}
-      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                </td>
+              </tr>
+            );
+          })}
+          {lines.length === 0 && (
+            <tr><td colSpan={7} className="py-6 text-center text-ink-soft">No lines yet. Add a line to invoice.</td></tr>
+          )}
+        </tbody>
+      </LineItemsTable>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <Button type="button" variant="secondary" onClick={() => setLines((ls) => [...ls, { orderLineId: null, itemId: null, description: "", uom: "Nos", qty: 1, rate: 0, gstRate: 18 }])}>
-          <Plus className="h-4 w-4" aria-hidden /> Add line
+          <Plus className="icon-sm" aria-hidden /> Add line
         </Button>
-        <dl className="min-w-56 space-y-1 text-sm" aria-live="polite">
-          <div className="flex justify-between gap-6"><dt className="text-ink-soft">Taxable value</dt><dd className="tabular-nums">{money(subtotal)}</dd></div>
-          <div className="flex justify-between gap-6"><dt className="text-ink-soft">GST</dt><dd className="tabular-nums">{money(tax)}</dd></div>
-          <div className="flex justify-between gap-6 border-t border-line pt-1 text-base font-semibold"><dt>Invoice total</dt><dd className="tabular-nums">{money(round2(subtotal + tax))}</dd></div>
-        </dl>
+        <div className="sm:w-72" aria-live="polite">
+          <MoneySummary taxable={subtotal} tax={tax} total={round2(subtotal + tax)} totalLabel="Invoice total" note="Lines with zero quantity are not invoiced." />
+        </div>
       </div>
-      {over && <p className="mt-2 text-sm text-red-600" role="alert">Some quantities exceed what is left to invoice on the order.</p>}
-      <p className="mt-2 text-xs text-ink-faint">Lines with zero quantity are not invoiced.</p>
+      {over && <p className="text-sm text-danger" role="alert">Some quantities are more than what is left to invoice on the order.</p>}
     </div>
   );
 }

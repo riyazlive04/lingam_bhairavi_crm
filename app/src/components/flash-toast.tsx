@@ -28,7 +28,7 @@ export function FlashToast({ kind, message }: { kind: "ok" | "err"; message: str
     <div
       role={ok ? "status" : "alert"}
       className={clsx(
-        "ui-pop fixed inset-x-3 bottom-[max(1rem,env(safe-area-inset-bottom))] z-[60] mx-auto flex max-w-md items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-lg sm:inset-x-auto sm:right-6 sm:bottom-6",
+        "ui-pop fixed inset-x-3 bottom-[calc(var(--bottom-nav-h)+1rem)] z-[60] mx-auto flex max-w-md items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-lg sm:inset-x-auto sm:right-6 lg:bottom-6",
         ok ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100"
           : "border-red-200 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-100",
       )}

@@ -5,8 +5,7 @@ import { customers, paymentAllocations, payments, projects, salesInvoices, sales
 import { requireUser } from "@/lib/auth";
 import { fmtDate, money } from "@/lib/format";
 import { amountInWords, getCompany, receiptNumber } from "@/lib/billing";
-import { LinkButton } from "@/components/ui";
-import { PrintButton } from "../../../orders/_components/print-button";
+import { DocNotes, DocSignature, DocTable, DocTotals, DocumentSheet } from "@/components/patterns";
 
 export const metadata = { title: "Payment receipt" };
 
@@ -40,54 +39,62 @@ export default async function ReceiptPage({ params }: { params: Promise<{ paymen
     ? `Advance${row.orderNo ? ` against our order ${row.orderNo}${row.po ? ` (your PO ${row.po})` : ""}` : ""}${row.projectName ? `, project ${row.projectName}` : ""}`
     : row.invNo ? `Invoice ${row.invNo} dated ${fmtDate(row.invDate)}` : "On account";
 
+  const back = p.salesInvoiceId
+    ? { href: `/billing/invoices/${p.salesInvoiceId}`, label: `Back to ${row.invNo ?? "invoice"}` }
+    : p.isAdvance ? { href: "/billing/advances", label: "Back to advances" } : { href: "/billing/payments", label: "Back to payments" };
+  const facts: [string, string][] = [["Mode", MODE_LABEL[p.mode] ?? p.mode]];
+  if (p.reference) facts.push(["Reference", p.reference]);
+
   return (
-    <>
-      <div className="no-print mb-4 flex flex-wrap items-center justify-between gap-2">
-        <LinkButton href={p.salesInvoiceId ? `/billing/invoices/${p.salesInvoiceId}` : p.isAdvance ? "/billing/advances" : "/billing/payments"} variant="ghost">← Back</LinkButton>
-        <PrintButton label="Print / Save PDF" />
-      </div>
-      <article className="print-area mx-auto max-w-3xl rounded-xl border border-line bg-surface p-4 text-sm text-ink shadow-sm sm:p-8 print:max-w-none print:p-0">
-        <header className="flex flex-col gap-3 border-b border-line pb-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-brand-700 print:text-black">{company.name}</h1>
-            <p className="whitespace-pre-line text-ink-soft">{company.address}</p>
-            {company.gstin && <p>GSTIN: <strong>{company.gstin}</strong></p>}
-            <p className="text-ink-soft">{[company.phone && `Ph: ${company.phone}`, company.email].filter(Boolean).join(" · ")}</p>
-          </div>
-          <div className="sm:text-right">
-            <p className="text-lg font-semibold uppercase tracking-wide">{p.isAdvance ? "Advance receipt" : "Payment receipt"}</p>
-            <p>Receipt no: <strong>{number}</strong></p>
-            <p>Date: {fmtDate(p.date)}</p>
-          </div>
-        </header>
+    <DocumentSheet
+      company={company}
+      title={p.isAdvance ? "Advance receipt" : "Payment receipt"}
+      numberLabel="Receipt no."
+      number={number}
+      date={fmtDate(p.date)}
+      party={{ label: "Received from", name: c.name, address: c.address, city: c.city, state: c.state, gstin: c.gstin }}
+      facts={facts}
+      toolbar={{ backHref: back.href, backLabel: back.label }}
+    >
+      <p className="text-[0.95rem] leading-relaxed">
+        Received with thanks from <strong>{c.name}</strong>{c.city ? `, ${c.city}` : ""} the sum of <strong>{money(p.amount)}</strong>.
+      </p>
 
-        <section className="space-y-3 py-5 text-[0.95rem] leading-relaxed">
-          <p>Received with thanks from <strong>{c.name}</strong>{c.city ? `, ${c.city}` : ""}{c.gstin ? ` (GSTIN ${c.gstin})` : ""} the sum of <strong>{money(p.amount)}</strong>.</p>
-          <p className="border-y border-line py-2"><span className="text-ink-soft">Amount in words:</span> <strong>{amountInWords(Number(p.amount))}</strong></p>
-          <dl className="grid gap-2 sm:grid-cols-2">
-            <div><dt className="text-xs text-ink-soft">Towards</dt><dd className="font-medium">{towards}</dd></div>
-            <div><dt className="text-xs text-ink-soft">Mode</dt><dd className="font-medium">{MODE_LABEL[p.mode] ?? p.mode}{p.reference ? ` · Ref ${p.reference}` : ""}</dd></div>
-            {p.notes && <div className="sm:col-span-2"><dt className="text-xs text-ink-soft">Notes</dt><dd>{p.notes}</dd></div>}
-          </dl>
-          {p.isAdvance && allocs.length > 0 && (
-            <div>
-              <p className="text-xs text-ink-soft">Adjusted against</p>
-              <ul className="mt-1 space-y-0.5">
-                {allocs.map((a) => <li key={a.id}>Invoice {a.invNo}: {money(a.amount)} on {fmtDate(a.date)}</li>)}
-              </ul>
-            </div>
-          )}
-          {p.mode === "cheque" && <p className="text-xs text-ink-soft">Subject to realisation of the cheque.</p>}
-        </section>
+      <DocTable>
+        <thead>
+          <tr><th>Towards</th><th className="num">Amount</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td className="whitespace-normal">{towards}{p.notes ? <><br /><span className="text-[var(--doc-soft)]">{p.notes}</span></> : null}</td>
+            <td className="num">{money(p.amount)}</td>
+          </tr>
+        </tbody>
+      </DocTable>
 
-        <footer className="mt-8 flex justify-end">
-          <div className="text-right">
-            <p className="text-xs">For {company.name}</p>
-            <div className="h-12" />
-            <p className="border-t border-line pt-1">Authorised signatory</p>
-          </div>
-        </footer>
-      </article>
-    </>
+      {p.isAdvance && allocs.length > 0 && (
+        <DocTable>
+          <thead>
+            <tr><th>Adjusted against</th><th>Date</th><th className="num">Amount</th></tr>
+          </thead>
+          <tbody>
+            {allocs.map((a) => (
+              <tr key={a.id}><td>Invoice {a.invNo}</td><td>{fmtDate(a.date)}</td><td className="num">{money(a.amount)}</td></tr>
+            ))}
+          </tbody>
+        </DocTable>
+      )}
+
+      <section className="grid gap-4 sm:grid-cols-2">
+        <div />
+        <DocTotals total={Number(p.amount)} totalLabel="Amount received" words={amountInWords(Number(p.amount))} />
+      </section>
+
+      {p.mode === "cheque" && (
+        <DocNotes><p>Subject to realisation of the cheque.</p></DocNotes>
+      )}
+
+      <DocSignature company={company.name} />
+    </DocumentSheet>
   );
 }

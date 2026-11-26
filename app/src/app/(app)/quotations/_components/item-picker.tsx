@@ -63,7 +63,7 @@ export function ItemPicker<T extends PickerItem>({
     <div className="relative">
       <label className="sr-only" htmlFor={listId + "-in"}>{label}</label>
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" aria-hidden />
+        <Search className="icon-sm pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" aria-hidden />
         <input
           id={listId + "-in"}
           ref={inputRef}

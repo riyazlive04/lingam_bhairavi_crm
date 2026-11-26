@@ -23,7 +23,7 @@ export function FollowUpForm({ quotationId, back, idPrefix, compact }: { quotati
       </Field>
       <Field label="Outcome">
         <Select id={`${idPrefix}-outcome`} name="outcome" defaultValue="">
-          <option value="">-</option>
+          <option value="">Not recorded</option>
           {FOLLOWUP_OUTCOMES.map((o) => <option key={o} value={o}>{FOLLOWUP_OUTCOME_LABEL[o]}</option>)}
         </Select>
       </Field>
@@ -46,7 +46,7 @@ export function LostForm({ quotationId, back, idPrefix }: { quotationId: number;
       <input type="hidden" name="id" value={quotationId} />
       <input type="hidden" name="back" value={back} />
       <Field label="Reason lost" required>
-        <Textarea id={`${idPrefix}-reason`} name="reason" rows={2} minLength={3} maxLength={1000} required placeholder="e.g. Price higher than competitor, project deferred…" />
+        <Textarea id={`${idPrefix}-reason`} name="reason" rows={2} minLength={3} maxLength={1000} required placeholder="For example: price higher than a competitor, project deferred" />
       </Field>
       <SubmitButton variant="danger" pendingText="Saving…" confirm="Mark this quotation as lost?">Mark lost</SubmitButton>
     </form>

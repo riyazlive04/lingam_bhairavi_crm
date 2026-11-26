@@ -4,10 +4,13 @@ import { getDb } from "@/db";
 import { purchaseInvoiceLines, purchaseInvoices, purchaseOrders } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
-import { Flash, PageHeader } from "@/components/ui";
+import { Flash } from "@/components/ui";
+import { FormPage } from "@/components/patterns";
 import { PurchaseForm } from "../../_components/purchase-form";
 import { purchaseFormData } from "../../_components/form-data";
 import { updatePurchase } from "../../actions";
+
+export const metadata = { title: "Edit purchase invoice" };
 
 export default async function EditPurchasePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ err?: string }> }) {
   const user = await requireUser("purchases");
@@ -26,9 +29,9 @@ export default async function EditPurchasePage({ params, searchParams }: { param
     ? await db.select({ id: purchaseOrders.id, number: purchaseOrders.number }).from(purchaseOrders).where(eq(purchaseOrders.id, inv.purchaseOrderId))
     : [];
   return (
-    <div className="max-w-5xl">
-      <PageHeader title={`Edit draft ${inv.invoiceNo}`} back={{ href: `/purchases/${inv.id}`, label: inv.invoiceNo }} />
-      <Flash err={sp.err} />
+    <FormPage width="wide"
+      eyebrow="Purchase invoice" title={`Edit draft ${inv.invoiceNo}`} back={{ href: `/purchases/${inv.id}`, label: inv.invoiceNo }}
+      notices={sp.err ? <Flash err={sp.err} /> : undefined}>
       <PurchaseForm
         editing
         action={updatePurchase.bind(null, inv.id)}
@@ -42,6 +45,6 @@ export default async function EditPurchasePage({ params, searchParams }: { param
           lines: lines.map((l) => ({ itemId: l.itemId, description: l.description ?? "", qty: l.qty, rate: l.rate, gstRate: l.gstRate, poLineId: po ? l.poLineId : null })),
         }}
       />
-    </div>
+    </FormPage>
   );
 }

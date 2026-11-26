@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { and, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
-import { Send } from "lucide-react";
+import { RotateCcw, Send } from "lucide-react";
 import { getDb } from "@/db";
 import { emailOutbox } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
 import { smtpConfigured } from "@/lib/email";
 import { fmtDateTime } from "@/lib/format";
-import { Button, EmptyState, Flash, Input, LinkButton, PageHeader, Select, StatusBadge, Table, Td, Th } from "@/components/ui";
+import { Flash, Select } from "@/components/ui";
+import { FilterPills, ListEmpty, ListFilters, ListPage, ResponsiveTable, StatusPill, statusLabel, type Column, type FilterPillItem } from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { retryEmails, sendQueuedNow } from "./actions";
 import { SmtpBanner } from "./_components/smtp-banner";
@@ -37,67 +38,62 @@ export default async function EmailsPage({ searchParams }: { searchParams: Promi
   const configured = smtpConfigured();
   const write = canWrite(user.role, "emails");
   const filtered = !!(q || status || agent);
+  const qs = (patch: { status?: string; q?: string; agent?: string }) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries({ status, q, agent, ...patch })) if (v) p.set(k, v);
+    const s = p.toString();
+    return s ? `/emails?${s}` : "/emails";
+  };
+  const all = counts.reduce((a, c) => a + c.n, 0);
+  const pills: FilterPillItem[] = [
+    { label: "All", href: qs({ status: undefined }), active: !status, count: all },
+    ...STATUSES.map((s) => ({ label: statusLabel(s), href: qs({ status: s }), active: status === s, count: count(s), attention: s === "failed" && count(s) > 0 })),
+  ];
+
+  type Row = (typeof rows)[number];
+  const columns: Column<Row>[] = [
+    { key: "subject", header: "Subject", card: "title", className: "max-w-96 whitespace-normal",
+      cell: (r) => <Link href={`/emails/${r.id}`} className="rt-stretch font-medium text-brand-700 hover:underline dark:text-brand-300">{r.subject}</Link> },
+    { key: "to", header: "To", card: "subtitle", className: "max-w-52 truncate", cell: (r) => r.to },
+    { key: "status", header: "Status", card: "badge",
+      cell: (r) => (
+        <>
+          <StatusPill status={r.status} />
+          {r.status === "failed" && r.error && <div className="mt-0.5 max-w-56 truncate text-caption text-danger" title={r.error}>{r.error}</div>}
+        </>
+      ) },
+    { key: "source", header: "Source", priority: 3, cell: (r) => r.agent ?? "-" },
+    { key: "created", header: "Created", nowrap: true, className: "text-ink-soft", cell: (r) => fmtDateTime(r.createdAt) },
+  ];
 
   return (
-    <>
-      <PageHeader
-        title="Email outbox"
-        subtitle="Every e-mail the CRM generates: reminders, statements and agent notifications"
-        actions={write && configured && (
-          <>
-            {count("failed") > 0 && (
-              <form action={retryEmails}><SubmitButton variant="secondary" pendingText="Retrying…">Retry failed ({count("failed")})</SubmitButton></form>
-            )}
-            <form action={sendQueuedNow}><SubmitButton pendingText="Sending…"><Send className="h-4 w-4" aria-hidden /> Send queued now ({count("queued")})</SubmitButton></form>
-          </>
-        )}
-      />
-      <SmtpBanner configured={configured} />
-      <Flash ok={sp.ok} err={sp.err} />
-
-      <div className="mb-4 flex flex-wrap gap-2 text-sm">
-        {STATUSES.map((s) => (
-          <Link key={s} href={status === s ? "/emails" : `/emails?status=${s}`} aria-current={status === s ? "true" : undefined}
-            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 ${status === s ? "border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-800/30 dark:text-brand-200" : "border-line bg-surface text-ink-soft hover:bg-muted"}`}>
-            {s} <span className="tabular-nums font-semibold">{count(s)}</span>
-          </Link>
-        ))}
-      </div>
-
-      <form method="get" className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center" role="search" aria-label="Filter e-mails">
-        {status && <input type="hidden" name="status" value={status} />}
-        <label className="sr-only" htmlFor="e-q">Search</label>
-        <Input id="e-q" name="q" defaultValue={q} placeholder="Recipient or subject" className="sm:max-w-xs" />
-        <label className="sr-only" htmlFor="e-agent">Agent</label>
-        <Select id="e-agent" name="agent" defaultValue={agent ?? ""} className="sm:max-w-56">
-          <option value="">All sources</option>
-          {agents.filter((a) => a.agent).map((a) => <option key={a.agent!} value={a.agent!}>{a.agent}</option>)}
-        </Select>
-        <Button type="submit" variant="secondary">Filter</Button>
-        {filtered && <LinkButton href="/emails" variant="ghost">Clear</LinkButton>}
-      </form>
-
-      {rows.length === 0 ? (
-        <EmptyState title={filtered ? "No e-mails match these filters" : "Outbox is empty"}>
-          {filtered ? "Try clearing the filters." : "Payment reminders, statements and agent e-mails will appear here."}
-        </EmptyState>
-      ) : (
-        <Table>
-          <thead><tr><Th>Created</Th><Th>To</Th><Th>Subject</Th><Th>Source</Th><Th>Status</Th></tr></thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className="hover:bg-muted/50">
-                <Td className="whitespace-nowrap text-ink-soft">{fmtDateTime(r.createdAt)}</Td>
-                <Td className="max-w-52 truncate">{r.to}</Td>
-                <Td className="max-w-96 truncate"><Link href={`/emails/${r.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{r.subject}</Link></Td>
-                <Td>{r.agent ?? "-"}</Td>
-                <Td><StatusBadge status={r.status} />{r.status === "failed" && r.error && <div className="max-w-56 truncate text-xs text-red-600" title={r.error}>{r.error}</div>}</Td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
+    <ListPage
+      title="Email outbox"
+      subtitle="Every e-mail the CRM generates: reminders, statements and agent notifications."
+      secondaryActions={write && configured && count("failed") > 0 && (
+        <form action={retryEmails}><SubmitButton variant="secondary" pendingText="Retrying…"><RotateCcw className="icon-sm" aria-hidden /> Retry failed ({count("failed")})</SubmitButton></form>
       )}
-      {rows.length === 300 && <p className="mt-2 text-xs text-ink-soft">Showing the latest 300 e-mails.</p>}
-    </>
+      primaryAction={write && configured && (
+        <form action={sendQueuedNow}><SubmitButton pendingText="Sending…"><Send className="icon-sm" aria-hidden /> Send queued now ({count("queued")})</SubmitButton></form>
+      )}
+      notices={<><SmtpBanner configured={configured} /><Flash ok={sp.ok} err={sp.err} /></>}
+      filters={
+        <>
+          <FilterPills label="Filter by status" items={pills} />
+          <ListFilters q={q} placeholder="Recipient or subject" clearHref={qs({ q: undefined, agent: undefined })}
+            activeCount={[q, agent].filter(Boolean).length} hidden={{ status }}>
+            <Select name="agent" defaultValue={agent ?? ""} aria-label="Source">
+              <option value="">All sources</option>
+              {agents.filter((a) => a.agent).map((a) => <option key={a.agent!} value={a.agent!}>{a.agent}</option>)}
+            </Select>
+          </ListFilters>
+        </>
+      }
+      isEmpty={rows.length === 0}
+      empty={<ListEmpty filtered={filtered} noun="e-mails" title={filtered ? undefined : "The outbox is empty"} clearHref="/emails">Payment reminders, statements and agent e-mails will appear here.</ListEmpty>}
+      resultSummary={rows.length === 300 ? "Showing the latest 300 e-mails" : `${rows.length} e-mail${rows.length === 1 ? "" : "s"}`}
+    >
+      <ResponsiveTable rows={rows} columns={columns} rowKey={(r) => r.id} caption="E-mails" />
+    </ListPage>
   );
 }

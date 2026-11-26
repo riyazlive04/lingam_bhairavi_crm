@@ -6,7 +6,8 @@ import { currentBillingPeriod } from "@/lib/amc";
 import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
 import { addDays, fmtDate, qty, round2, todayIST } from "@/lib/format";
-import { Card, DL, Field, Flash, Input, PageHeader, Select, Textarea } from "@/components/ui";
+import { Field, Flash, Input, Select, Textarea } from "@/components/ui";
+import { Callout, FormFooter, FormPage, FormSection, KeyValueGrid } from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { createInvoice } from "../../actions";
 import { creditedQtyByOrderLine } from "@/lib/returns";
@@ -88,36 +89,37 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
   ]);
 
   return (
-    <>
-      <PageHeader
-        title="New tax invoice"
-        subtitle={order ? `Against order ${order.o.number}` : "Manual invoice (not linked to an order)"}
-        back={order ? { href: `/orders/${order.o.id}`, label: order.o.number } : { href: "/billing/invoices", label: "Invoices" }}
-      />
-      <Flash err={sp.err} />
-      {orderId && !order && <Flash err="We couldn't find that order, so you're creating a manual invoice instead." />}
-      {linkNotes.length > 0 && <p className="mb-4 text-sm text-amber-700 dark:text-amber-300">{linkNotes.join(" ")}</p>}
-
+    <FormPage
+      title="New tax invoice"
+      subtitle={order ? `Against order ${order.o.number}` : "Manual invoice, not linked to an order"}
+      back={order ? { href: `/orders/${order.o.id}`, label: order.o.number } : { href: "/billing/invoices", label: "Invoices" }}
+      width="wide"
+      notices={
+        <>
+          <Flash err={sp.err} />
+          {orderId && !order && <Callout tone="warning">We could not find that order, so you are creating a manual invoice instead.</Callout>}
+          {linkNotes.length > 0 && <Callout tone="warning">{linkNotes.join(" ")}</Callout>}
+        </>
+      }
+    >
       <form action={createInvoice} className="space-y-4">
         {serviceCallId && <input type="hidden" name="serviceCallId" value={serviceCallId} />}
         {amcId && <input type="hidden" name="amcId" value={amcId} />}
-        <Card title="Invoice details">
+        <FormSection title="Customer and dates" description={order ? "Billed to the customer on the order." : "Who you are billing and when payment is due."}>
           {order ? (
-            <>
+            <div className="sm:col-span-2">
               <input type="hidden" name="orderId" value={order.o.id} />
               <input type="hidden" name="customerId" value={order.c.id} />
               {order.o.projectId && <input type="hidden" name="projectId" value={order.o.projectId} />}
-              <div className="mb-4">
-                <DL items={[
-                  ["Customer", order.c.name],
-                  ["GSTIN", order.c.gstin || "-"],
-                  ["Customer PO", order.o.customerPoNumber ? `${order.o.customerPoNumber} (${fmtDate(order.o.customerPoDate)})` : "-"],
-                  ["Project", order.projectName || "-"],
-                ]} />
-              </div>
-            </>
+              <KeyValueGrid items={[
+                ["Customer", order.c.name],
+                ["GSTIN", order.c.gstin || "-"],
+                ["Customer PO", order.o.customerPoNumber ? `${order.o.customerPoNumber} (${fmtDate(order.o.customerPoDate)})` : "-"],
+                ["Project", order.projectName || "-"],
+              ]} />
+            </div>
           ) : (
-            <div className="mb-4 grid gap-4 sm:grid-cols-2">
+            <>
               <Field label="Customer" required>
                 <Select name="customerId" required defaultValue={presetCustomer ? String(presetCustomer) : ""}>
                   <option value="" disabled>Select customer</option>
@@ -130,27 +132,25 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
                   {projList.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
                 </Select>
               </Field>
-            </div>
+            </>
           )}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Invoice date" required><Input type="date" name="invoiceDate" required defaultValue={today} /></Field>
-            <Field label="Due date" hint={order ? `Leave blank for ${order.c.paymentTermsDays} days credit (${fmtDate(addDays(today, order.c.paymentTermsDays))})` : "Leave blank to use the customer's credit days"}>
-              <Input type="date" name="dueDate" />
-            </Field>
-            <Field label="Notes / terms" className="sm:col-span-2">
-              <Textarea name="notes" maxLength={4000} defaultValue={order?.o.customerPoNumber ? `Against your PO ${order.o.customerPoNumber}${order.o.customerPoDate ? ` dated ${fmtDate(order.o.customerPoDate)}` : ""}` : ""} />
-            </Field>
-          </div>
-        </Card>
-        <Card title="Invoice lines">
-          {order && initial.length === 0 && <p className="mb-3 text-sm text-amber-700 dark:text-amber-300">All order lines are fully invoiced. You can still add extra lines (e.g. transport).</p>}
-          {order && initial.length > 0 && <p className="mb-3 text-sm text-ink-soft">Quantities default to delivered (less returns) minus already invoiced (less credit notes). Adjust if billing in advance (up to ordered qty).</p>}
+          <Field label="Invoice date" required><Input type="date" name="invoiceDate" required defaultValue={today} /></Field>
+          <Field label="Due date" hint={order ? `Leave blank for ${order.c.paymentTermsDays} days credit (${fmtDate(addDays(today, order.c.paymentTermsDays))})` : "Leave blank to use the customer's credit days"}>
+            <Input type="date" name="dueDate" />
+          </Field>
+          <Field label="Notes and terms" className="sm:col-span-2">
+            <Textarea name="notes" maxLength={4000} defaultValue={order?.o.customerPoNumber ? `Against your PO ${order.o.customerPoNumber}${order.o.customerPoDate ? ` dated ${fmtDate(order.o.customerPoDate)}` : ""}` : ""} />
+          </Field>
+        </FormSection>
+        <FormSection title="Lines" columns={1}
+          description={order && initial.length > 0 ? "Quantities default to delivered (less returns) minus already invoiced (less credit notes). Change them if you bill in advance, up to the ordered quantity." : undefined}>
+          {order && initial.length === 0 && <Callout tone="info">All order lines are fully invoiced. You can still add extra lines, such as transport.</Callout>}
           <InvoiceLineEditor items={pick} initial={initial} />
-        </Card>
-        <div className="flex justify-end">
+        </FormSection>
+        <FormFooter cancelHref={order ? `/orders/${order.o.id}` : "/billing/invoices"} note="Issuing updates price history and the order's invoiced quantities.">
           <SubmitButton pendingText="Issuing…" confirm="Issue this invoice? It will update price history and order invoiced quantities.">Issue invoice</SubmitButton>
-        </div>
+        </FormFooter>
       </form>
-    </>
+    </FormPage>
   );
 }

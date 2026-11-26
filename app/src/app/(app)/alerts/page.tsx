@@ -9,20 +9,26 @@ import { AGENTS } from "@/lib/agents";
 import { alertScope } from "@/lib/agents/scope";
 import { SEVERITY_ORDER } from "@/lib/agents/queries";
 import { SubmitButton } from "@/components/submit-button";
-import { Badge, Button, EmptyState, Flash, PageHeader, Select, StatusBadge, cx } from "@/components/ui";
+import { EmptyState, Flash, Select, cx } from "@/components/ui";
+import { FilterPills, ListEmpty, ListFilters, ListPage, Metric, MetricStrip, StatusPill, type FilterPillItem } from "@/components/patterns";
 import { SelectAll } from "./_components/select-all";
 import { bulkDoneAction, markAlertDoneAction, reopenAlertAction, snoozeAlertAction } from "./actions";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Alerts" };
 
 type SP = { agent?: string; severity?: string; status?: string; ok?: string; err?: string };
 const SEVERITIES = ["critical", "warning", "info"] as const;
 const STATUSES = ["open", "snoozed", "done", "all"] as const;
+const STATUS_TEXT: Record<(typeof STATUSES)[number], string> = { open: "Open", snoozed: "Snoozed", done: "Done", all: "All" };
+const SEVERITY_TEXT: Record<string, string> = { critical: "Critical", warning: "Warning", info: "Info" };
 
-const SevIcon = ({ s }: { s: string }) =>
-  s === "critical" ? <OctagonAlert className="h-5 w-5 text-red-600" aria-hidden />
-    : s === "warning" ? <AlertTriangle className="h-5 w-5 text-amber-600" aria-hidden />
-      : <Info className="h-5 w-5 text-blue-600" aria-hidden />;
+function SevIcon({ s }: { s: string }) {
+  const cls = "grid h-8 w-8 shrink-0 place-items-center rounded-lg";
+  if (s === "critical") return <span className={cx(cls, "bg-danger-soft text-danger")}><OctagonAlert className="icon-sm" aria-hidden /></span>;
+  if (s === "warning") return <span className={cx(cls, "bg-warning-soft text-warning")}><AlertTriangle className="icon-sm" aria-hidden /></span>;
+  return <span className={cx(cls, "bg-info-soft text-info")}><Info className="icon-sm" aria-hidden /></span>;
+}
 
 export default async function AlertsPage({ searchParams }: { searchParams: Promise<SP> }) {
   const user = await requireUser("agents");
@@ -58,97 +64,115 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
   const back = `/alerts${qs.size ? "?" + qs.toString() : ""}`;
   const actionable = status !== "done";
 
+  const href = (patch: Partial<Record<"agent" | "severity" | "status", string | undefined>>) => {
+    const p = new URLSearchParams();
+    const next = { agent: agentKey, severity, status: status === "open" ? undefined : status, ...patch };
+    for (const [k, v] of Object.entries(next)) if (v) p.set(k, v);
+    return p.size ? `/alerts?${p.toString()}` : "/alerts";
+  };
+  const pills: FilterPillItem[] = STATUSES.map((s) => ({
+    label: STATUS_TEXT[s], href: href({ status: s === "open" ? undefined : s }), active: status === s,
+  }));
+  const activeFilters = [agentKey, severity].filter(Boolean).length;
+  const openTotal = (countBy.critical ?? 0) + (countBy.warning ?? 0) + (countBy.info ?? 0);
+
   return (
-    <>
-      <PageHeader
-        title="Alerts"
-        subtitle={user.role === "admin" ? "Everything the automation agents found, for every team." : "What the automation agents found for you and your team."}
-        actions={
-          <div className="flex flex-wrap gap-2 text-sm">
-            <Badge tone="red">{countBy.critical ?? 0} critical</Badge>
-            <Badge tone="amber">{countBy.warning ?? 0} warning</Badge>
-            <Badge tone="blue">{countBy.info ?? 0} info</Badge>
-          </div>
-        }
-      />
-      <Flash ok={sp.ok} err={sp.err} />
-
-      <form method="get" className="mb-4 grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center" aria-label="Filter alerts">
-        <Select name="agent" defaultValue={agentKey ?? ""} aria-label="Agent" className="sm:w-56">
-          <option value="">All agents</option>
-          {AGENTS.map((a) => <option key={a.key} value={a.key}>{a.name}</option>)}
-        </Select>
-        <Select name="severity" defaultValue={severity ?? ""} aria-label="Severity" className="sm:w-40">
-          <option value="">All severities</option>
-          {SEVERITIES.map((s) => <option key={s} value={s}>{s}</option>)}
-        </Select>
-        <Select name="status" defaultValue={status} aria-label="Status" className="sm:w-40">
-          {STATUSES.map((s) => <option key={s} value={s}>{s === "all" ? "All statuses" : s}</option>)}
-        </Select>
-        <Button variant="secondary" type="submit">Filter</Button>
-        {qs.size > 0 && <Link href="/alerts" className="text-sm text-ink-soft hover:text-brand-700">Clear</Link>}
-      </form>
-
-      {rows.length === 0 ? (
-        <EmptyState title={status === "open" ? "All clear, nothing needs your attention" : "No alerts match these filters"}>
-          Agents check quotations, deliveries, refills, payments, prices and stock every morning. New findings will appear here.
-        </EmptyState>
-      ) : (
-        <form>
-          <input type="hidden" name="back" value={back} />
+    <ListPage
+      title="Alerts"
+      subtitle={user.role === "admin" ? "Everything the automation agents found, for every team." : "What the automation agents found for you and your team."}
+      notices={<Flash ok={sp.ok} err={sp.err} />}
+      stats={
+        <MetricStrip>
+          <Metric label="Open alerts" value={openTotal} href="/alerts" hint="Across every agent" />
+          <Metric label="Critical" value={countBy.critical ?? 0} tone={countBy.critical ? "bad" : "default"} href={href({ severity: "critical", status: undefined })} hint="Handle these first" />
+          <Metric label="Warning" value={countBy.warning ?? 0} tone={countBy.warning ? "warn" : "default"} href={href({ severity: "warning", status: undefined })} hint="Due soon" />
+          <Metric label="Info" value={countBy.info ?? 0} href={href({ severity: "info", status: undefined })} hint="Good to know" />
+        </MetricStrip>
+      }
+      filters={
+        <>
+          <FilterPills label="Filter by status" items={pills} />
+          <ListFilters searchName={false} clearHref={href({ agent: undefined, severity: undefined })} activeCount={activeFilters}
+            hidden={{ status: status === "open" ? undefined : status }}>
+            <Select name="agent" defaultValue={agentKey ?? ""} aria-label="Agent">
+              <option value="">All agents</option>
+              {AGENTS.map((a) => <option key={a.key} value={a.key}>{a.name}</option>)}
+            </Select>
+            <Select name="severity" defaultValue={severity ?? ""} aria-label="Severity">
+              <option value="">All severities</option>
+              {SEVERITIES.map((s) => <option key={s} value={s}>{SEVERITY_TEXT[s]}</option>)}
+            </Select>
+          </ListFilters>
+        </>
+      }
+      isEmpty={rows.length === 0}
+      empty={status === "open" && activeFilters === 0
+        ? (
+          <EmptyState icon={CheckCircle2} title="All clear, nothing needs your attention">
+            Agents check quotations, deliveries, refills, payments, prices and stock every morning. New findings appear here.
+          </EmptyState>
+        )
+        : <ListEmpty filtered noun="alerts" clearHref="/alerts" />}
+      density={false}
+      resultSummary={`${rows.length}${rows.length === 300 ? "+" : ""} alert${rows.length === 1 ? "" : "s"} shown`}
+    >
+      <form>
+        <input type="hidden" name="back" value={back} />
+        <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
           {actionable && (
-            <div className="mb-2 flex items-center gap-3 rounded-lg border border-line bg-surface px-3 py-2">
-              <label className="flex items-center gap-2 text-sm text-ink-soft"><SelectAll /> Select all</label>
-              <SubmitButton size="sm" variant="secondary" formAction={bulkDoneAction} pendingText="Updating…">
-                <CheckCircle2 className="h-4 w-4" aria-hidden /> Mark selected done
+            <div className="flex flex-wrap items-center gap-3 border-b border-line bg-surface-2 px-4 py-2.5 sm:px-5">
+              <label className="flex min-h-9 items-center gap-2 text-sm font-medium text-ink-soft"><SelectAll /> Select all</label>
+              <SubmitButton size="sm" variant="secondary" formAction={bulkDoneAction} pendingText="Updating…" className="ml-auto">
+                <CheckCircle2 className="icon-sm" aria-hidden /> Mark selected done
               </SubmitButton>
-              <span className="ml-auto text-xs text-ink-faint">{rows.length}{rows.length === 300 ? "+" : ""} shown</span>
             </div>
           )}
-          <ul className="space-y-2">
+          <ul className="divide-y divide-line">
             {rows.map((a) => {
               const snoozedActive = a.status === "snoozed" && a.snoozedUntil != null && a.snoozedUntil > today;
+              const late = a.dueDate != null && a.dueDate < today && a.status !== "done";
               return (
-                <li key={a.id} className={cx("rounded-xl border bg-surface p-3 shadow-sm sm:p-4",
-                  a.severity === "critical" && a.status !== "done" ? "border-red-300 dark:border-red-900" : "border-line")}>
+                <li key={a.id} className={cx("px-4 py-3.5 sm:px-5", a.severity === "critical" && a.status !== "done" && "border-l-4 border-l-danger")}>
                   <div className="flex gap-3">
                     {actionable && (
-                      <input type="checkbox" name="ids" value={a.id} aria-label={`Select: ${a.title}`} className="mt-1 h-4 w-4 shrink-0 accent-brand-600" />
+                      <label className="-m-1.5 grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-lg hover:bg-muted">
+                        <input type="checkbox" name="ids" value={a.id} aria-label={`Select: ${a.title}`} className="h-4 w-4 accent-brand-600" />
+                      </label>
                     )}
-                    <span className="mt-0.5 shrink-0"><SevIcon s={a.severity} /></span>
+                    <SevIcon s={a.severity} />
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <StatusBadge status={a.severity} />
-                        {a.status !== "open" && <StatusBadge status={a.status} label={snoozedActive ? `snoozed till ${fmtDate(a.snoozedUntil)}` : a.status} />}
-                        <span className="text-xs text-ink-faint">{agentName.get(a.agent) ?? a.agent}</span>
-                        {a.dueDate && <span className={cx("text-xs", a.dueDate < today ? "font-medium text-red-600" : "text-ink-soft")}>Due {fmtDate(a.dueDate)}</span>}
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <StatusPill status={a.severity} label={SEVERITY_TEXT[a.severity] ?? a.severity} />
+                        {a.status !== "open" && <StatusPill status={a.status} label={snoozedActive ? `Snoozed until ${fmtDate(a.snoozedUntil)}` : undefined} />}
+                        <span className="text-caption text-ink-soft">{agentName.get(a.agent) ?? a.agent}</span>
+                        {a.dueDate && <span className={cx("text-caption", late ? "font-medium text-danger" : "text-ink-soft")}>Due {fmtDate(a.dueDate)}</span>}
                       </div>
                       <p className="mt-1 font-medium text-ink">
-                        {a.link ? <Link href={a.link} className="hover:text-brand-700 hover:underline">{a.title}</Link> : a.title}
+                        {a.link ? <Link href={a.link} className="hover:text-brand-700 hover:underline dark:hover:text-brand-300">{a.title}</Link> : a.title}
                       </p>
                       {a.message && <p className="mt-0.5 text-sm text-ink-soft">{a.message}</p>}
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                         {a.link && (
-                          <Link href={a.link} className="inline-flex h-8 items-center gap-1 rounded-lg border border-line px-3 text-sm text-ink hover:bg-muted">
-                            Open <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                          <Link href={a.link} className="inline-flex h-8 items-center gap-1 rounded-lg border border-line bg-surface px-3 text-[13px] font-medium text-ink shadow-xs hover:border-line-strong hover:bg-muted">
+                            Open <ExternalLink className="icon-xs" aria-hidden />
                           </Link>
                         )}
                         {a.status !== "done" ? (
                           <>
-                            <SubmitButton size="sm" variant="success" formAction={markAlertDoneAction} name="id" value={String(a.id)} pendingText="…">Mark done</SubmitButton>
-                            <span className="ml-1 text-xs text-ink-soft" id={`snz-${a.id}`}>Snooze:</span>
+                            <SubmitButton size="sm" variant="success" formAction={markAlertDoneAction} name="id" value={String(a.id)} pendingText="Saving…">Mark done</SubmitButton>
+                            <span className="ml-1 text-caption text-ink-soft" id={`snz-${a.id}`}>Snooze for</span>
                             {[1, 3, 7].map((d) => (
                               <SubmitButton key={d} size="sm" variant="ghost" formAction={snoozeAlertAction} name="snooze" value={`${a.id}:${d}`}
-                                pendingText="…" aria-label={`Snooze ${d} day${d === 1 ? "" : "s"}`} aria-describedby={`snz-${a.id}`}>{d}d</SubmitButton>
+                                pendingText="Snoozing…" aria-describedby={`snz-${a.id}`}>{d} day{d === 1 ? "" : "s"}</SubmitButton>
                             ))}
                           </>
                         ) : (
                           <>
-                            <span className="text-xs text-ink-soft">Resolved {fmtDateTime(a.resolvedAt)}</span>
-                            <SubmitButton size="sm" variant="ghost" formAction={reopenAlertAction} name="reopen" value={String(a.id)} pendingText="…">Re-open</SubmitButton>
+                            <span className="text-caption text-ink-soft">Resolved {fmtDateTime(a.resolvedAt)}</span>
+                            <SubmitButton size="sm" variant="ghost" formAction={reopenAlertAction} name="reopen" value={String(a.id)} pendingText="Reopening…">Reopen</SubmitButton>
                           </>
                         )}
-                        <span className="ml-auto text-xs text-ink-faint">Raised {fmtDate(a.createdAt)}</span>
+                        <span className="ml-auto text-caption text-ink-faint">Raised {fmtDate(a.createdAt)}</span>
                       </div>
                     </div>
                   </div>
@@ -156,8 +180,8 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
               );
             })}
           </ul>
-        </form>
-      )}
-    </>
+        </div>
+      </form>
+    </ListPage>
   );
 }

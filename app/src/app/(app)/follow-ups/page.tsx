@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { and, asc, count, desc, eq, gte, inArray, or, sql, type SQL } from "drizzle-orm";
-import { CalendarClock, MessageCircle, Phone } from "lucide-react";
+import { CalendarClock, CheckCircle2, MessageCircle, Phone, XCircle } from "lucide-react";
 import { getDb } from "@/db";
 import { customers, followUps, quotations, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
 import { addDays, daysBetween, fmtDate, money, moneyShort, pct, todayIST } from "@/lib/format";
 import { FOLLOWUP_MODE_LABEL, FOLLOWUP_OUTCOME_LABEL, istDate, telLink, whatsappLink } from "@/lib/quotations";
-import { Badge, EmptyState, Flash, LinkButton, PageHeader, Select, Stat, StatusBadge, Button, cx } from "@/components/ui";
+import { Flash, LinkButton, Select, buttonClass } from "@/components/ui";
+import { FilterPills, ListEmpty, ListFilters, ListPage, Metric, MetricStrip, SectionCard, StatusPill, type FilterPillItem } from "@/components/patterns";
 import { FollowUpForm, LostForm } from "../quotations/_components/forms";
 
 export const metadata = { title: "Follow-ups" };
@@ -16,10 +17,12 @@ type Row = {
   id: number; number: string; status: string; projectName: string | null; grandTotal: number; quoteDate: string; sentAt: Date | null;
   nextFollowUpDate: string | null; customerName: string | null; contactPerson: string | null; phone: string | null; preparedBy: string | null;
 };
+const BUCKETS = ["overdue", "today", "upcoming", "none", "later"] as const;
+type Bucket = (typeof BUCKETS)[number];
 type LastFu = { date: string; mode: string; outcome: string | null; notes: string | null };
 
 
-export default async function FollowUpsPage({ searchParams }: { searchParams: Promise<{ sp?: string; ok?: string; err?: string }> }) {
+export default async function FollowUpsPage({ searchParams }: { searchParams: Promise<{ sp?: string; bucket?: string; ok?: string; err?: string }> }) {
   const user = await requireUser("followups");
   const db = await getDb();
   const sp = await searchParams;
@@ -77,27 +80,33 @@ export default async function FollowUpsPage({ searchParams }: { searchParams: Pr
   const lostM = closedMonth.find((c) => c.status === "lost");
   const wonN = Number(wonM?.n ?? 0), lostN = Number(lostM?.n ?? 0);
   const conv = wonN + lostN ? (wonN / (wonN + lostN)) * 100 : null;
-  const back = `/follow-ups${sp.sp ? `?sp=${encodeURIComponent(sp.sp)}` : ""}`;
+  const qs = (patch: { sp?: string; bucket?: string }) => {
+    const p = new URLSearchParams();
+    for (const [key, v] of Object.entries({ sp: sp.sp, bucket: sp.bucket, ...patch })) if (v) p.set(key, v);
+    const q = p.toString();
+    return q ? `/follow-ups?${q}` : "/follow-ups";
+  };
+  const back = qs({});
   const monthLabel = new Date(`${monthStart}T00:00:00`).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
 
-  const renderSection = (key: string, title: string, list: Row[], tone: "bad" | "warn" | "default" | "muted", emptyText: string, defaultOpen = true) => (
-    <section aria-labelledby={`h-${key}`} className="mb-8">
-      <h2 id={`h-${key}`} className="mb-3 flex items-center gap-2 text-base font-semibold text-ink">
-        <span className={cx("h-2.5 w-2.5 rounded-full", tone === "bad" ? "bg-red-500" : tone === "warn" ? "bg-amber-500" : tone === "muted" ? "bg-gray-400" : "bg-blue-500")} aria-hidden />
-        {title} <span className="text-sm font-normal text-ink-soft">({list.length}{list.length ? ` · ${moneyShort(list.reduce((s, r) => s + r.grandTotal, 0))}` : ""})</span>
-      </h2>
-      {list.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-line bg-surface px-4 py-3 text-sm text-ink-soft">{emptyText}</p>
-      ) : defaultOpen ? (
-        <ul className="space-y-3">{list.map((r) => renderRow(r))}</ul>
-      ) : (
-        <details className="rounded-lg border border-line bg-surface p-3">
-          <summary className="cursor-pointer text-sm text-brand-700">Show {list.length} quotation{list.length === 1 ? "" : "s"}</summary>
-          <ul className="mt-3 space-y-3">{list.map((r) => renderRow(r))}</ul>
-        </details>
-      )}
-    </section>
-  );
+  const sum = (list: Row[]) => list.reduce((s, r) => s + r.grandTotal, 0);
+  const bucket: Bucket | null = (BUCKETS as readonly string[]).includes(sp.bucket ?? "") ? (sp.bucket as Bucket) : null;
+  const sections: { key: Bucket; title: string; list: Row[]; empty: string }[] = [
+    { key: "overdue", title: "Overdue", list: overdue, empty: "Nothing overdue. Great work." },
+    { key: "today", title: "Due today", list: dueToday, empty: "No follow-ups due today." },
+    { key: "upcoming", title: "Next 7 days", list: upcoming, empty: "Nothing scheduled for the next 7 days." },
+    { key: "none", title: "No follow-up scheduled", list: unscheduled, empty: "Every open quotation has a next follow-up date." },
+    { key: "later", title: "Later", list: later, empty: "Nothing scheduled beyond the next 7 days." },
+  ];
+  const pills: FilterPillItem[] = [
+    { label: "All open", href: qs({ bucket: undefined }), active: !bucket, count: rows.length, hint: rows.length ? moneyShort(sum(rows)) : undefined },
+    ...sections.map((x) => ({
+      label: x.title, href: qs({ bucket: x.key }), active: bucket === x.key, count: x.list.length,
+      hint: x.list.length ? moneyShort(sum(x.list)) : undefined, attention: (x.key === "overdue" || x.key === "today") && x.list.length > 0,
+    })),
+  ];
+  // Without a bucket filter, "Later" only shows when it has quotations (it is the least urgent list).
+  const shown = bucket ? sections.filter((x) => x.key === bucket) : sections.filter((x) => x.key !== "later" || x.list.length > 0);
 
   function renderRow(r: Row) {
     const lf = last.get(r.id);
@@ -106,55 +115,66 @@ export default async function FollowUpsPage({ searchParams }: { searchParams: Pr
     const tel = telLink(r.phone);
     const late = r.nextFollowUpDate && r.nextFollowUpDate < today ? daysBetween(r.nextFollowUpDate, today) : 0;
     return (
-      <li key={r.id} className="rounded-xl border border-line bg-surface p-4 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <li key={r.id} className="p-4 sm:px-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <Link href={`/quotations/${r.id}`} className="font-semibold text-brand-700 hover:underline">{r.number}</Link>
-              <StatusBadge status={r.status} />
-              {late > 0 && <Badge tone="red">{late} day{late === 1 ? "" : "s"} overdue</Badge>}
+              <Link href={`/quotations/${r.id}`} className="font-semibold text-brand-700 hover:underline dark:text-brand-300">{r.number}</Link>
+              <StatusPill status={r.status} />
+              {late > 0 && <StatusPill status="overdue" label={`${late} day${late === 1 ? "" : "s"} overdue`} />}
             </div>
-            <div className="mt-0.5 text-sm text-ink">{r.customerName ?? "-"}{r.contactPerson && <span className="text-ink-soft"> · {r.contactPerson}</span>}</div>
-            {r.projectName && <div className="truncate text-xs text-ink-soft">{r.projectName}</div>}
+            <p className="mt-0.5 text-sm text-ink">{r.customerName ?? "-"}{r.contactPerson && <span className="text-ink-soft"> · {r.contactPerson}</span>}</p>
+            {r.projectName && <p className="truncate text-caption text-ink-soft">{r.projectName}</p>}
           </div>
-          <div className="text-left sm:text-right">
-            <div className="font-semibold tabular-nums text-ink">{money(r.grandTotal)}</div>
-            <div className="text-xs text-ink-soft">
+          <div className="shrink-0 sm:text-right">
+            <p className="font-semibold tabular-nums text-ink">{money(r.grandTotal)}</p>
+            <p className="text-caption text-ink-soft">
               {sentDays != null ? `Sent ${sentDays} day${sentDays === 1 ? "" : "s"} ago` : "Sent date unknown"}
               {r.nextFollowUpDate && <> · next {fmtDate(r.nextFollowUpDate)}</>}
-            </div>
-            {r.preparedBy && <div className="text-xs text-ink-faint">by {r.preparedBy}</div>}
+            </p>
+            {r.preparedBy && <p className="text-caption text-ink-faint">By {r.preparedBy}</p>}
           </div>
         </div>
 
-        <div className="mt-3 rounded-lg bg-muted px-3 py-2 text-sm">
+        <div className="mt-3 rounded-lg bg-surface-2 px-3 py-2 text-sm">
           {lf ? (
             <>
-              <span className="text-xs font-medium text-ink-soft">Last follow-up {fmtDate(lf.date)} · {FOLLOWUP_MODE_LABEL[lf.mode] ?? lf.mode}{lf.outcome ? ` · ${FOLLOWUP_OUTCOME_LABEL[lf.outcome] ?? lf.outcome}` : ""} ({fuCount.get(r.id)} total)</span>
+              <p className="text-caption font-medium text-ink-soft">Last follow-up {fmtDate(lf.date)} · {FOLLOWUP_MODE_LABEL[lf.mode] ?? lf.mode}{lf.outcome ? ` · ${FOLLOWUP_OUTCOME_LABEL[lf.outcome] ?? lf.outcome}` : ""} ({fuCount.get(r.id)} in total)</p>
               {lf.notes && <p className="mt-0.5 line-clamp-2 text-ink">{lf.notes}</p>}
             </>
-          ) : <span className="text-ink-soft">No follow-up logged yet.</span>}
+          ) : <p className="text-ink-soft">No follow-up logged yet.</p>}
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {tel ? <a href={tel} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-sm text-ink hover:bg-muted"><Phone className="h-4 w-4" aria-hidden /> {r.phone}</a>
-            : <span className="text-xs text-ink-faint">No phone on record</span>}
-          {wa && <a href={wa} target="_blank" rel="noopener noreferrer" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-emerald-300 px-3 text-sm text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950"><MessageCircle className="h-4 w-4" aria-hidden /> WhatsApp</a>}
-          {quoteWritable && <LinkButton href={`/quotations/${r.id}?action=won#won`} variant="success" size="sm">Won</LinkButton>}
+          {tel
+            ? <a href={tel} className={buttonClass("secondary", "sm")}><Phone className="icon-sm" aria-hidden /> {r.phone}</a>
+            : <span className="text-caption text-ink-faint">No phone on record</span>}
+          {wa && (
+            <a href={wa} target="_blank" rel="noopener noreferrer" className={buttonClass("secondary", "sm", "border-success-line text-success hover:border-success-line hover:bg-success-soft")}>
+              <MessageCircle className="icon-sm" aria-hidden /> WhatsApp
+            </a>
+          )}
+          {quoteWritable && (
+            <LinkButton href={`/quotations/${r.id}?action=won#won`} variant="secondary" size="sm"><CheckCircle2 className="icon-sm text-success" aria-hidden /> Mark won</LinkButton>
+          )}
         </div>
 
         {(writable || quoteWritable) && (
-          <div className="mt-3 grid gap-2 lg:grid-cols-[1fr_auto]">
+          <div className="mt-3 grid gap-2 lg:grid-cols-[1fr_20rem]">
             {writable && (
-              <details className="rounded-lg border border-line p-3">
-                <summary className="cursor-pointer text-sm font-medium text-brand-700"><CalendarClock className="mr-1 inline h-4 w-4" aria-hidden />Log follow-up</summary>
-                <div className="mt-3"><FollowUpForm quotationId={r.id} back={back} idPrefix={`fu${r.id}`} compact /></div>
+              <details className="group rounded-xl border border-line">
+                <summary className="flex cursor-pointer select-none items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium text-brand-700 hover:bg-muted dark:text-brand-300">
+                  <CalendarClock className="icon-sm" aria-hidden /> Log a call
+                </summary>
+                <div className="border-t border-line p-3"><FollowUpForm quotationId={r.id} back={back} idPrefix={`fu${r.id}`} compact /></div>
               </details>
             )}
             {quoteWritable && (
-              <details className="rounded-lg border border-line p-3 lg:w-80">
-                <summary className="cursor-pointer text-sm font-medium text-red-700 dark:text-red-400">Mark lost</summary>
-                <div className="mt-3"><LostForm quotationId={r.id} back={back} idPrefix={`lost${r.id}`} /></div>
+              <details className="rounded-xl border border-line">
+                <summary className="flex cursor-pointer select-none items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium text-danger hover:bg-muted">
+                  <XCircle className="icon-sm" aria-hidden /> Mark lost
+                </summary>
+                <div className="border-t border-line p-3"><LostForm quotationId={r.id} back={back} idPrefix={`lost${r.id}`} /></div>
               </details>
             )}
           </div>
@@ -164,41 +184,51 @@ export default async function FollowUpsPage({ searchParams }: { searchParams: Pr
   }
 
   return (
-    <div>
-      <PageHeader title="Follow-up tracker" subtitle="Every sent quotation: who it went to, when to call next, and whether it converted." />
-      <Flash ok={sp.ok} err={sp.err} />
-
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Stat label="Overdue" value={overdue.length} tone={overdue.length ? "bad" : "good"} hint={moneyShort(overdue.reduce((s, r) => s + r.grandTotal, 0))} />
-        <Stat label="Due today" value={dueToday.length} tone={dueToday.length ? "warn" : "default"} />
-        <Stat label={`Won · ${monthLabel}`} value={wonN} tone="good" hint={moneyShort(wonM?.value ?? 0)} />
-        <Stat label="Conversion (month)" value={conv == null ? "-" : pct(conv, 0)} hint={`${wonN} won / ${lostN} lost`} />
-        <Stat label="Activity (month)" value={Number(fuMonth)} hint={`follow-ups · ${Number(sentMonth)} quotes sent`} />
-      </div>
-
-      <form method="get" className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center">
-        <label htmlFor="sp-filter" className="text-sm font-medium text-ink">Salesperson</label>
-        <Select id="sp-filter" name="sp" defaultValue={sp.sp ?? ""} className="sm:max-w-xs">
-          <option value="">Everyone</option>
-          <option value="me">My quotations</option>
-          {salespeople.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-        </Select>
-        <Button type="submit" variant="secondary">Apply</Button>
-      </form>
-
-      {rows.length === 0 ? (
-        <EmptyState title="No open quotations to follow up" action={<LinkButton href="/quotations">Go to quotations</LinkButton>}>
-          Quotations appear here once they are marked as sent.
-        </EmptyState>
-      ) : (
+    <ListPage
+      title="Follow-ups"
+      subtitle="Every sent quotation: who it went to, when to call next, and whether it converted."
+      notices={<Flash ok={sp.ok} err={sp.err} />}
+      density={false}
+      stats={
+        <MetricStrip>
+          <Metric label="Overdue" value={overdue.length} tone={overdue.length ? "bad" : "good"} hint={moneyShort(sum(overdue))}
+            href={qs({ bucket: "overdue" })} />
+          <Metric label="Due today" value={dueToday.length} tone={dueToday.length ? "warn" : "default"} hint={moneyShort(sum(dueToday))}
+            href={qs({ bucket: "today" })} />
+          <Metric label={`Won in ${monthLabel}`} value={wonN} tone="good"
+            hint={`${moneyShort(wonM?.value ?? 0)} · ${lostN} lost · ${conv == null ? "no closes yet" : `${pct(conv, 0)} conversion`}`} />
+          <Metric label="Activity this month" value={Number(fuMonth)} hint={`Follow-ups logged · ${Number(sentMonth)} quotations sent`} />
+        </MetricStrip>
+      }
+      filters={
         <>
-          {renderSection("overdue", "Overdue", overdue, "bad", "Nothing overdue. Great work!")}
-          {renderSection("today", "Due today", dueToday, "warn", "No follow-ups due today.")}
-          {renderSection("upcoming", "Upcoming 7 days", upcoming, "default", "Nothing scheduled for the next 7 days.")}
-          {renderSection("none", "No follow-up scheduled", unscheduled, "muted", "Every open quotation has a next follow-up date.")}
-          {later.length > 0 && renderSection("later", "Later", later, "muted", "", false)}
+          <FilterPills label="Filter by follow-up date" items={pills} />
+          <ListFilters searchName={false} clearHref={qs({ sp: undefined })} activeCount={sp.sp ? 1 : 0} hidden={{ bucket: bucket ?? undefined }}>
+            <Select name="sp" defaultValue={sp.sp ?? ""} aria-label="Salesperson">
+              <option value="">Everyone</option>
+              <option value="me">My quotations</option>
+              {salespeople.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </Select>
+          </ListFilters>
         </>
-      )}
-    </div>
+      }
+      isEmpty={rows.length === 0}
+      empty={
+        <ListEmpty filtered={!!spId} noun="open quotations" clearHref={qs({ sp: undefined })} title={spId ? "No open quotations for this salesperson" : "No open quotations to follow up"}
+          action={<LinkButton href="/quotations">Go to quotations</LinkButton>}>
+          Quotations appear here once they are marked as sent.
+        </ListEmpty>
+      }
+    >
+      <div className="space-y-4">
+        {shown.map((x) => (
+          <SectionCard key={x.key} id={`bucket-${x.key}`} title={x.title} count={x.list.length} flush
+            description={x.list.length ? `${moneyShort(sum(x.list))} in open quotations` : undefined}
+            empty={x.list.length === 0 && x.empty}>
+            <ul className="divide-y divide-line">{x.list.map((r) => renderRow(r))}</ul>
+          </SectionCard>
+        ))}
+      </div>
+    </ListPage>
   );
 }

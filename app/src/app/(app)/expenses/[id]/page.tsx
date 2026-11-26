@@ -2,14 +2,15 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { Check, Trash2, X } from "lucide-react";
+import { Check, FolderKanban, Pencil, Trash2, X } from "lucide-react";
 import { getDb } from "@/db";
 import { expenseAllocations, expenses, projects, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canApproveExpenses, canRead } from "@/lib/rbac";
 import { EXPENSE_CATEGORIES } from "@/lib/constants";
 import { addDays, fmtDate, fmtDateTime, money, todayIST } from "@/lib/format";
-import { Card, DL, Flash, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui";
+import { Flash, LinkButton } from "@/components/ui";
+import { ConfirmButton, DetailPage, KeyValueGrid, MetaChip, ResponsiveTable, SectionCard, StatusPill, type Column } from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { VoucherForm } from "../_components/voucher-form";
 import { deleteExpense, reviewExpenses, saveExpense } from "../actions";
@@ -49,81 +50,99 @@ export default async function ExpenseDetailPage({ params, searchParams }: { para
   // keep currently-allocated projects selectable even if they were closed since
   for (const a of allocs) if (canEdit && !projectList.some((p) => p.id === a.projectId)) projectList.push({ id: a.projectId, code: a.code, name: a.name });
 
-  return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <PageHeader
-        title={`Voucher ${e.voucherNo}`}
-        subtitle={<span className="inline-flex items-center gap-2">{categoryLabel(e.category)} · {money(e.amount)} <StatusBadge status={e.status} /></span>}
-        back={{ href: "/expenses", label: "Expenses" }}
-      />
-      <Flash ok={sp.ok} err={sp.err} />
+  const projectsReadable = canRead(user.role, "projects");
+  type Alloc = (typeof allocs)[number];
+  const allocCols: Column<Alloc>[] = [
+    {
+      key: "project", header: "Project", card: "title",
+      cell: (a) => (
+        <>
+          {projectsReadable
+            ? <Link href={`/projects/${a.projectId}`} className="rt-stretch font-medium text-brand-700 hover:underline dark:text-brand-300">{a.code}</Link>
+            : <span className="font-medium">{a.code}</span>}
+          <div className="text-caption font-normal text-ink-soft">{a.name}</div>
+        </>
+      ),
+    },
+    { key: "amount", header: "Amount", align: "right", card: "amount", nowrap: true, cell: (a) => money(a.amount) },
+  ];
 
-      <Card title="Details">
-        <DL
-          items={[
-            ["Date", fmtDate(e.date)],
-            ["Amount", money(e.amount)],
-            ["Category", categoryLabel(e.category)],
-            ["Paid to", e.paidTo || "-"],
-            ["Bill / receipt no.", e.billRef || "-"],
-            ["Entered by", `${row.userName ?? "-"} · ${fmtDateTime(e.createdAt)}`],
-            ["Reviewed by", e.status === "pending" ? "Awaiting approval" : row.approverName ?? "-"],
-            ["Description", e.description || "-"],
-          ]}
-        />
-      </Card>
-
-      <Card title="Charged to" bodyClassName={allocs.length ? "p-0" : undefined}>
-        {allocs.length ? (
-          <Table className="rounded-none border-0 shadow-none">
-            <thead><tr><Th>Project</Th><Th className="text-right">Amount</Th></tr></thead>
-            <tbody>
-              {allocs.map((a) => (
-                <tr key={a.id}>
-                  <Td>{canRead(user.role, "projects") ? <Link href={`/projects/${a.projectId}`} className="text-brand-700 hover:underline dark:text-brand-300">{a.code}</Link> : a.code} · {a.name}</Td>
-                  <Td className="text-right tabular-nums">{money(a.amount)}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        ) : (
-          <p className="text-sm text-ink-soft">Office overhead, not charged to any project.</p>
-        )}
-      </Card>
-
-      {(canReview || canDelete) && (
-        <div className="flex flex-wrap gap-2">
-          {canReview && (
-            <form action={reviewExpenses} className="flex flex-wrap gap-2">
-              <input type="hidden" name="ids" value={e.id} />
-              <input type="hidden" name="back" value={`/expenses/${e.id}`} />
-              <SubmitButton name="decision" value="approve" variant="success" pendingText="Approving…"><Check className="h-4 w-4" aria-hidden /> Approve</SubmitButton>
-              <SubmitButton name="decision" value="reject" variant="danger" pendingText="Rejecting…" confirm="Reject this voucher?"><X className="h-4 w-4" aria-hidden /> Reject</SubmitButton>
-            </form>
-          )}
-          {canDelete && (
-            <form action={deleteExpense}>
-              <input type="hidden" name="id" value={e.id} />
-              <SubmitButton variant="secondary" pendingText="Deleting…" confirm={`Delete voucher ${e.voucherNo}? This cannot be undone.`}><Trash2 className="h-4 w-4" aria-hidden /> Delete</SubmitButton>
-            </form>
-          )}
-        </div>
+  const reviewForm = (decision: "approve" | "reject") => (
+    <form action={reviewExpenses}>
+      <input type="hidden" name="ids" value={e.id} />
+      <input type="hidden" name="back" value={`/expenses/${e.id}`} />
+      {decision === "approve" ? (
+        <SubmitButton name="decision" value="approve" variant="success" pendingText="Approving…"><Check className="icon-sm" aria-hidden /> Approve voucher</SubmitButton>
+      ) : (
+        <ConfirmButton name="decision" value="reject" variant="secondary" className="text-danger" confirmVariant="danger" stacked pendingText="Rejecting…"
+          confirm="Reject this voucher? It will not be added to the project cost." confirmLabel="Yes, reject voucher">
+          <X className="icon-sm" aria-hidden /> Reject voucher
+        </ConfirmButton>
       )}
+    </form>
+  );
+
+  return (
+    <DetailPage
+      back={{ href: "/expenses", label: "Expenses" }}
+      eyebrow="Expense voucher"
+      title={e.voucherNo}
+      status={<StatusPill status={e.status} />}
+      meta={
+        <>
+          <MetaChip label="Amount">{money(e.amount)}</MetaChip>
+          <MetaChip label="Category">{categoryLabel(e.category)}</MetaChip>
+          <MetaChip label="Date">{fmtDate(e.date)}</MetaChip>
+          <MetaChip label="By">{row.userName ?? "-"}</MetaChip>
+        </>
+      }
+      primaryAction={canReview ? reviewForm("approve") : canEdit ? <LinkButton href="#edit-voucher"><Pencil className="icon-sm" aria-hidden /> Edit voucher</LinkButton> : undefined}
+      secondaryActions={canReview ? reviewForm("reject") : undefined}
+      moreActions={canDelete ? (
+        <form action={deleteExpense}>
+          <input type="hidden" name="id" value={e.id} />
+          <ConfirmButton variant="ghost" className="text-danger" confirmVariant="danger" stacked pendingText="Deleting…"
+            confirm={`Delete voucher ${e.voucherNo}? This cannot be undone.`} confirmLabel="Yes, delete voucher">
+            <Trash2 className="icon-sm" aria-hidden /> Delete voucher
+          </ConfirmButton>
+        </form>
+      ) : undefined}
+      notices={<Flash ok={sp.ok} err={sp.err} />}
+    >
+      <SectionCard title="Details">
+        <KeyValueGrid items={[
+          { label: "Date", value: fmtDate(e.date) },
+          { label: "Amount", value: money(e.amount) },
+          { label: "Category", value: categoryLabel(e.category) },
+          { label: "Paid to", value: e.paidTo },
+          { label: "Bill or receipt no.", value: e.billRef },
+          { label: "Entered by", value: `${row.userName ?? "-"} · ${fmtDateTime(e.createdAt)}` },
+          { label: "Reviewed by", value: e.status === "pending" ? <StatusPill status="pending" label="Awaiting approval" /> : row.approverName },
+          { label: "Description", value: e.description, wide: true },
+        ]} />
+      </SectionCard>
+
+      <SectionCard title="Charged to" icon={FolderKanban} count={allocs.length} flush={allocs.length > 0}
+        empty={allocs.length === 0 && "Office overhead. This voucher is not charged to any project."}>
+        <ResponsiveTable flush rows={allocs} columns={allocCols} rowKey={(a) => a.id} caption="Project allocations" />
+      </SectionCard>
 
       {canEdit && (
-        <Card title="Edit voucher">
+        <section id="edit-voucher" className="scroll-mt-36 space-y-4">
+          <h2 className="text-subheading text-ink">Edit voucher</h2>
           <VoucherForm
             action={saveExpense}
             projects={projectList}
             categories={EXPENSE_CATEGORIES}
             maxDate={addDays(todayIST(), 1)}
+            stickyFooter={false}
             initial={{
               id: e.id, date: e.date, category: e.category, amount: String(e.amount), paidTo: e.paidTo ?? "", billRef: e.billRef ?? "",
               description: e.description ?? "", allocations: allocs.map((a) => ({ projectId: a.projectId, amount: Number(a.amount) })),
             }}
           />
-        </Card>
+        </section>
       )}
-    </div>
+    </DetailPage>
   );
 }

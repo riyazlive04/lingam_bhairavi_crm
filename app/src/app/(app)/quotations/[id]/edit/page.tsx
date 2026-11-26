@@ -7,7 +7,8 @@ import { canSeeCost, canWrite } from "@/lib/rbac";
 import { todayIST } from "@/lib/format";
 import { getPricingSettings } from "@/lib/pricing";
 import { isEditableStatus } from "@/lib/quotations";
-import { Flash, PageHeader, StatusBadge } from "@/components/ui";
+import { Flash } from "@/components/ui";
+import { Callout, FormPage, StatusPill } from "@/components/patterns";
 import { saveQuotation } from "../../actions";
 import { QuoteEditor } from "../../_components/quote-editor";
 import { loadCatalog } from "../../_lib/data";
@@ -36,15 +37,25 @@ export default async function EditQuotationPage({ params, searchParams }: { para
   ]);
 
   return (
-    <div>
-      <PageHeader
-        title={<span className="flex flex-wrap items-center gap-2">Edit {q.number} <StatusBadge status={q.status} /></span>}
-        subtitle={q.status !== "draft"
-          ? "This quotation was already sent. Consider “Revise” to keep the sent version on record."
-          : q.approvalStatus === "approved" ? "Only lines with a quantity are saved. Changing prices or quantities sends an approved quotation back for approval." : "Only lines with a quantity are saved."}
-        back={{ href: `/quotations/${id}`, label: "Quotation" }}
-      />
-      <Flash ok={sp.ok} err={sp.err} />
+    <FormPage
+      width="wide"
+      eyebrow="Edit quotation"
+      title={<span className="flex flex-wrap items-center gap-2">{q.number} <StatusPill status={q.status} /></span>}
+      subtitle={q.approvalStatus === "approved"
+        ? "Only lines with a quantity are saved. Changing prices or quantities sends an approved quotation back for approval."
+        : "Only lines with a quantity are saved."}
+      back={{ href: `/quotations/${id}`, label: q.number }}
+      notices={
+        <>
+          <Flash ok={sp.ok} err={sp.err} />
+          {q.status !== "draft" && (
+            <Callout tone="info" title="This quotation was already sent">
+              Consider using Revise on the quotation page instead, so the sent version stays on record.
+            </Callout>
+          )}
+        </>
+      }
+    >
       <QuoteEditor
         action={saveQuotation}
         back={`/quotations/${id}/edit`}
@@ -62,7 +73,8 @@ export default async function EditQuotationPage({ params, searchParams }: { para
         canChangeMarkup={showCost}
         today={todayIST()}
         approvalMode={pricing.approvalMode}
+        cancelHref={`/quotations/${id}`}
       />
-    </div>
+    </FormPage>
   );
 }

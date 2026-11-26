@@ -5,13 +5,23 @@ import { getDb } from "@/db";
 import { projects, purchaseInvoices, vendors } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canRead, canWrite } from "@/lib/rbac";
-import { fmtDate, money, todayIST } from "@/lib/format";
+import { fmtDate, money, moneyShort, todayIST } from "@/lib/format";
 import { purchaseOutstanding } from "@/lib/purchasing";
-import { Badge, Button, EmptyState, Flash, Input, LinkButton, PageHeader, Select, Stat, StatusBadge, Table, Td, Th, cx } from "@/components/ui";
-import { Pager, qs } from "../items/_components/tabs";
+import { Badge, Flash, Input, LinkButton, Select, cx } from "@/components/ui";
+import {
+  FilterPills, ListEmpty, ListFilters, ListPage, Metric, MetricStrip, Pagination, ResponsiveTable, StatusPill,
+  type Column, type FilterPillItem,
+} from "@/components/patterns";
+import { qs } from "../purchase-orders/_components/po-bits";
+
+export const metadata = { title: "Purchase invoices" };
 
 const PAGE_SIZE = 50;
 type SP = { q?: string; status?: string; vendor?: string; project?: string; from?: string; to?: string; page?: string; ok?: string; err?: string };
+
+const STATUS_FILTERS = [
+  ["draft", "Draft"], ["posted", "Posted"], ["unpaid", "Unpaid"], ["overdue", "Overdue"], ["paid", "Paid"], ["cancelled", "Cancelled"],
+] as const;
 
 export default async function PurchasesPage({ searchParams }: { searchParams: Promise<SP> }) {
   const user = await requireUser("purchases");
@@ -54,81 +64,93 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
   ]);
   const total = Number(n);
   const base = { q: sp.q, status, vendor: sp.vendor, project: sp.project, from: sp.from, to: sp.to };
+  const href = (patch: Partial<typeof base & { page: number }>) => "/purchases" + qs({ ...base, ...patch });
+  const activeFilters = [sp.q?.trim(), sp.vendor, sp.project, sp.from, sp.to].filter(Boolean).length;
+  const vendorRead = canRead(user.role, "vendors");
+
+  type Row = (typeof rows)[number];
+  const columns: Column<Row>[] = [
+    { key: "no", header: "Invoice", card: "title", nowrap: true,
+      cell: ({ inv }) => <Link href={`/purchases/${inv.id}`} className="rt-stretch font-medium text-brand-700 hover:underline dark:text-brand-300">{inv.invoiceNo}</Link> },
+    { key: "vendor", header: "Vendor", card: "subtitle", className: "max-w-56 truncate",
+      cell: ({ inv, vendorName }) => vendorName ? (vendorRead ? <Link href={`/vendors/${inv.vendorId}`} className="relative z-[1] hover:underline">{vendorName}</Link> : vendorName) : "-" },
+    { key: "date", header: "Date", nowrap: true, cell: ({ inv }) => fmtDate(inv.invoiceDate) },
+    { key: "due", header: "Due", nowrap: true,
+      cell: ({ inv }) => {
+        const out = inv.status === "posted" ? purchaseOutstanding(inv) : 0;
+        const od = out > 0.5 && inv.dueDate != null && inv.dueDate < today;
+        return <span className={cx(od && "font-medium text-danger")}>{fmtDate(inv.dueDate)}{od && <span className="block text-caption">Overdue</span>}</span>;
+      } },
+    { key: "cc", header: "Cost centre", priority: 3,
+      cell: ({ projectCode, projectName }) => projectCode ? <span title={projectName ?? undefined}><Badge tone="violet">{projectCode}</Badge></span> : <span className="text-ink-faint">Stock</span> },
+    { key: "status", header: "Status", card: "badge",
+      cell: ({ inv }) => {
+        const out = inv.status === "posted" ? purchaseOutstanding(inv) : 0;
+        const st = inv.status === "posted" ? (out <= 0.5 ? "paid" : inv.paidAmount > 0 ? "partially_paid" : "posted") : inv.status;
+        return <StatusPill status={st} />;
+      } },
+    { key: "total", header: "Total", align: "right", nowrap: true, priority: 3, cell: ({ inv }) => money(inv.total) },
+    { key: "paid", header: "Paid", align: "right", nowrap: true, priority: 3, cell: ({ inv }) => inv.status === "posted" ? money(inv.paidAmount) : "-" },
+    { key: "out", header: "Outstanding", align: "right", card: "amount", nowrap: true,
+      cell: ({ inv }) => {
+        if (inv.status !== "posted") return "-";
+        const out = purchaseOutstanding(inv);
+        return out > 0.5 ? <span className="font-medium">{money(out)}</span> : <span className="text-ink-faint">-</span>;
+      } },
+  ];
+  const pills: FilterPillItem[] = [
+    { label: "All", href: href({ status: undefined, page: undefined }), active: !status },
+    ...STATUS_FILTERS.map(([k, label]) => ({
+      label, href: href({ status: k, page: undefined }), active: status === k,
+      attention: (k === "overdue" && summary.overdue > 0.5) || (k === "draft" && summary.drafts > 0),
+    })),
+  ];
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
-    <div>
-      <PageHeader title="Purchase invoices" subtitle="Supplier bills. Posting an invoice updates latest item prices, the vendor master and stock automatically."
-        actions={write && <LinkButton href="/purchases/new"><Plus size={16} aria-hidden /> New invoice</LinkButton>} />
-      <Flash ok={sp.ok} err={sp.err} />
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Outstanding payable" value={money(summary.outstanding)} href={"/purchases" + qs({ status: "unpaid" })} />
-        <Stat label="Overdue" value={money(summary.overdue)} tone={summary.overdue > 0.5 ? "bad" : "default"} href={"/purchases" + qs({ status: "overdue" })} />
-        <Stat label="Purchases this month" value={money(summary.month)} />
-        <Stat label="Drafts to post" value={summary.drafts} tone={summary.drafts > 0 ? "warn" : "default"} href={"/purchases" + qs({ status: "draft" })} hint="Prices update only after posting" />
-      </div>
-      <form method="get" className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
-        <label className="lg:col-span-2"><span className="sr-only">Search</span><Input name="q" defaultValue={sp.q} placeholder="Invoice no. or vendor…" /></label>
-        <label><span className="sr-only">Status</span>
-          <Select name="status" defaultValue={status}>
-            <option value="">All statuses</option>
-            <option value="draft">Draft</option><option value="posted">Posted</option><option value="unpaid">Unpaid</option>
-            <option value="overdue">Overdue</option><option value="paid">Paid</option><option value="cancelled">Cancelled</option>
-          </Select>
-        </label>
-        <label><span className="sr-only">Vendor</span>
-          <Select name="vendor" defaultValue={sp.vendor ?? ""}>
-            <option value="">All vendors</option>
-            {vendorList.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-          </Select>
-        </label>
-        <label><span className="sr-only">Project</span>
-          <Select name="project" defaultValue={sp.project ?? ""}>
-            <option value="">All (stock & projects)</option>
-            <option value="stock">Into stock only</option>
-            {projectList.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
-          </Select>
-        </label>
-        <div className="flex gap-2">
-          <label className="flex-1"><span className="sr-only">From date</span><Input type="date" name="from" defaultValue={sp.from} aria-label="From date" /></label>
-          <label className="flex-1"><span className="sr-only">To date</span><Input type="date" name="to" defaultValue={sp.to} aria-label="To date" /></label>
-        </div>
-        <div className="flex gap-2 lg:col-span-6">
-          <Button type="submit" variant="secondary">Filter</Button>
-          {Object.values(base).some(Boolean) && <LinkButton href="/purchases" variant="ghost">Clear</LinkButton>}
-        </div>
-      </form>
-      {rows.length === 0 ? (
-        <EmptyState title="No purchase invoices found" action={write && <LinkButton href="/purchases/new">Enter a supplier invoice</LinkButton>}>
-          Every posted supplier invoice keeps the price master up to date.
-        </EmptyState>
-      ) : (
+    <ListPage
+      title="Purchase invoices"
+      subtitle="Supplier bills. Posting an invoice updates latest item prices, the vendor master and stock automatically."
+      primaryAction={write && <LinkButton href="/purchases/new"><Plus className="icon-sm" aria-hidden /> New invoice</LinkButton>}
+      notices={<Flash ok={sp.ok} err={sp.err} />}
+      stats={
+        <MetricStrip>
+          <Metric label="Outstanding payable" value={moneyShort(summary.outstanding)} href={href({ status: "unpaid", page: undefined })} />
+          <Metric label="Overdue" value={moneyShort(summary.overdue)} tone={summary.overdue > 0.5 ? "bad" : "default"} href={href({ status: "overdue", page: undefined })} />
+          <Metric label="Purchases this month" value={moneyShort(summary.month)} />
+          <Metric label="Drafts to post" value={summary.drafts} tone={summary.drafts > 0 ? "warn" : "default"} href={href({ status: "draft", page: undefined })} hint="Prices update only after posting" />
+        </MetricStrip>
+      }
+      filters={
         <>
-          <Table>
-            <thead><tr><Th>Invoice</Th><Th>Vendor</Th><Th>Date</Th><Th>Due</Th><Th>Cost center</Th><Th>Status</Th><Th className="text-right">Total</Th><Th className="text-right">Paid</Th><Th className="text-right">Outstanding</Th></tr></thead>
-            <tbody>
-              {rows.map(({ inv, vendorName, projectCode, projectName }) => {
-                const out = inv.status === "posted" ? purchaseOutstanding(inv) : 0;
-                const od = out > 0.5 && inv.dueDate != null && inv.dueDate < today;
-                const st = inv.status === "posted" ? (out <= 0.5 ? "paid" : inv.paidAmount > 0 ? "partially_paid" : "posted") : inv.status;
-                return (
-                  <tr key={inv.id} className="hover:bg-muted/50">
-                    <Td><Link href={`/purchases/${inv.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{inv.invoiceNo}</Link></Td>
-                    <Td className="max-w-56 truncate">{vendorName ? (canRead(user.role, "vendors") ? <Link href={`/vendors/${inv.vendorId}`} className="hover:underline">{vendorName}</Link> : vendorName) : "-"}</Td>
-                    <Td>{fmtDate(inv.invoiceDate)}</Td>
-                    <Td className={cx(od && "font-medium text-red-600")}>{fmtDate(inv.dueDate)}{od && <div className="text-xs">overdue</div>}</Td>
-                    <Td>{projectCode ? <span title={projectName ?? undefined}><Badge tone="violet">{projectCode}</Badge></span> : <span className="text-ink-faint">Stock</span>}</Td>
-                    <Td><StatusBadge status={st} /></Td>
-                    <Td className="text-right tabular-nums">{money(inv.total)}</Td>
-                    <Td className="text-right tabular-nums">{inv.status === "posted" ? money(inv.paidAmount) : "-"}</Td>
-                    <Td className="text-right tabular-nums">{inv.status === "posted" ? (out > 0.5 ? <span className="font-medium">{money(out)}</span> : <span className="text-ink-faint">-</span>) : "-"}</Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
-          <Pager page={page} pages={Math.ceil(total / PAGE_SIZE)} href={(p) => "/purchases" + qs({ ...base, page: p })} />
+          <FilterPills label="Filter by status" items={pills} />
+          <ListFilters q={sp.q} placeholder="Search invoice no. or vendor" clearHref={href({ q: undefined, vendor: undefined, project: undefined, from: undefined, to: undefined, page: undefined })}
+            activeCount={activeFilters} hidden={{ status }}>
+            <Select name="vendor" defaultValue={sp.vendor ?? ""} aria-label="Vendor">
+              <option value="">All vendors</option>
+              {vendorList.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+            </Select>
+            <Select name="project" defaultValue={sp.project ?? ""} aria-label="Cost centre">
+              <option value="">Stock and projects</option>
+              <option value="stock">Into stock only</option>
+              {projectList.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
+            </Select>
+            <Input type="date" name="from" defaultValue={sp.from} aria-label="From date" title="From date" />
+            <Input type="date" name="to" defaultValue={sp.to} aria-label="To date" title="To date" />
+          </ListFilters>
         </>
-      )}
-    </div>
+      }
+      isEmpty={rows.length === 0}
+      empty={
+        <ListEmpty filtered={Object.values(base).some(Boolean)} noun="purchase invoices" clearHref="/purchases"
+          action={write && <LinkButton href="/purchases/new"><Plus className="icon-sm" aria-hidden /> Enter a supplier invoice</LinkButton>}>
+          Every posted supplier invoice keeps the price master up to date.
+        </ListEmpty>
+      }
+      resultSummary={`${total} purchase invoice${total === 1 ? "" : "s"}`}
+      pagination={<Pagination page={page} pages={pages} total={total} noun="invoices" href={(p) => href({ page: p })} />}
+    >
+      <ResponsiveTable rows={rows} columns={columns} rowKey={(r) => r.inv.id} caption="Purchase invoices" />
+    </ListPage>
   );
 }

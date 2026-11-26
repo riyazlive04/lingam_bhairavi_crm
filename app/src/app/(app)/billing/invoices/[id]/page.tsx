@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
-import { Mail, Printer, Undo2 } from "lucide-react";
+import { Ban, FileText, Mail, Printer, Undo2, Wallet } from "lucide-react";
 import { getDb } from "@/db";
 import { auditLog, customers, emailOutbox, paymentAllocations, payments, projects, salesInvoiceLines, salesInvoices, salesOrders, salesReturns } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
@@ -11,13 +11,17 @@ import { PAYMENT_MODES } from "@/lib/constants";
 import { daysBetween, fmtDate, fmtDateTime, money, qty, round2, todayIST } from "@/lib/format";
 import { OPEN_INVOICE_STATUSES, customerAdvances, outstandingOf, receiptNumber } from "@/lib/billing";
 import { reasonLabel } from "@/lib/returns";
-import { Badge, Card, DL, EmptyState, Field, Flash, Input, LinkButton, PageHeader, Select, StatusBadge, Table, Td, Th } from "@/components/ui";
+import { Field, Flash, Input, LinkButton, Select, Td, cx } from "@/components/ui";
+import {
+  Callout, ConfirmButton, DetailPage, KeyValueGrid, MetaChip, ResponsiveTable, SectionCard, StatusPill, SummaryRows, Tabs, activeTab, tabHref,
+  type Column, type TabItem,
+} from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { applyAdvance, cancelInvoice, recordPayment, sendReminderNow } from "../../actions";
 
 export const metadata = { title: "Invoice" };
 
-export default async function InvoicePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
+export default async function InvoicePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string; tab?: string }> }) {
   const user = await requireUser("billing");
   const { id } = await params;
   const sp = await searchParams;
@@ -77,164 +81,213 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
     }),
   ].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 
+  const base = `/billing/invoices/${inv.id}`;
+  const tabParams = { tab: sp.tab };
+  const tab = activeTab(sp.tab, ["lines", "payments", "emails"] as const);
+  const tabItems: TabItem[] = [
+    { id: "lines", label: "Lines", count: lines.length },
+    { id: "payments", label: "Payments and credits", count: receipts.length + cns.length },
+    { id: "emails", label: "E-mails", count: mails.length },
+  ];
+  const canPay = write && isOpen;
+  const canReturn = returnsWrite && inv.status !== "cancelled" && inv.status !== "draft";
+  const canCancel = write && inv.status !== "cancelled" && Number(inv.paidAmount) === 0;
+
+  type Line = (typeof lines)[number];
+  const taxOf = (l: Line) => (Number(l.amount) * Number(l.gstRate)) / 100;
+  const lineCols: Column<Line>[] = [
+    { key: "n", header: "#", card: "hidden", className: "text-ink-soft", cell: (_l, i) => i + 1 },
+    { key: "desc", header: "Description", card: "title", className: "max-w-80 whitespace-normal", cell: (l) => l.description },
+    { key: "qty", header: "Qty", align: "right", nowrap: true, cell: (l) => qty(l.qty) },
+    { key: "rate", header: "Rate", align: "right", nowrap: true, cell: (l) => money(l.rate) },
+    { key: "taxable", header: "Taxable", align: "right", nowrap: true, priority: 3, cell: (l) => money(l.amount) },
+    { key: "gst", header: "GST", align: "right", nowrap: true, priority: 3,
+      cell: (l) => <>{money(taxOf(l))} <span className="text-caption text-ink-soft">@{l.gstRate}%</span></> },
+    { key: "total", header: "Total", align: "right", card: "amount", nowrap: true, cell: (l) => money(Number(l.amount) + taxOf(l)) },
+  ];
+  const recCols: Column<Receipt>[] = [
+    { key: "type", header: "Type", card: "title", cell: (p) => p.label },
+    { key: "date", header: "Date", card: "subtitle", nowrap: true, cell: (p) => fmtDate(p.date) },
+    { key: "ref", header: "Receipt or reference", cell: (p) => p.ref },
+    { key: "amount", header: "Amount", align: "right", card: "amount", nowrap: true, cell: (p) => money(p.amount) },
+  ];
+  type Cn = (typeof cns)[number];
+  const cnCols: Column<Cn>[] = [
+    { key: "no", header: "Credit note", card: "title", nowrap: true,
+      cell: (r) => returnsRead ? <Link href={`/returns/${r.id}`} className={cx(lnk, "rt-stretch font-medium")}>{r.status === "draft" ? "Draft" : r.number}</Link> : r.number },
+    { key: "date", header: "Date", card: "subtitle", nowrap: true, cell: (r) => fmtDate(r.date) },
+    { key: "reason", header: "Reason", cell: (r) => reasonLabel(r.reason) },
+    { key: "status", header: "Status", card: "badge", cell: (r) => <StatusPill status={r.status} /> },
+    { key: "total", header: "Total", align: "right", card: "amount", nowrap: true, cell: (r) => money(r.total) },
+  ];
+  type MailRow = (typeof mails)[number];
+  const mailCols: Column<MailRow>[] = [
+    { key: "subject", header: "Subject", card: "title", className: "max-w-80 whitespace-normal",
+      cell: (m) => showEmails ? <Link href={`/emails/${m.id}`} className={cx(lnk, "rt-stretch font-medium")}>{m.subject}</Link> : <span className="font-medium">{m.subject}</span> },
+    { key: "to", header: "To", card: "subtitle", cell: (m) => m.to },
+    { key: "at", header: "Sent", nowrap: true, cell: (m) => fmtDateTime(m.createdAt) },
+    { key: "by", header: "Sent by", priority: 3, cell: (m) => m.agent ?? "Manual" },
+    { key: "status", header: "Status", card: "badge", cell: (m) => <StatusPill status={m.status} /> },
+  ];
+
+  const printBtn = (variant: "primary" | "secondary") => (
+    <LinkButton href={`${base}/print`} variant={variant}><Printer className="icon-sm" aria-hidden /> Print tax invoice</LinkButton>
+  );
+
   return (
-    <>
-      <PageHeader
-        title={<span className="flex flex-wrap items-center gap-2">{inv.number} <StatusBadge status={inv.status} />{od > 0 && <Badge tone="red">{od} days overdue</Badge>}</span>}
-        subtitle={<Link href={`/billing/receivables/${c.id}`} className="hover:underline">{c.name}</Link>}
-        back={{ href: "/billing/invoices", label: "Invoices" }}
-        actions={
-          <>
-            <LinkButton href={`/billing/invoices/${inv.id}/print`} variant="secondary"><Printer className="h-4 w-4" aria-hidden /> Tax invoice</LinkButton>
-            {returnsWrite && inv.status !== "cancelled" && inv.status !== "draft" && (
-              <LinkButton href={`/returns/new?invoiceId=${inv.id}`} variant="secondary"><Undo2 className="h-4 w-4" aria-hidden /> Record return</LinkButton>
-            )}
-            {write && isOpen && (
-              <form action={sendReminderNow}>
-                <input type="hidden" name="invoiceId" value={inv.id} />
-                <SubmitButton variant="secondary" pendingText="Sending…" disabled={!c.email} title={c.email ? `E-mail ${c.email}` : "Customer has no e-mail address"}
-                  confirm={`Send a payment reminder to ${c.email ?? "the customer"} now?`}>
-                  <Mail className="h-4 w-4" aria-hidden /> Send reminder
-                </SubmitButton>
-              </form>
-            )}
-            {write && inv.status !== "cancelled" && Number(inv.paidAmount) === 0 && (
-              <form action={cancelInvoice}>
-                <input type="hidden" name="invoiceId" value={inv.id} />
-                <SubmitButton variant="danger" pendingText="Cancelling…" confirm={`Cancel invoice ${inv.number}? Order invoiced quantities and price history will be reversed.`}>Cancel</SubmitButton>
-              </form>
-            )}
-          </>
-        }
-      />
-      <Flash ok={sp.ok} err={sp.err} />
-      {isOpen && !c.email && <p className="mb-4 text-sm text-amber-700 dark:text-amber-300">There is no e-mail on file for this customer, so reminders cannot be sent. Add one in Customers.</p>}
-
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <div className="rounded-xl border border-line bg-surface p-4"><div className="text-xs uppercase tracking-wide text-ink-soft">Total</div><div className="mt-1 text-xl font-semibold tabular-nums">{money(inv.total)}</div></div>
-        <div className="rounded-xl border border-line bg-surface p-4"><div className="text-xs uppercase tracking-wide text-ink-soft">Received</div><div className="mt-1 text-xl font-semibold tabular-nums text-emerald-600">{money(inv.paidAmount)}</div></div>
-        <div className="rounded-xl border border-line bg-surface p-4"><div className="text-xs uppercase tracking-wide text-ink-soft">Outstanding</div><div className={`mt-1 text-xl font-semibold tabular-nums ${od > 0 ? "text-red-600" : "text-ink"}`}>{money(outstanding)}</div></div>
-        <div className="rounded-xl border border-line bg-surface p-4"><div className="text-xs uppercase tracking-wide text-ink-soft">Reminders sent</div><div className="mt-1 text-xl font-semibold tabular-nums">{inv.reminderCount}</div>
-          <div className="text-xs text-ink-soft">{inv.lastReminderAt ? `Last ${fmtDateTime(inv.lastReminderAt)}` : "None yet"}</div></div>
-      </div>
-
-      <div className="mb-4 grid gap-4 lg:grid-cols-3">
-        <Card title="Details" className="lg:col-span-2">
-          <DL items={[
-            ["Invoice date", fmtDate(inv.invoiceDate)],
-            ["Due date", fmtDate(inv.dueDate)],
-            ["Customer GSTIN", c.gstin || "-"],
-            ["Customer e-mail", c.email || "-"],
-            ["Order", inv.orderId && row.orderNumber ? <Link href={`/orders/${inv.orderId}`} className="text-brand-700 hover:underline dark:text-brand-300">{row.orderNumber}{row.customerPo ? ` (PO ${row.customerPo})` : ""}</Link> : "-"],
-            ["Project", row.projectName || "-"],
-            ["Notes", inv.notes || "-"],
-          ]} />
-        </Card>
-        {write && isOpen ? (
-          <Card title="Record payment">
-            <form action={recordPayment} className="grid gap-3">
+    <DetailPage
+      back={{ href: "/billing/invoices", label: "Invoices" }}
+      eyebrow="Tax invoice"
+      title={inv.number}
+      status={<>
+        <StatusPill status={inv.status} />
+        {od > 0 && <StatusPill status="overdue" label={`${od} days overdue`} />}
+      </>}
+      meta={<>
+        <MetaChip label="Customer" href={`/billing/receivables/${c.id}`}>{c.name}</MetaChip>
+        <MetaChip label="Date">{fmtDate(inv.invoiceDate)}</MetaChip>
+        <MetaChip label="Due">{fmtDate(inv.dueDate)}</MetaChip>
+        {inv.orderId && row.orderNumber && <MetaChip label="Order" href={`/orders/${inv.orderId}`}>{row.orderNumber}</MetaChip>}
+        <MetaChip label="Total">{money(inv.total)}</MetaChip>
+      </>}
+      primaryAction={canPay
+        ? <LinkButton href={`${tabHref(base, tabParams, "payments", "lines")}#record-payment`}><Wallet className="icon-sm" aria-hidden /> Record payment</LinkButton>
+        : printBtn("primary")}
+      secondaryActions={(canPay || canReturn) ? (
+        <>
+          {canPay && printBtn("secondary")}
+          {canReturn && <LinkButton href={`/returns/new?invoiceId=${inv.id}`} variant="secondary"><Undo2 className="icon-sm" aria-hidden /> Record return</LinkButton>}
+          {canPay && (
+            <form action={sendReminderNow}>
               <input type="hidden" name="invoiceId" value={inv.id} />
-              <Field label="Amount (₹)" required><Input name="amount" type="number" inputMode="decimal" step="0.01" min="0.01" max={outstanding + 0.5} defaultValue={outstanding} required /></Field>
-              <Field label="Date" required><Input name="date" type="date" defaultValue={today} max={today} required /></Field>
-              <Field label="Mode" required>
-                <Select name="mode" defaultValue="bank">{PAYMENT_MODES.map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}</Select>
-              </Field>
-              <Field label="Reference" hint="UTR / cheque no."><Input name="reference" maxLength={80} /></Field>
-              <Field label="Notes"><Input name="notes" maxLength={1000} /></Field>
-              <SubmitButton variant="success" pendingText="Recording…">Record payment</SubmitButton>
+              <SubmitButton variant="secondary" pendingText="Sending…" disabled={!c.email} title={c.email ? `E-mail ${c.email}` : "Customer has no e-mail address"}
+                confirm={`Send a payment reminder to ${c.email ?? "the customer"} now?`}>
+                <Mail className="icon-sm" aria-hidden /> Send reminder
+              </SubmitButton>
             </form>
-          </Card>
-        ) : (
-          <Card title="Payment">
-            <p className="text-sm text-ink-soft">{inv.status === "paid" ? "This invoice is fully paid." : inv.status === "cancelled" ? "This invoice is cancelled." : "Read-only access."}</p>
-          </Card>
+          )}
+        </>
+      ) : undefined}
+      moreActions={canCancel ? (
+        <form action={cancelInvoice}>
+          <input type="hidden" name="invoiceId" value={inv.id} />
+          <ConfirmButton variant="ghost" className="text-danger" confirmVariant="danger" stacked pendingText="Cancelling…" confirmLabel="Yes, cancel invoice"
+            confirm={`Cancel invoice ${inv.number}? Order invoiced quantities and price history will be reversed.`}>
+            <Ban className="icon-sm" aria-hidden /> Cancel invoice
+          </ConfirmButton>
+        </form>
+      ) : undefined}
+      notices={<>
+        <Flash ok={sp.ok} err={sp.err} />
+        {od > 0 && (
+          <Callout tone="danger" title={`Payment is ${od} days overdue`}>
+            {money(outstanding)} was due on {fmtDate(inv.dueDate)}. Record the payment when it arrives{c.email ? ", or send a reminder" : ""}.
+          </Callout>
         )}
-      </div>
-
-      {advances.length > 0 && bestAdvance && (
-        <Card title="Apply advance" subtitle={`${c.name} has ${money(round2(advances.reduce((s, a) => s + a.balance, 0)))} in advances not yet used`} className="mb-4">
-          <form action={applyAdvance} className="grid gap-3 sm:grid-cols-3 sm:items-end">
-            <input type="hidden" name="invoiceId" value={inv.id} />
-            <Field label="Advance" required>
-              <Select name="paymentId" required defaultValue={String(bestAdvance.id)}>
-                {advances.map((a) => <option key={a.id} value={a.id}>{receiptNumber(a)} · {fmtDate(a.date)}{a.orderNumber ? ` · ${a.orderNumber}` : ""} · balance {money(a.balance)}</option>)}
-              </Select>
-            </Field>
-            <Field label="Amount (₹)" required hint="Up to the advance balance or this invoice's outstanding, whichever is lower">
-              <Input name="amount" type="number" inputMode="decimal" step="0.01" min="0.01" max={outstanding} defaultValue={round2(Math.min(bestAdvance.balance, outstanding))} required />
-            </Field>
-            <div><SubmitButton variant="success" pendingText="Applying…">Apply advance</SubmitButton></div>
-          </form>
-        </Card>
+        {isOpen && !c.email && (
+          <Callout tone="warning" title="No e-mail on file">Reminders cannot be sent to this customer. Add an e-mail address in Customers.</Callout>
+        )}
+      </>}
+      tabs={<Tabs label="Invoice sections" basePath={base} params={tabParams} active={tab} items={tabItems} />}
+      aside={<>
+        <SectionCard title="Summary" icon={FileText}>
+          <SummaryRows rows={[
+            ["Total", money(inv.total)],
+            ["Received", <span key="r" className="text-success">{money(inv.paidAmount)}</span>],
+            ["Outstanding", <span key="o" className={cx(od > 0 && "text-danger")}>{money(outstanding)}</span>],
+            ["Reminders sent", inv.reminderCount],
+          ]} />
+          <p className="mt-3 text-caption text-ink-soft">{inv.lastReminderAt ? `Last reminder ${fmtDateTime(inv.lastReminderAt)}` : "No reminders sent yet."}</p>
+        </SectionCard>
+        <SectionCard title="Invoice details">
+          <KeyValueGrid columns={1} items={[
+            { label: "Invoice date", value: fmtDate(inv.invoiceDate) },
+            { label: "Due date", value: fmtDate(inv.dueDate) },
+            { label: "Customer GSTIN", value: c.gstin },
+            { label: "Customer e-mail", value: c.email },
+            { label: "Order", value: inv.orderId && row.orderNumber ? <Link href={`/orders/${inv.orderId}`} className={lnk}>{row.orderNumber}{row.customerPo ? ` (PO ${row.customerPo})` : ""}</Link> : null },
+            { label: "Project", value: row.projectName },
+            { label: "Notes", value: inv.notes },
+          ]} />
+        </SectionCard>
+      </>}
+    >
+      {tab === "lines" && (
+        <SectionCard title="Invoice lines" count={lines.length} flush={lines.length > 0} empty={lines.length === 0 && "This invoice has no lines."}>
+          <ResponsiveTable flush rows={lines} columns={lineCols} rowKey={(l) => l.id} caption="Invoice lines"
+            footer={
+              <tr>
+                <Td colSpan={4} className="text-right font-medium max-sm:hidden">Totals</Td>
+                <Td className="rt-p3 text-right tabular-nums max-sm:hidden">{money(inv.subtotal)}</Td>
+                <Td className="rt-p3 text-right tabular-nums max-sm:hidden">{money(inv.taxAmount)}</Td>
+                <Td className="text-right font-semibold tabular-nums"><span className="sm:hidden">Invoice total </span>{money(inv.total)}</Td>
+              </tr>
+            } />
+        </SectionCard>
       )}
 
-      <Card title="Lines" className="mb-4" bodyClassName="p-0">
-        <Table className="rounded-none border-0 shadow-none">
-          <thead><tr><Th>#</Th><Th>Description</Th><Th className="text-right">Qty</Th><Th className="text-right">Rate</Th><Th className="text-right">Taxable</Th><Th className="text-right">GST</Th><Th className="text-right">Total</Th></tr></thead>
-          <tbody>
-            {lines.map((l, i) => {
-              const tax = (Number(l.amount) * Number(l.gstRate)) / 100;
-              return (
-                <tr key={l.id}>
-                  <Td className="text-ink-soft">{i + 1}</Td>
-                  <Td className="max-w-80 whitespace-normal">{l.description}</Td>
-                  <Td className="text-right tabular-nums">{qty(l.qty)}</Td>
-                  <Td className="text-right tabular-nums">{money(l.rate)}</Td>
-                  <Td className="text-right tabular-nums">{money(l.amount)}</Td>
-                  <Td className="text-right tabular-nums">{money(tax)} <span className="text-xs text-ink-soft">@{l.gstRate}%</span></Td>
-                  <Td className="text-right tabular-nums">{money(Number(l.amount) + tax)}</Td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr><Td colSpan={4} className="text-right font-medium">Totals</Td><Td className="text-right tabular-nums">{money(inv.subtotal)}</Td><Td className="text-right tabular-nums">{money(inv.taxAmount)}</Td><Td className="text-right font-semibold tabular-nums">{money(inv.total)}</Td></tr>
-          </tfoot>
-        </Table>
-      </Card>
+      {tab === "payments" && (
+        <>
+          {canPay ? (
+            <SectionCard id="record-payment" title="Record payment" icon={Wallet} description={`${money(outstanding)} is still to be received.`}>
+              <form action={recordPayment} className="space-y-4">
+                <input type="hidden" name="invoiceId" value={inv.id} />
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  <Field label="Amount (₹)" required><Input name="amount" type="number" inputMode="decimal" step="0.01" min="0.01" max={outstanding + 0.5} defaultValue={outstanding} required className="text-right" /></Field>
+                  <Field label="Date" required><Input name="date" type="date" defaultValue={today} max={today} required /></Field>
+                  <Field label="Mode" required>
+                    <Select name="mode" defaultValue="bank">{PAYMENT_MODES.map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}</Select>
+                  </Field>
+                  <Field label="Reference" hint="UTR or cheque no."><Input name="reference" maxLength={80} /></Field>
+                  <Field label="Notes" className="xl:col-span-2"><Input name="notes" maxLength={1000} /></Field>
+                </div>
+                <div className="flex justify-end">
+                  <SubmitButton variant="success" pendingText="Recording…" className="max-sm:w-full">Record payment</SubmitButton>
+                </div>
+              </form>
+            </SectionCard>
+          ) : (
+            <Callout tone={inv.status === "paid" ? "success" : "info"}>
+              {inv.status === "paid" ? "This invoice is fully paid." : inv.status === "cancelled" ? "This invoice is cancelled." : "You can view payments but not record them."}
+            </Callout>
+          )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card title={`Payments and credits (${receipts.length})`} bodyClassName={receipts.length || cns.length ? "p-0" : undefined}>
-          {receipts.length === 0 ? <div className={cns.length ? "p-4" : undefined}><EmptyState title="No payments yet" /></div> : (
-            <Table className="rounded-none border-0 shadow-none">
-              <thead><tr><Th>Date</Th><Th>Type</Th><Th>Receipt / ref</Th><Th className="text-right">Amount</Th></tr></thead>
-              <tbody>
-                {receipts.map((p) => (
-                  <tr key={p.key}><Td className="whitespace-nowrap">{fmtDate(p.date)}</Td><Td>{p.label}</Td><Td>{p.ref}</Td><Td className="text-right tabular-nums">{money(p.amount)}</Td></tr>
-                ))}
-              </tbody>
-            </Table>
+          {advances.length > 0 && bestAdvance && (
+            <SectionCard title="Apply advance" icon={Wallet} description={`${c.name} has ${money(round2(advances.reduce((s, a) => s + a.balance, 0)))} in advances not yet used.`}>
+              <form action={applyAdvance} className="grid gap-4 sm:grid-cols-3 sm:items-end">
+                <input type="hidden" name="invoiceId" value={inv.id} />
+                <Field label="Advance" required>
+                  <Select name="paymentId" required defaultValue={String(bestAdvance.id)}>
+                    {advances.map((a) => <option key={a.id} value={a.id}>{receiptNumber(a)} · {fmtDate(a.date)}{a.orderNumber ? ` · ${a.orderNumber}` : ""} · balance {money(a.balance)}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Amount (₹)" required hint="Up to the advance balance or this invoice's outstanding, whichever is lower">
+                  <Input name="amount" type="number" inputMode="decimal" step="0.01" min="0.01" max={outstanding} defaultValue={round2(Math.min(bestAdvance.balance, outstanding))} required className="text-right" />
+                </Field>
+                <div><SubmitButton variant="success" pendingText="Applying…" className="max-sm:w-full">Apply advance</SubmitButton></div>
+              </form>
+            </SectionCard>
           )}
+
+          <SectionCard title="Payments and credits" count={receipts.length} flush={receipts.length > 0}
+            empty={receipts.length === 0 && (canPay ? "No payments yet. Record one above when the customer pays." : "No payments yet.")}>
+            <ResponsiveTable flush rows={receipts} columns={recCols} rowKey={(p) => p.key} caption="Payments and credits" />
+          </SectionCard>
+
           {cns.length > 0 && (
-            <div className="border-t border-line px-4 py-3 text-sm">
-              <p className="mb-1 text-xs font-medium text-ink-soft">Credit notes against this invoice</p>
-              <ul className="space-y-0.5">
-                {cns.map((r) => (
-                  <li key={r.id} className="flex justify-between gap-2">
-                    <span>{returnsRead ? <Link href={`/returns/${r.id}`} className={lnk}>{r.status === "draft" ? "Draft" : r.number}</Link> : r.number} · {fmtDate(r.date)} · {reasonLabel(r.reason)}</span>
-                    <span className="tabular-nums">{money(r.total)}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <SectionCard title="Credit notes against this invoice" count={cns.length} icon={Undo2} flush>
+              <ResponsiveTable flush rows={cns} columns={cnCols} rowKey={(r) => r.id} caption="Credit notes" />
+            </SectionCard>
           )}
-        </Card>
-        <Card title={`E-mails (${mails.length})`} bodyClassName={mails.length ? "p-0" : undefined}>
-          {mails.length === 0 ? <EmptyState title="No reminders sent">Reminders sent manually or by the dunning agent appear here.</EmptyState> : (
-            <ul className="divide-y divide-line">
-              {mails.map((m) => (
-                <li key={m.id} className="flex items-start justify-between gap-2 px-4 py-2 text-sm">
-                  <div className="min-w-0">
-                    {showEmails ? <Link href={`/emails/${m.id}`} className="block truncate font-medium text-brand-700 hover:underline dark:text-brand-300">{m.subject}</Link> : <span className="block truncate font-medium">{m.subject}</span>}
-                    <span className="text-xs text-ink-soft">{m.to} · {fmtDateTime(m.createdAt)} · {m.agent ?? "manual"}</span>
-                  </div>
-                  <StatusBadge status={m.status} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </div>
-    </>
+        </>
+      )}
+
+      {tab === "emails" && (
+        <SectionCard title="E-mails" count={mails.length} icon={Mail} flush={mails.length > 0}
+          empty={mails.length === 0 && "No reminders sent yet. Reminders sent by hand or by the dunning agent appear here."}>
+          <ResponsiveTable flush rows={mails} columns={mailCols} rowKey={(m) => m.id} caption="E-mails" />
+        </SectionCard>
+      )}
+    </DetailPage>
   );
 }

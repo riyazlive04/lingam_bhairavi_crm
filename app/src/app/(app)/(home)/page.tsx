@@ -1,10 +1,15 @@
-/** Dashboard: role-aware KPIs, what needs attention, pending deliveries, refills, recent quotes, sales vs quotes. */
+/**
+ * Home dashboard: a role-aware summary of the day. Hero (home only), metric strips grouped by what the
+ * person does with them (today's focus, sales, money, operations), the attention list, a sales vs quotes
+ * chart and the short lists. Every block only shows when the role can read that module.
+ */
 import Link from "next/link";
 import { and, desc, eq, gte, inArray, ne, notInArray, sql } from "drizzle-orm";
 import {
-  AlertTriangle, BarChart3, Bell, CalendarDays, CheckCircle2, ClipboardCheck, Clock, FileText, FireExtinguisher, FolderKanban, Info, LineChart,
-  OctagonAlert, PhoneCall, Plus, ShoppingCart, Tags, TrendingUp, Truck, Wallet, Warehouse, Wrench,
+  AlertTriangle, BarChart3, Bell, CalendarDays, ClipboardCheck, Clock, FileText, FireExtinguisher, FolderKanban, Info, LineChart,
+  OctagonAlert, PhoneCall, Plus, Receipt, ShoppingCart, Tags, TrendingUp, Truck, Wallet, Warehouse, Wrench, type LucideIcon,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import { getDb, type DB } from "@/db";
 import { agentRuns, alerts, amcContracts, amcVisits, customers, extinguisherAssets, projects, purchaseInvoices, quotations, salesInvoices, vendors } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
@@ -16,7 +21,9 @@ import { pendingDeliveryCounts, pendingDeliveryLines, refillsDueByCustomer, topA
 import { projectCosts } from "@/lib/agents/hygiene";
 import { monthlyPnl } from "@/lib/reports";
 import { pendingQtyOf } from "@/lib/orders";
-import { Card, CardLink, EmptyState, Stat, StatusBadge, Table, Td, Th, cx } from "@/components/ui";
+import { CardLink, EmptyState, buttonClass, cx } from "@/components/ui";
+import { Metric, MetricStrip, ResponsiveTable, SectionCard, StatusPill, type Column } from "@/components/patterns";
+import { SalesQuotesChart } from "./_components/sales-quotes-chart";
 
 export const dynamic = "force-dynamic";
 
@@ -183,129 +190,203 @@ export default async function Dashboard() {
   const critical = attention.filter((a) => a.severity === "critical").length;
   const quoteTrend = qk && qk.prevMonthValue > 0 ? ((qk.thisMonthValue - qk.prevMonthValue) / qk.prevMonthValue) * 100 : null;
 
+  // Last full month of invoiced sales against the month before it (same data as the chart).
+  const lastFull = series.length >= 2 ? series[series.length - 2] : null;
+  const prevFull = series.length >= 3 ? series[series.length - 3] : null;
+  const salesTrend = lastFull && prevFull && prevFull.sales > 0 ? ((lastFull.sales - prevFull.sales) / prevFull.sales) * 100 : null;
+  const monthName = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString("en-IN", { month: "long", timeZone: "UTC" });
+
+  // ------------------------------------------------------------------ metric groups
+  const focus: ReactNode[] = [];
+  if (show.approval && approvals != null) focus.push(
+    <Metric key="appr" icon={ClipboardCheck} label="Awaiting your approval" value={qty(approvals)}
+      hint={approvals ? "Quotes waiting before they can be sent" : "No quotes waiting"} tone={approvals ? "warn" : "good"} href="/quotations?approval=pending" />,
+  );
+  if (show.followups && qk) focus.push(
+    <Metric key="fu" icon={PhoneCall} label="Follow-ups due" value={qty(qk.fuOverdue + qk.fuToday)}
+      hint={`${qk.fuToday} today · ${qk.fuOverdue} overdue`} tone={qk.fuOverdue ? "bad" : qk.fuToday ? "warn" : "good"} href="/follow-ups" />,
+  );
+  if (show.amc && amc) focus.push(
+    <Metric key="amc" icon={Wrench} label="AMC visits this week" value={qty(amc.due)}
+      hint={amc.overdue ? `${amc.overdue} overdue` : "Next 7 days"} tone={amc.overdue ? "bad" : amc.due ? "warn" : "good"} href="/amc" />,
+  );
+  if (show.deliveries && pd) focus.push(
+    <Metric key="del" icon={Truck} label="PO lines to deliver" value={qty(pd.total)}
+      hint={`${pd.overdue} overdue across ${pd.orders} orders`} tone={pd.overdue ? "bad" : pd.total ? "warn" : "good"} href="/orders" />,
+  );
+
+  const sales: ReactNode[] = [];
+  if (show.quotes && qk) {
+    sales.push(
+      <Metric key="pipe" icon={TrendingUp} label="Open pipeline" value={moneyShort(qk.pipeline)} hint={`${qk.pipelineCount} quotes sent or in negotiation`} href="/quotations?status=sent" />,
+      <Metric key="qm" icon={FileText} label="Quoted this month" value={moneyShort(qk.thisMonthValue)}
+        trend={quoteTrend == null ? undefined : { value: quoteTrend, goodWhen: "up", label: "vs same days last month" }}
+        hint={`${qty(qk.thisMonth)} quotes · win rate ${qk.decided ? pct((qk.won / qk.decided) * 100, 0) : "-"} (12 months)`} href="/quotations" />,
+    );
+  }
+  if (show.chart && lastFull) sales.push(
+    <Metric key="inv" icon={Receipt} label={`Invoiced in ${monthName(lastFull.month)}`} value={moneyShort(lastFull.sales)}
+      trend={salesTrend == null ? undefined : { value: salesTrend, goodWhen: "up", label: prevFull ? `vs ${monthName(prevFull.month)}` : undefined }}
+      hint={salesTrend == null ? "Last full month" : undefined} />,
+  );
+
+  const moneyTiles: ReactNode[] = [];
+  if (show.profit && profit) moneyTiles.push(
+    <Metric key="pnl" icon={LineChart} label="Profit this month" value={moneyShort(profit.netProfit)}
+      hint={`${moneyShort(profit.sales)} sales · gross ${moneyShort(profit.grossProfit)}${profit.sales ? ` (${pct(profit.grossMarginPct, 0)})` : ""}`}
+      tone={profit.netProfit < 0 ? "bad" : profit.sales ? "good" : "default"} href="/reports?tab=pnl" />,
+  );
+  if (show.receivables && rk) moneyTiles.push(
+    <Metric key="rcv" icon={Wallet} label="Receivables" value={moneyShort(rk.outstanding)}
+      hint={`${moneyShort(rk.overdue)} overdue (${rk.overdueCount} invoices)`} tone={rk.overdue ? "bad" : "default"} href="/billing" />,
+  );
+  if (show.payables && pk) moneyTiles.push(
+    <Metric key="pay" icon={ShoppingCart} label="Payables due in 7 days" value={moneyShort(pk.due)}
+      hint={`${pk.count} vendor bills, overdue included`} tone={pk.count ? "warn" : "good"} href="/purchases" />,
+  );
+
+  const ops: ReactNode[] = [];
+  if (show.refills && rf) ops.push(
+    <Metric key="ref" icon={FireExtinguisher} label="Refills due in 10 days" value={qty(rf.units)}
+      hint={`${rf.customers} customers · ${rf.overdue} overdue`} tone={rf.overdue ? "bad" : rf.units ? "warn" : "good"} href="/refills" />,
+  );
+  if (show.projects && pj) ops.push(
+    <Metric key="prj" icon={FolderKanban} label="Active projects" value={qty(pj.active)}
+      hint={money ? `Average margin ${pj.avgMargin == null ? "-" : pct(pj.avgMargin, 0)}` : "Open the list for site details"}
+      tone={money && pj.avgMargin != null && pj.avgMargin < 10 ? "warn" : "default"} href="/projects" />,
+  );
+  if (show.stale && stale != null) ops.push(
+    <Metric key="stale" icon={Tags} label="Prices to confirm again" value={qty(stale)} hint="Item groups with old prices" tone={stale ? "warn" : "good"} href="/alerts?agent=stale_price" />,
+  );
+  if (show.lowStock && low != null) ops.push(
+    <Metric key="low" icon={Warehouse} label="Low stock items" value={qty(low)} hint="Below the reorder level" tone={low ? "warn" : "good"} href="/alerts?agent=low_stock" />,
+  );
+
+  const groups = [
+    { id: "focus", title: "Today's focus", tiles: focus },
+    { id: "sales", title: "Sales", tiles: sales },
+    { id: "money", title: "Money", tiles: moneyTiles },
+    { id: "ops", title: "Operations", tiles: ops },
+  ].filter((g) => g.tiles.length > 0);
+
+  type Recent = (typeof recent)[number];
+  const recentCols: Column<Recent>[] = [
+    { key: "no", header: "Quotation", card: "title", nowrap: true,
+      cell: (q) => <Link href={`/quotations/${q.id}`} className="rt-stretch font-medium text-brand-700 hover:underline dark:text-brand-300">{q.number}</Link> },
+    { key: "customer", header: "Customer", card: "subtitle", className: "max-w-48 truncate", cell: (q) => q.customer },
+    { key: "date", header: "Date", nowrap: true, priority: 3, cell: (q) => fmtDate(q.quoteDate) },
+    { key: "status", header: "Status", card: "badge", cell: (q) => <StatusPill status={q.status} /> },
+    ...(money ? [{ key: "value", header: "Value", align: "right" as const, card: "amount" as const, nowrap: true, cell: (q: Recent) => money0(q.grandTotal) }] : []),
+  ];
+
+  const sevIcon: Record<string, { icon: LucideIcon; cls: string; label: string }> = {
+    critical: { icon: OctagonAlert, cls: "bg-danger-soft text-danger", label: "Critical" },
+    warning: { icon: AlertTriangle, cls: "bg-warning-soft text-warning", label: "Warning" },
+    info: { icon: Info, cls: "bg-info-soft text-info", label: "Info" },
+  };
+
+  const summary = attention.length === 0
+    ? "Nothing urgent today, nice and calm."
+    : critical > 0
+      ? `${critical} critical item${critical === 1 ? "" : "s"} first, then the rest of your list below.`
+      : `${attention.length} item${attention.length === 1 ? "" : "s"} could use your attention today.`;
+
+  const nothingAtAll = groups.length === 0 && !show.chart && attention.length === 0 && lines.length === 0 && refills.length === 0 && recent.length === 0;
+
   return (
-    <>
-      {/* Hero */}
-      <section className="ui-fade-in relative mb-6 overflow-hidden rounded-3xl bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 px-5 py-6 text-white shadow-md sm:px-8 sm:py-8">
+    <div className="space-y-6">
+      {/* Hero: home only */}
+      <section className="ui-fade-in relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 px-5 py-6 text-white shadow-md sm:px-8 sm:py-8">
         <div className="pointer-events-none absolute -right-16 -top-24 h-72 w-72 rounded-full bg-accent-400/25 blur-3xl" aria-hidden />
         <div className="pointer-events-none absolute -bottom-28 left-1/3 h-64 w-64 rounded-full bg-brand-400/25 blur-3xl" aria-hidden />
         <div className="relative flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
           <div className="min-w-0">
-            <p className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-white/80"><CalendarDays className="h-4 w-4" aria-hidden />{longDate}</p>
-            <h1 className="mt-2 font-display text-2xl font-bold tracking-tight sm:text-3xl">{greet}, {firstName}</h1>
-            <p className="mt-1.5 max-w-xl text-sm text-white/90">
-              {ROLES[role]} workspace.{" "}
-              {attention.length === 0 ? "Nothing urgent today, nice and calm." : critical > 0
-                ? `${critical} critical item${critical === 1 ? "" : "s"} first, then the rest of your list below.`
-                : `${attention.length} item${attention.length === 1 ? "" : "s"} could use your attention today.`}
+            <p className="flex items-center gap-2 text-overline uppercase text-white/80"><CalendarDays className="icon-sm" aria-hidden />{longDate}</p>
+            <h1 className="mt-2 font-display text-[1.75rem] font-bold leading-9 tracking-tight sm:text-display">{greet}, {firstName}</h1>
+            <p className="mt-1.5 max-w-xl text-sm text-white/90">{ROLES[role]} workspace. {summary}</p>
+            <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/12 px-3 py-1 text-caption text-white/90 ring-1 ring-inset ring-white/20">
+              <Clock className="icon-xs" aria-hidden />
+              Agents saved about {qty(Math.round(hoursSaved * 10) / 10)} h of checking this month
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             {canWrite(role, "quotations") && (
-              <Link href="/quotations/new" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-white px-4 text-sm font-semibold text-brand-700 shadow-sm hover:bg-brand-50">
-                <Plus className="h-4 w-4" aria-hidden /> New quotation
+              <Link href="/quotations/new" className={buttonClass("secondary", "lg", "border-transparent text-brand-700 dark:text-brand-300")}>
+                <Plus className="icon-sm" aria-hidden /> New quotation
               </Link>
             )}
-            <Link href="/alerts" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-white/15 px-4 text-sm font-semibold text-white ring-1 ring-inset ring-white/25 hover:bg-white/25">
-              <Bell className="h-4 w-4" aria-hidden /> View alerts
+            <Link href="/alerts" className={buttonClass("ghost", "lg", "bg-white/15 text-white ring-1 ring-inset ring-white/25 hover:bg-white/25 hover:text-white")}>
+              <Bell className="icon-sm" aria-hidden /> View alerts
             </Link>
           </div>
         </div>
       </section>
 
-      <h2 className="sr-only">Key numbers</h2>
-      <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-        {show.profit && profit && (
-          <Stat icon={LineChart} label="This month's profit" value={moneyShort(profit.netProfit)}
-            hint={`${moneyShort(profit.sales)} sales · gross ${moneyShort(profit.grossProfit)}${profit.sales ? ` (${pct(profit.grossMarginPct, 0)})` : ""}`}
-            tone={profit.netProfit < 0 ? "bad" : profit.sales ? "good" : "default"} href="/reports?tab=pnl" />
-        )}
-        {show.approval && approvals != null && (
-          <Stat icon={ClipboardCheck} label="Awaiting approval" value={qty(approvals)} hint={approvals ? "Quotes waiting for you before they can be sent" : "No quotes waiting"}
-            tone={approvals ? "warn" : "good"} href="/quotations?approval=pending" />
-        )}
-        {show.amc && amc && (
-          <Stat icon={Wrench} label="AMC visits due this week" value={qty(amc.due)} hint={amc.overdue ? `${amc.overdue} overdue` : "Next 7 days"}
-            tone={amc.overdue ? "bad" : amc.due ? "warn" : "good"} href="/amc" />
-        )}
-        {show.quotes && qk && (
-          <>
-            <Stat icon={TrendingUp} label="Open pipeline" value={moneyShort(qk.pipeline)} hint={`${qk.pipelineCount} quotes sent or in negotiation`} href="/quotations?status=sent" />
-            <Stat icon={FileText} label="Quotes this month" value={qty(qk.thisMonth)}
-              trend={quoteTrend == null ? undefined : { direction: quoteTrend >= 0 ? "up" : "down", label: `${Math.abs(Math.round(quoteTrend))}% vs last month`, good: quoteTrend >= 0 }}
-              hint={`${moneyShort(qk.thisMonthValue)} quoted · win rate ${qk.decided ? pct((qk.won / qk.decided) * 100, 0) : "-"} (12 months)`} href="/quotations" />
-          </>
-        )}
-        {show.followups && qk && (
-          <Stat icon={PhoneCall} label="Follow-ups due" value={qty(qk.fuOverdue + qk.fuToday)} hint={`${qk.fuToday} today, ${qk.fuOverdue} overdue`} tone={qk.fuOverdue ? "bad" : qk.fuToday ? "warn" : "good"} href="/follow-ups" />
-        )}
-        {show.deliveries && pd && (
-          <Stat icon={Truck} label="PO lines to deliver" value={qty(pd.total)} hint={`${pd.overdue} overdue across ${pd.orders} orders`} tone={pd.overdue ? "bad" : pd.total ? "warn" : "good"} href="/orders" />
-        )}
-        {show.receivables && rk && (
-          <Stat icon={Wallet} label="Receivables" value={moneyShort(rk.outstanding)} hint={`${moneyShort(rk.overdue)} overdue (${rk.overdueCount} invoices)`} tone={rk.overdue ? "bad" : "default"} href="/billing" />
-        )}
-        {show.payables && pk && (
-          <Stat icon={ShoppingCart} label="Payables due in 7 days" value={moneyShort(pk.due)} hint={`${pk.count} vendor bills, overdue included`} tone={pk.count ? "warn" : "good"} href="/purchases" />
-        )}
-        {show.refills && rf && (
-          <Stat icon={FireExtinguisher} label="Refills due in 10 days" value={qty(rf.units)} hint={`${rf.customers} customers, ${rf.overdue} overdue`} tone={rf.overdue ? "bad" : rf.units ? "warn" : "good"} href="/refills" />
-        )}
-        {show.projects && pj && (
-          <Stat icon={FolderKanban} label="Active projects" value={qty(pj.active)} hint={money ? `Average margin ${pj.avgMargin == null ? "-" : pct(pj.avgMargin, 0)}` : "Open the list for site details"}
-            tone={money && pj.avgMargin != null && pj.avgMargin < 10 ? "warn" : "default"} href="/projects" />
-        )}
-        {show.stale && stale != null && (
-          <Stat icon={Tags} label="Prices to re-confirm" value={qty(stale)} hint="Item groups with stale prices" tone={stale ? "warn" : "good"} href="/alerts?agent=stale_price" />
-        )}
-        {show.lowStock && low != null && (
-          <Stat icon={Warehouse} label="Low stock items" value={qty(low)} hint="Below the re-order level" tone={low ? "warn" : "good"} href="/alerts?agent=low_stock" />
-        )}
-        <Stat icon={Clock} label="Time saved by agents" value={`${qty(Math.round(hoursSaved * 10) / 10)} h`} hint="This month, from automated checks" tone="good" href="/agents" />
-      </div>
+      {/* Role-based summary */}
+      {groups.map((g) => (
+        <section key={g.id} aria-labelledby={`kpi-${g.id}`}>
+          <h2 id={`kpi-${g.id}`} className="mb-2 text-overline uppercase text-ink-soft">{g.title}</h2>
+          <MetricStrip className={cx(g.tiles.length === 3 && "lg:grid-cols-3", g.tiles.length === 2 && "lg:grid-cols-2")}>{g.tiles}</MetricStrip>
+        </section>
+      ))}
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        <Card title="Needs your attention" icon={Bell} actions={<CardLink href="/alerts">All alerts</CardLink>} bodyClassName="p-0">
-          {attention.length === 0 ? (
-            <div className="flex items-center gap-3 p-5 text-sm text-ink-soft"><CheckCircle2 className="h-5 w-5 text-emerald-600" aria-hidden /> All clear. The agents found nothing for you.</div>
-          ) : (
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
+        <div className="min-w-0 space-y-4">
+          <SectionCard title="Needs your attention" icon={Bell} count={attention.length} flush
+            actions={<CardLink href="/alerts">All alerts</CardLink>}
+            empty={attention.length === 0 && "All clear. The agents found nothing for you today."}>
             <ul className="divide-y divide-line">
-              {attention.map((a) => (
-                <li key={a.id}>
-                  <Link href={a.link ?? "/alerts"} className="flex items-start gap-3 px-4 py-3 hover:bg-muted sm:px-5">
-                    {a.severity === "critical" ? <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-red-50 dark:bg-red-950/60"><OctagonAlert className="h-4 w-4 text-red-600 dark:text-red-400" aria-label="Critical" /></span>
-                      : a.severity === "warning" ? <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-amber-50 dark:bg-amber-950/60"><AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-label="Warning" /></span>
-                        : <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-blue-50 dark:bg-blue-950/60"><Info className="h-4 w-4 text-blue-600 dark:text-blue-400" aria-label="Info" /></span>}
-                    <span className="min-w-0">
-                      <span className="block text-sm text-ink">{a.title}</span>
-                      {a.dueDate && <span className={cx("text-xs", a.dueDate < today ? "font-medium text-red-700 dark:text-red-400" : "text-ink-soft")}>Due {fmtDate(a.dueDate)}</span>}
-                    </span>
-                  </Link>
-                </li>
-              ))}
+              {attention.map((a) => {
+                const s = sevIcon[a.severity] ?? sevIcon.info;
+                const Icon = s.icon;
+                const late = a.dueDate != null && a.dueDate < today;
+                return (
+                  <li key={a.id}>
+                    <Link href={a.link ?? "/alerts"} className="flex min-h-14 items-start gap-3 px-4 py-3 hover:bg-muted sm:px-5">
+                      <span className={cx("grid h-8 w-8 shrink-0 place-items-center rounded-lg", s.cls)}><Icon className="icon-sm" aria-label={s.label} /></span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm text-ink">{a.title}</span>
+                        {a.dueDate && <span className={cx("text-caption", late ? "font-medium text-danger" : "text-ink-soft")}>Due {fmtDate(a.dueDate)}</span>}
+                      </span>
+                      {a.severity === "critical" && <StatusPill status="critical" label="Critical" className="shrink-0 max-sm:hidden" />}
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
-          )}
-        </Card>
+          </SectionCard>
 
-        {show.deliveries && (
-          <Card title="Pending deliveries" icon={Truck} actions={<CardLink href="/orders">All orders</CardLink>} bodyClassName="p-0">
-            {lines.length === 0 ? (
-              <div className="flex items-center gap-3 p-5 text-sm text-ink-soft"><CheckCircle2 className="h-5 w-5 text-emerald-600" aria-hidden /> Every customer PO line has been delivered.</div>
-            ) : (
+          {show.chart && series.length > 0 && (
+            <SectionCard title="Sales vs quotes" description="Last 6 months, by month" icon={BarChart3} actions={show.profit ? <CardLink href="/reports">Reports</CardLink> : undefined}>
+              <SalesQuotesChart data={series} />
+            </SectionCard>
+          )}
+
+          {recent.length > 0 && (
+            <SectionCard title="Recent quotations" icon={FileText} flush actions={<CardLink href="/quotations">All quotations</CardLink>}>
+              <ResponsiveTable flush rows={recent} columns={recentCols} rowKey={(q) => q.id} caption="Recent quotations" />
+            </SectionCard>
+          )}
+        </div>
+
+        <div className="min-w-0 space-y-4">
+          {show.deliveries && (
+            <SectionCard title="Pending deliveries" icon={Truck} flush actions={<CardLink href="/orders">All orders</CardLink>}
+              empty={lines.length === 0 && "Every customer PO line has been delivered."}>
               <ul className="divide-y divide-line">
                 {lines.map((l) => {
                   const late = l.expected ? daysBetween(l.expected, today) : null;
                   return (
                     <li key={l.lineId}>
-                      <Link href={`/orders/${l.orderId}`} className="flex items-start justify-between gap-3 px-4 py-3 hover:bg-muted sm:px-5">
+                      <Link href={`/orders/${l.orderId}`} className="flex min-h-14 items-start justify-between gap-3 px-4 py-3 hover:bg-muted sm:px-5">
                         <span className="min-w-0">
                           <span className="block truncate text-sm text-ink">{l.description}</span>
-                          <span className="block truncate text-xs text-ink-soft">{l.poNumber ? `PO ${l.poNumber}` : l.orderNumber} · {l.customer}</span>
+                          <span className="block truncate text-caption text-ink-soft">{l.poNumber ? `PO ${l.poNumber}` : l.orderNumber} · {l.customer}</span>
                         </span>
                         <span className="shrink-0 text-right">
                           <span className="block text-sm font-medium tabular-nums text-ink">{qty(pendingQtyOf(l))} {l.uom}</span>
-                          <span className={cx("block text-xs", late != null && late > 0 ? "font-medium text-red-700 dark:text-red-400" : "text-ink-soft")}>
-                            {l.expected ? describeDue(l.expected, today) : "no date set"}
+                          <span className={cx("block text-caption", late != null && late > 0 ? "font-medium text-danger" : "text-ink-soft")}>
+                            {l.expected ? describeDue(l.expected, today) : "No date set"}
                           </span>
                         </span>
                       </Link>
@@ -313,124 +394,31 @@ export default async function Dashboard() {
                   );
                 })}
               </ul>
-            )}
-          </Card>
-        )}
+            </SectionCard>
+          )}
 
-        {show.refills && (
-          <Card title="Refills due in the next 10 days" icon={FireExtinguisher} actions={<CardLink href="/refills">Refill tracker</CardLink>} bodyClassName="p-0">
-            {refills.length === 0 ? (
-              <div className="flex items-center gap-3 p-5 text-sm text-ink-soft"><CheckCircle2 className="h-5 w-5 text-emerald-600" aria-hidden /> No refills due in the next 10 days.</div>
-            ) : (
+          {show.refills && (
+            <SectionCard title="Refills due in 10 days" icon={FireExtinguisher} flush actions={<CardLink href="/refills">Refill tracker</CardLink>}
+              empty={refills.length === 0 && "No refills due in the next 10 days."}>
               <ul className="divide-y divide-line">
                 {refills.map((r) => (
                   <li key={r.customerId}>
-                    <Link href={`/refills?customer=${r.customerId}`} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-muted sm:px-5">
+                    <Link href={`/refills?customer=${r.customerId}`} className="flex min-h-14 items-center justify-between gap-3 px-4 py-3 hover:bg-muted sm:px-5">
                       <span className="min-w-0">
                         <span className="block truncate text-sm text-ink">{r.customer}</span>
-                        <span className="block text-xs text-ink-soft">{r.units} extinguisher{r.units === 1 ? "" : "s"}{r.phone ? ` · ${r.phone}` : ""}</span>
+                        <span className="block text-caption text-ink-soft">{r.units} extinguisher{r.units === 1 ? "" : "s"}{r.phone ? ` · ${r.phone}` : ""}</span>
                       </span>
-                      <span className={cx("shrink-0 text-xs", r.due < today ? "font-medium text-red-700 dark:text-red-400" : "text-ink-soft")}>{describeDue(r.due, today)}</span>
+                      <span className={cx("shrink-0 text-caption", r.due < today ? "font-medium text-danger" : "text-ink-soft")}>{describeDue(r.due, today)}</span>
                     </Link>
                   </li>
                 ))}
               </ul>
-            )}
-          </Card>
-        )}
-
-        {recent.length > 0 && (
-          <Card title="Recent quotations" icon={FileText} actions={<CardLink href="/quotations">All quotations</CardLink>} bodyClassName="p-0">
-            <Table className="rounded-none border-0 shadow-none">
-              <thead><tr><Th>Quote</Th><Th>Customer</Th><Th>Status</Th>{money && <Th className="text-right">Value</Th>}</tr></thead>
-              <tbody>
-                {recent.map((q) => (
-                  <tr key={q.id}>
-                    <Td><Link href={`/quotations/${q.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{q.number}</Link><div className="text-xs text-ink-soft">{fmtDate(q.quoteDate)}</div></Td>
-                    <Td className="max-w-48 truncate">{q.customer}</Td>
-                    <Td><StatusBadge status={q.status} /></Td>
-                    {money && <Td className="text-right font-medium tabular-nums">{money0(q.grandTotal)}</Td>}
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          </Card>
-        )}
+            </SectionCard>
+          )}
+        </div>
       </div>
 
-      {show.chart && series.length > 0 && (
-        <Card title="Sales vs quotes" subtitle="Last 6 months, by month" icon={BarChart3} className="mt-6">
-          <SalesVsQuotesChart data={series} />
-        </Card>
-      )}
-      {!show.chart && attention.length === 0 && lines.length === 0 && refills.length === 0 && recent.length === 0 && (
-        <div className="mt-6"><EmptyState title="Nothing pending">Your daily summary will show here as work comes in.</EmptyState></div>
-      )}
-    </>
+      {nothingAtAll && <EmptyState title="Nothing pending">Your daily summary shows here as work comes in.</EmptyState>}
+    </div>
   );
 }
-
-/** Grouped bar chart, inline SVG (no chart library). Colours come from theme tokens so dark mode works. */
-function SalesVsQuotesChart({ data }: { data: { month: string; quoted: number; sales: number }[] }) {
-  const W = 640, H = 240, padL = 56, padR = 8, padT = 12, padB = 28;
-  const max = Math.max(1, ...data.flatMap((d) => [d.quoted, d.sales]));
-  const step = niceStep(max / 4);
-  const top = Math.ceil(max / step) * step;
-  const y = (v: number) => padT + (H - padT - padB) * (1 - v / top);
-  const groupW = (W - padL - padR) / data.length;
-  const barW = Math.min(28, (groupW - 16) / 2);
-  const label = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString("en-IN", { month: "short", year: "2-digit", timeZone: "UTC" });
-  const bar = (x: number, v: number) => {
-    const yy = y(v), h = H - padB - yy, r = Math.min(4, h, barW / 2);
-    if (h <= 0) return "";
-    return `M${x},${H - padB} V${yy + r} Q${x},${yy} ${x + r},${yy} H${x + barW - r} Q${x + barW},${yy} ${x + barW},${yy + r} V${H - padB} Z`;
-  };
-  const ticks = Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step);
-  const empty = data.every((d) => !d.quoted && !d.sales);
-
-  return (
-    <figure>
-      <div className="mb-2 flex flex-wrap gap-4 text-xs text-ink-soft" aria-hidden>
-        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-ink-faint" /> Quoted (sent quotes)</span>
-        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-brand-600" /> Sales (invoiced)</span>
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Bar chart of quoted value and invoiced sales for the last six months. Data table follows.">
-        {ticks.map((t) => (
-          <g key={t}>
-            <line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} className="stroke-line" strokeWidth={1} />
-            <text x={padL - 6} y={y(t) + 4} textAnchor="end" className="fill-ink-soft text-[11px]">{moneyShort(t)}</text>
-          </g>
-        ))}
-        {data.map((d, i) => {
-          const gx = padL + i * groupW + (groupW - (barW * 2 + 2)) / 2;
-          return (
-            <g key={d.month}>
-              <path d={bar(gx, d.quoted)} className="fill-ink-faint"><title>{`${label(d.month)} quoted: ${money0(d.quoted)}`}</title></path>
-              <path d={bar(gx + barW + 2, d.sales)} className="fill-brand-600"><title>{`${label(d.month)} sales: ${money0(d.sales)}`}</title></path>
-              {/* larger invisible hit target for the native tooltip */}
-              <rect x={padL + i * groupW} y={padT} width={groupW} height={H - padT - padB} fill="transparent">
-                <title>{`${label(d.month)}: quoted ${money0(d.quoted)}, sales ${money0(d.sales)}`}</title>
-              </rect>
-              <text x={padL + i * groupW + groupW / 2} y={H - 8} textAnchor="middle" className="fill-ink-soft text-[11px]">{label(d.month)}</text>
-            </g>
-          );
-        })}
-        {empty && <text x={W / 2} y={H / 2} textAnchor="middle" className="fill-ink-faint text-[13px]">No quotes or invoices yet</text>}
-      </svg>
-      <figcaption className="sr-only">
-        <table>
-          <thead><tr><th>Month</th><th>Quoted</th><th>Sales</th></tr></thead>
-          <tbody>{data.map((d) => <tr key={d.month}><td>{label(d.month)}</td><td>{money0(d.quoted)}</td><td>{money0(d.sales)}</td></tr>)}</tbody>
-        </table>
-      </figcaption>
-    </figure>
-  );
-}
-
-function niceStep(raw: number) {
-  if (raw <= 0) return 1;
-  const p = Math.pow(10, Math.floor(Math.log10(raw)));
-  const f = raw / p;
-  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
-}
-

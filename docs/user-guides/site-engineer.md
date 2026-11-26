@@ -19,7 +19,7 @@ Why your entries matter: for each project, the owner wants to know **how much we
 2. Enter the amount (₹) and choose a category: **Petrol / Fuel**, **Travel**, **Lodging**, **Food**, **Labour**, **Transport / Freight**, **Local material purchase** or **Miscellaneous**.
 3. **Project:** pick the site.
 4. Enter the **bill or receipt number**, and keep the paper bill safe to hand over to accounts.
-5. Add a note if it helps, for example "Hosur → Krishnagiri site, 2 days".
+5. Add a note if it helps, for example "Hosur to Krishnagiri site, 2 days".
 6. **Submit.** Once accounts or the owner approves it, it is added to the project cost.
 
 **One trip for two projects?** Use **Split** and divide the amount. For example, petrol of ₹2,000: Project X 50 % (₹1,000) and Project Y 50 % (₹1,000). The split must add up to 100 %. **Split equally** does the maths for you.

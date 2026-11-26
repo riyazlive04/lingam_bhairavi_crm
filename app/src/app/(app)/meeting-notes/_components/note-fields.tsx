@@ -1,4 +1,5 @@
-import { Card, Field, Input, Textarea } from "@/components/ui";
+import { Field, Input, Textarea } from "@/components/ui";
+import { FormSection } from "@/components/patterns";
 import { ActionItemsEditor } from "./action-items-editor";
 import type { ActionItem } from "../_lib/types";
 
@@ -13,40 +14,46 @@ export type NoteFieldValues = {
   actionItems: ActionItem[];
 };
 
-/** All editable meeting-note fields (shared by new & edit). */
+const md = "Markdown works here: **bold**, - lists, ## headings, | tables |";
+const mono = "font-mono text-xs sm:text-sm";
+
+/** All editable meeting note fields (shared by new and edit). */
 export function NoteFields({ v }: { v: NoteFieldValues }) {
-  const md = "Markdown supported: **bold**, - lists, ## headings, | tables |";
   return (
-    <div className="space-y-6">
-      <Card title="Meeting">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Title" required className="sm:col-span-2">
-            <Input name="title" required maxLength={200} defaultValue={v.title} placeholder="e.g. Demo review: Projects & Expenses" />
-          </Field>
-          <Field label="Meeting date" required>
-            <Input type="date" name="meetingDate" required defaultValue={v.meetingDate} />
-          </Field>
-          <Field label="Attendees">
-            <Input name="attendees" maxLength={2000} defaultValue={v.attendees ?? ""} placeholder="Names, comma separated" />
-          </Field>
-        </div>
-      </Card>
-      <Card title="Summary">
-        <Textarea name="summary" rows={8} maxLength={50000} defaultValue={v.summary ?? ""} aria-label="Summary" className="font-mono text-xs sm:text-sm" />
-        <p className="mt-1 text-xs text-ink-soft">{md}</p>
-      </Card>
-      <Card title="Decisions">
-        <Textarea name="decisions" rows={6} maxLength={50000} defaultValue={v.decisions ?? ""} aria-label="Decisions" className="font-mono text-xs sm:text-sm" placeholder="- D-01: …" />
-      </Card>
-      <Card title="Action items">
+    <>
+      <FormSection title="Meeting" description="What the meeting was and who was there.">
+        <Field label="Title" required className="sm:col-span-2">
+          <Input name="title" required maxLength={200} defaultValue={v.title} placeholder="For example: Demo review of projects and expenses" />
+        </Field>
+        <Field label="Meeting date" required>
+          <Input type="date" name="meetingDate" required defaultValue={v.meetingDate} />
+        </Field>
+        <Field label="Attendees">
+          <Input name="attendees" maxLength={2000} defaultValue={v.attendees ?? ""} placeholder="Names, separated by commas" />
+        </Field>
+      </FormSection>
+
+      <FormSection title="Notes" description={md} columns={1}>
+        <Field label="Summary">
+          <Textarea name="summary" rows={8} maxLength={50000} defaultValue={v.summary ?? ""} className={mono} />
+        </Field>
+        <Field label="Decisions">
+          <Textarea name="decisions" rows={6} maxLength={50000} defaultValue={v.decisions ?? ""} className={mono} placeholder="- D-01: …" />
+        </Field>
+        <Field label="Open questions">
+          <Textarea name="openQuestions" rows={5} maxLength={50000} defaultValue={v.openQuestions ?? ""} className={mono} placeholder="- Q-01: …" />
+        </Field>
+      </FormSection>
+
+      <FormSection title="Action items" description="Tick an item when it is done. Rows without text are ignored." columns={1}>
         <ActionItemsEditor initial={v.actionItems} />
-      </Card>
-      <Card title="Open questions">
-        <Textarea name="openQuestions" rows={5} maxLength={50000} defaultValue={v.openQuestions ?? ""} aria-label="Open questions" className="font-mono text-xs sm:text-sm" placeholder="- Q-01: …" />
-      </Card>
-      <Card title="Full transcript / raw notes">
-        <Textarea name="transcript" rows={10} maxLength={500000} defaultValue={v.transcript ?? ""} aria-label="Transcript" className="font-mono text-xs" placeholder="Paste the transcript or your raw notes here" />
-      </Card>
-    </div>
+      </FormSection>
+
+      <FormSection title="Full transcript or raw notes" description="Kept with the note for reference." columns={1}>
+        <Field label="Transcript">
+          <Textarea name="transcript" rows={10} maxLength={500000} defaultValue={v.transcript ?? ""} className="font-mono text-xs" placeholder="Paste the transcript or your raw notes here" />
+        </Field>
+      </FormSection>
+    </>
   );
 }

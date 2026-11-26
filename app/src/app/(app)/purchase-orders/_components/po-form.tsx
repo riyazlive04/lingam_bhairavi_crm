@@ -7,7 +7,8 @@
 import { useMemo, useState } from "react";
 import { Search, Trash2 } from "lucide-react";
 import { SubmitButton } from "@/components/submit-button";
-import { Card, Field, Input, Select, Textarea, cx } from "@/components/ui";
+import { Field, Input, Select, Textarea, cx } from "@/components/ui";
+import { Callout, FormFooter, FormSection, LineItemsTable, MoneySummary, li } from "@/components/patterns";
 import { fmtDate, money, qty as fmtQty, round2 } from "@/lib/format";
 import type { PFItem, PFProject } from "../../purchases/_components/purchase-form";
 
@@ -114,40 +115,38 @@ export function PurchaseOrderForm({ action, id, vendors, projects, salesOrders, 
       <input type="hidden" name="lines" value={payload} />
       {soLinked && <input type="hidden" name="salesOrderId" value={salesOrderId} />}
 
-      <Card title="Purchase order">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Vendor" required className="lg:col-span-2" hint="Rates default to this vendor's last price, else the latest cost">
-            <Select name="vendorId" required value={vendorId} onChange={(e) => changeVendor(e.target.value)}>
-              <option value="" disabled>Choose vendor…</option>
-              {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-            </Select>
-          </Field>
-          <Field label="PO date" required>
-            <Input name="poDate" type="date" required value={poDate} onChange={(e) => setPoDate(e.target.value)} />
-          </Field>
-          <Field label="Expected delivery">
-            <Input name="expectedDate" type="date" min={poDate} defaultValue={initial.expectedDate} />
-          </Field>
-          <Field label="For customer order" hint={soLinked ? "Fixed while lines from this order are on the PO" : "Optional: the customer PO this purchase is for"}>
-            <Select name={soLinked ? undefined : "salesOrderId"} value={salesOrderId} disabled={soLinked} onChange={(e) => changeSo(e.target.value)}>
-              <option value="">Not linked (for stock)</option>
-              {salesOrders.map((s) => <option key={s.id} value={s.id}>{s.number} · {s.customerName}{s.customerPoNumber ? ` (PO ${s.customerPoNumber})` : ""}</option>)}
-            </Select>
-          </Field>
-          <Field label="Project" hint="Optional: site this material is for">
-            <Select name="projectId" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-              <option value="">No project</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
-            </Select>
-          </Field>
-        </div>
-      </Card>
+      <FormSection title="Vendor and dates" description="Who you are buying from and when the material is due." columns={3}>
+        <Field label="Vendor" required className="sm:col-span-2" hint="Rates default to this vendor's last price, else the latest cost">
+          <Select name="vendorId" required value={vendorId} onChange={(e) => changeVendor(e.target.value)}>
+            <option value="" disabled>Choose vendor…</option>
+            {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+          </Select>
+        </Field>
+        <Field label="PO date" required>
+          <Input name="poDate" type="date" required value={poDate} onChange={(e) => setPoDate(e.target.value)} />
+        </Field>
+        <Field label="Expected delivery">
+          <Input name="expectedDate" type="date" min={poDate} defaultValue={initial.expectedDate} />
+        </Field>
+        <Field label="For customer order" hint={soLinked ? "Fixed while lines from this order are on the PO" : "Optional: the customer PO this purchase is for"}>
+          <Select name={soLinked ? undefined : "salesOrderId"} value={salesOrderId} disabled={soLinked} onChange={(e) => changeSo(e.target.value)}>
+            <option value="">Not linked (for stock)</option>
+            {salesOrders.map((s) => <option key={s.id} value={s.id}>{s.number} · {s.customerName}{s.customerPoNumber ? ` (PO ${s.customerPoNumber})` : ""}</option>)}
+          </Select>
+        </Field>
+        <Field label="Project" hint="Optional: site this material is for">
+          <Select name="projectId" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+            <option value="">No project</option>
+            {projects.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
+          </Select>
+        </Field>
+      </FormSection>
 
-      <Card title={`Lines (${valid.length})`}>
-        <div className="relative mb-4">
+      <FormSection title={`Lines (${valid.length})`} description="Search the item master to add a line. Lines with no quantity are left off the PO." columns={1}>
+        <div className="relative">
           <label htmlFor="po-item-search" className="mb-1 block text-sm font-medium text-ink">Add item</label>
           <div className="relative">
-            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" aria-hidden />
+            <Search className="icon-sm pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" aria-hidden />
             <Input id="po-item-search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Type code, name, size or make (e.g. pipe gi 150)…" className="pl-9"
               autoComplete="off" role="combobox" aria-expanded={matches.length > 0} aria-controls="po-item-results"
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (matches[0]) addItem(matches[0]); } }} />
@@ -160,8 +159,8 @@ export function PurchaseOrderForm({ action, id, vendors, projects, salesOrders, 
                   <li key={it.id} role="option" aria-selected={false}>
                     <button type="button" onClick={() => addItem(it)} className="flex w-full items-start justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-muted">
                       <span className="min-w-0"><span className="block truncate text-ink">{it.name}</span>
-                        <span className="block font-mono text-xs text-ink-faint">{it.code}{it.make ? ` · ${it.make}` : ""}</span></span>
-                      <span className="shrink-0 text-right text-xs text-ink-soft">
+                        <span className="block font-mono text-caption text-ink-faint">{it.code}{it.make ? ` · ${it.make}` : ""}</span></span>
+                      <span className="shrink-0 text-right text-caption text-ink-soft">
                         {vr?.rate != null && <span className="block">This vendor {money(vr.rate)}</span>}
                         <span className="block">Latest {money(it.latestRate)}</span>
                       </span>
@@ -171,77 +170,88 @@ export function PurchaseOrderForm({ action, id, vendors, projects, salesOrders, 
               })}
             </ul>
           )}
-          {search.trim().length >= 2 && matches.length === 0 && <p className="mt-1 text-xs text-ink-soft">No item matches “{search}”. Create it in the Item Master first.</p>}
+          {search.trim().length >= 2 && matches.length === 0 && <p className="mt-1 text-caption text-ink-soft">No item matches “{search}”. Create it in the item master first.</p>}
         </div>
 
         {lines.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-line p-6 text-center text-sm text-ink-soft">No lines yet. Search above to add items, or start from a customer order with “Create vendor PO”.</p>
+          <p className="rounded-lg border border-dashed border-line p-6 text-center text-sm text-ink-soft">No lines yet. Search above to add items, or start from a customer order with Create vendor PO.</p>
         ) : (
-          <div className="space-y-3">
-            {lines.map((l) => {
-              const it = itemById.get(l.itemId);
-              const vr = vendorRates[vendorId]?.[String(l.itemId)];
-              return (
-                <div key={l.key} className={cx("rounded-lg border border-line p-3", !(l.qty > 0) && "opacity-60")}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-ink">{it?.name ?? `Item #${l.itemId}`}</div>
-                      {it && <div className="font-mono text-xs text-ink-faint">{it.code} · {it.uom}{it.make ? ` · ${it.make}` : ""}</div>}
-                      {l.salesOrderLineId != null && <div className="mt-0.5 text-xs text-blue-700 dark:text-blue-300">Customer order line{l.soInfo ? `: ${l.soInfo}` : ""}</div>}
-                    </div>
-                    <button type="button" onClick={() => remove(l.key)} className="rounded p-1 text-ink-soft hover:bg-muted hover:text-red-600" aria-label={`Remove ${it?.code ?? "line"}`}><Trash2 size={16} aria-hidden /></button>
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
-                    <label className="text-xs text-ink-soft">Qty{it ? ` (${it.uom})` : ""}
-                      <Input type="number" min={0} step="any" inputMode="decimal" value={l.qty === 0 ? "" : l.qty} placeholder="0" onChange={(e) => update(l.key, { qty: num(e.target.value) })} className="mt-0.5" />
-                    </label>
-                    <label className="text-xs text-ink-soft">Rate (₹)
-                      <Input type="number" min={0} step="0.01" inputMode="decimal" value={l.rate} onChange={(e) => update(l.key, { rate: num(e.target.value), rateTouched: true })} className="mt-0.5" />
-                    </label>
-                    <label className="text-xs text-ink-soft">GST %
-                      <Input type="number" min={0} max={28} step="0.01" value={l.gstRate} onChange={(e) => update(l.key, { gstRate: Math.min(28, num(e.target.value)) })} className="mt-0.5" />
-                    </label>
-                    <label className="col-span-2 text-xs text-ink-soft">Description / spec (optional)
-                      <Input value={l.description} maxLength={500} onChange={(e) => update(l.key, { description: e.target.value })} className="mt-0.5" />
-                    </label>
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-ink-soft">
-                      <span>This vendor: {vr?.rate != null ? <>{money(vr.rate)} ({fmtDate(vr.date)})</> : "not bought before"}</span>
-                      {it && <span>Latest (any vendor): {it.latestRate != null ? <>{money(it.latestRate)}{it.latestVendor ? ` · ${it.latestVendor}` : ""}{it.latestDate ? ` (${fmtDate(it.latestDate)})` : " (list)"}</> : "-"}</span>}
-                    </div>
-                    <span className="font-medium tabular-nums text-ink">{money(round2(l.qty * l.rate))}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <LineItemsTable minWidth={960} caption="Purchase order lines">
+            <thead>
+              <tr>
+                <th>#</th><th>Item</th><th>Description or spec</th><th className={li.num}>Qty</th><th className={li.num}>Rate (₹)</th><th className={li.num}>GST %</th><th className={li.num}>Amount</th>
+                <th><span className="sr-only">Remove</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {lines.map((l, i) => {
+                const it = itemById.get(l.itemId);
+                const vr = vendorRates[vendorId]?.[String(l.itemId)];
+                return (
+                  <tr key={l.key} className={cx(!(l.qty > 0) && "opacity-60")}>
+                    <td className="pt-2.5 text-ink-soft">{i + 1}</td>
+                    <td className="min-w-64 max-w-80">
+                      <div className="font-medium text-ink">{it?.name ?? `Item #${l.itemId}`}</div>
+                      {it && <div className="font-mono text-caption text-ink-faint">{it.code} · {it.uom}{it.make ? ` · ${it.make}` : ""}</div>}
+                      {l.salesOrderLineId != null && <div className="mt-0.5 text-caption text-info">Customer order line{l.soInfo ? `: ${l.soInfo}` : ""}</div>}
+                      <div className="mt-0.5 text-caption text-ink-soft">
+                        This vendor: {vr?.rate != null ? <>{money(vr.rate)} ({fmtDate(vr.date)})</> : "not bought before"}
+                        {it && <> · Latest: {it.latestRate != null ? <>{money(it.latestRate)}{it.latestVendor ? ` · ${it.latestVendor}` : ""}{it.latestDate ? ` (${fmtDate(it.latestDate)})` : " (list)"}</> : "-"}</>}
+                      </div>
+                    </td>
+                    <td className="min-w-48">
+                      <input className={li.input} value={l.description} maxLength={500} aria-label={`Description for line ${i + 1}`} placeholder="Optional"
+                        onChange={(e) => update(l.key, { description: e.target.value })} />
+                    </td>
+                    <td className="w-28">
+                      <input className={li.numInput} type="number" min={0} step="any" inputMode="decimal" value={l.qty === 0 ? "" : l.qty} placeholder="0"
+                        aria-label={`Quantity for line ${i + 1}${it ? ` in ${it.uom}` : ""}`} onChange={(e) => update(l.key, { qty: num(e.target.value) })} />
+                    </td>
+                    <td className="w-32">
+                      <input className={li.numInput} type="number" min={0} step="0.01" inputMode="decimal" value={l.rate}
+                        aria-label={`Rate for line ${i + 1}`} onChange={(e) => update(l.key, { rate: num(e.target.value), rateTouched: true })} />
+                    </td>
+                    <td className="w-24">
+                      <input className={li.numInput} type="number" min={0} max={28} step="0.01" inputMode="decimal" value={l.gstRate}
+                        aria-label={`GST % for line ${i + 1}`} onChange={(e) => update(l.key, { gstRate: Math.min(28, num(e.target.value)) })} />
+                    </td>
+                    <td className={cx(li.num, "pt-2.5 font-medium text-ink")}>{money(round2(l.qty * l.rate))}</td>
+                    <td className="w-10">
+                      <button type="button" onClick={() => remove(l.key)} className="rounded p-1.5 text-ink-soft hover:bg-muted hover:text-danger" aria-label={`Remove ${it?.code ?? "line"}`}>
+                        <Trash2 className="icon-sm" aria-hidden />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </LineItemsTable>
         )}
-        <dl className="mt-4 ml-auto grid max-w-xs grid-cols-2 gap-y-1 text-sm">
-          <dt className="text-ink-soft">Subtotal</dt><dd className="text-right tabular-nums">{money(totals.sub)}</dd>
-          <dt className="text-ink-soft">GST</dt><dd className="text-right tabular-nums">{money(totals.tax)}</dd>
-          <dt className="font-semibold text-ink">Total</dt><dd className="text-right font-semibold tabular-nums">{money(totals.total)}</dd>
-          <dt className="text-ink-soft">Lines / qty</dt><dd className="text-right text-ink-soft">{valid.length} / {fmtQty(valid.reduce((s, l) => s + l.qty, 0))}</dd>
-        </dl>
-        {zeroRate > 0 && <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">{zeroRate} line{zeroRate === 1 ? " has" : "s have"} no rate yet. Enter the agreed price before sending the PO.</p>}
-      </Card>
-
-      <Card title="Terms & notes">
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Field label="Terms printed on the PO" hint="One term per line">
-            <Textarea name="terms" rows={6} maxLength={8000} defaultValue={initial.terms} />
-          </Field>
-          <Field label="Internal notes" hint="Not printed">
-            <Textarea name="notes" rows={6} maxLength={4000} defaultValue={initial.notes} />
-          </Field>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 sm:max-w-md">
+            {zeroRate > 0 && (
+              <Callout tone="warning">{zeroRate} line{zeroRate === 1 ? " has" : "s have"} no rate yet. Enter the agreed price before sending the PO.</Callout>
+            )}
+          </div>
+          <MoneySummary className="sm:w-80" subtotal={totals.sub} tax={totals.tax} total={totals.total}
+            note={`${valid.length} line${valid.length === 1 ? "" : "s"} · total qty ${fmtQty(valid.reduce((s, l) => s + l.qty, 0))}`} />
         </div>
-      </Card>
+      </FormSection>
 
-      <div className="sticky bottom-0 z-10 -mx-4 flex flex-wrap gap-2 border-t border-line bg-surface/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
-        <SubmitButton name="intent" value="draft" variant="secondary" disabled={!valid.length || !vendorId}>Save as draft</SubmitButton>
+      <FormSection title="Terms and notes">
+        <Field label="Terms printed on the PO" hint="One term per line">
+          <Textarea name="terms" rows={6} maxLength={8000} defaultValue={initial.terms} />
+        </Field>
+        <Field label="Internal notes" hint="Not printed">
+          <Textarea name="notes" rows={6} maxLength={4000} defaultValue={initial.notes} />
+        </Field>
+      </FormSection>
+
+      <FormFooter cancelHref={id ? `/purchase-orders/${id}` : "/purchase-orders"} note={`PO total ${money(totals.total)}`}>
+        <SubmitButton name="intent" value="draft" variant="secondary" pendingText="Saving…" disabled={!valid.length || !vendorId}>Save draft</SubmitButton>
         <SubmitButton name="intent" value="send" pendingText="Saving…" disabled={!valid.length || !vendorId}
-          confirm="Save and mark this PO as sent to the vendor? Linked customer order lines will show as ordered.">Save &amp; mark sent</SubmitButton>
-      </div>
+          confirm="Save and mark this PO as sent to the vendor? Linked customer order lines will show as ordered.">Save and mark sent</SubmitButton>
+      </FormFooter>
     </form>
   );
 }

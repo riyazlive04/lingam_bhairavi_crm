@@ -5,7 +5,8 @@ import { purchaseOrderLines, purchaseOrders, salesOrderLines } from "@/db/schema
 import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
 import { qty } from "@/lib/format";
-import { Flash, PageHeader } from "@/components/ui";
+import { Flash } from "@/components/ui";
+import { FormPage } from "@/components/patterns";
 import { PurchaseOrderForm } from "../../_components/po-form";
 import { poFormData } from "../../_lib/data";
 import { savePurchaseOrder } from "../../actions";
@@ -32,9 +33,8 @@ export default async function EditPurchaseOrderPage({ params, searchParams }: { 
   const solById = new Map(sol.map((s) => [s.id, s]));
 
   return (
-    <div className="max-w-5xl">
-      <PageHeader title={`Edit draft ${po.number}`} back={{ href: `/purchase-orders/${id}`, label: po.number }} />
-      <Flash err={sp.err} />
+    <FormPage width="wide" eyebrow="Purchase order" title={`Edit draft ${po.number}`} back={{ href: `/purchase-orders/${id}`, label: po.number }}
+      notices={sp.err ? <Flash err={sp.err} /> : undefined}>
       <PurchaseOrderForm
         action={savePurchaseOrder}
         id={po.id}
@@ -56,6 +56,6 @@ export default async function EditPurchaseOrderPage({ params, searchParams }: { 
           }),
         }}
       />
-    </div>
+    </FormPage>
   );
 }

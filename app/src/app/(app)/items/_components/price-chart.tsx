@@ -29,7 +29,7 @@ export function PriceChart({ points, title = "Purchase rate over time" }: { poin
         <title>{title}</title>
         {yTicks.map((v, i) => (
           <g key={i}>
-            <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="currentColor" strokeOpacity={0.15} />
+            <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} className="stroke-chart-grid" />
             <text x={L - 6} y={y(v) + 4} textAnchor="end" fontSize={11} fill="currentColor">{money0(v)}</text>
           </g>
         ))}
@@ -38,9 +38,10 @@ export function PriceChart({ points, title = "Purchase rate over time" }: { poin
             {fmtDate(new Date(t).toISOString().slice(0, 10))}
           </text>
         ))}
-        <path d={path} fill="none" stroke="#d0221d" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+        <line x1={L} x2={W - R} y1={H - B} y2={H - B} className="stroke-chart-axis" />
+        <path d={path} fill="none" className="stroke-chart-1" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
         {points.map((p, i) => (
-          <circle key={i} cx={x(ts[i])} cy={y(p.rate)} r={3.5} fill="#d0221d" stroke="var(--surface)" strokeWidth={1.5}>
+          <circle key={i} cx={x(ts[i])} cy={y(p.rate)} r={3.5} className="fill-chart-1" stroke="var(--chart-surface)" strokeWidth={1.5}>
             <title>{`${fmtDate(p.date)} · ${money0(p.rate)}${p.label ? ` · ${p.label}` : ""}`}</title>
           </circle>
         ))}

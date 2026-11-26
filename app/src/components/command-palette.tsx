@@ -1,7 +1,8 @@
 "use client";
 /**
  * Quick search (Ctrl/Cmd + K): jump to any module the user can open, or run a search in
- * quotations, customers, items or orders (plain GET ?q= searches on those pages).
+ * quotations, customers, items or orders (plain GET ?q= searches on those pages). Also lists the
+ * same "Quick create" actions as the top bar, so both stay in sync with nav.ts.
  */
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -9,7 +10,7 @@ import { CornerDownLeft, Search, type LucideIcon } from "lucide-react";
 import clsx from "clsx";
 import { canRead, type Module } from "@/lib/rbac";
 import type { Role } from "@/lib/constants";
-import { navFor } from "./nav";
+import { navFor, quickCreateFor } from "./nav";
 
 type Entry = { id: string; label: string; hint: string; href: string; icon?: LucideIcon; keywords: string };
 
@@ -27,9 +28,14 @@ export function CommandPalette({ role, open, onClose }: { role: Role; open: bool
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
-  const pages = useMemo<Entry[]>(() => navFor(role).flatMap((g) => g.items.map((i) => ({
-    id: "nav:" + i.href, label: i.label, hint: g.group, href: i.href, icon: i.icon, keywords: `${i.label} ${g.group} ${i.keywords ?? ""}`.toLowerCase(),
-  }))), [role]);
+  const pages = useMemo<Entry[]>(() => [
+    ...quickCreateFor(role).map((q) => ({
+      id: "new:" + q.href + q.label, label: q.label, hint: "Create", href: q.href, icon: q.icon, keywords: `${q.label} new create add ${q.keywords ?? ""}`.toLowerCase(),
+    })),
+    ...navFor(role).flatMap((g) => g.items.map((i) => ({
+      id: "nav:" + i.href, label: i.label, hint: g.group, href: i.href, icon: i.icon, keywords: `${i.label} ${g.group} ${i.keywords ?? ""}`.toLowerCase(),
+    }))),
+  ], [role]);
 
   const term = q.trim();
   const entries = useMemo<Entry[]>(() => {

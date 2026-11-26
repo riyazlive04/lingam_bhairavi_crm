@@ -3,7 +3,8 @@ import { getDb } from "@/db";
 import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
 import { SYSTEMS } from "@/lib/constants";
-import { Flash, PageHeader } from "@/components/ui";
+import { Flash } from "@/components/ui";
+import { FormPage } from "@/components/patterns";
 import { saveTemplate } from "../actions";
 import { TemplateEditor } from "../_components/template-editor";
 import { loadPickerItems } from "../../quotations/_lib/data";
@@ -18,10 +19,8 @@ export default async function NewTemplatePage({ searchParams }: { searchParams: 
   const items = await loadPickerItems(db);
   const system = sp.system && sp.system in SYSTEMS ? sp.system : "hydrant_sprinkler";
   return (
-    <div>
-      <PageHeader title="New BOQ template" back={{ href: "/boq-templates", label: "BOQ templates" }} />
-      <Flash err={sp.err} />
-      <TemplateEditor action={saveTemplate} template={{ name: "", system, description: "", active: true }} initialLines={[]} items={items} />
-    </div>
+    <FormPage width="wide" title="New BOQ template" back={{ href: "/boq-templates", label: "BOQ templates" }} notices={<Flash err={sp.err} />}>
+      <TemplateEditor action={saveTemplate} template={{ name: "", system, description: "", active: true }} initialLines={[]} items={items} cancelHref="/boq-templates" />
+    </FormPage>
   );
 }

@@ -5,10 +5,13 @@ import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
 import { addDays, qty, todayIST } from "@/lib/format";
 import { PO_STATUS_LABEL, RECEIVABLE_PO_STATUSES, invoicePrefillFromPo, isPoStatus } from "@/lib/purchase-orders";
-import { Flash, PageHeader } from "@/components/ui";
+import { Flash } from "@/components/ui";
+import { FormPage } from "@/components/patterns";
 import { PurchaseForm, type PFLine } from "../_components/purchase-form";
 import { purchaseFormData } from "../_components/form-data";
 import { createPurchase } from "../actions";
+
+export const metadata = { title: "New purchase invoice" };
 
 export default async function NewPurchasePage({ searchParams }: { searchParams: Promise<{ vendor?: string; project?: string; po?: string; err?: string }> }) {
   const user = await requireUser("purchases");
@@ -41,15 +44,13 @@ export default async function NewPurchasePage({ searchParams }: { searchParams: 
     }))
     : [];
   return (
-    <div className="max-w-5xl">
-      <PageHeader
-        title={prefill ? `Bill against ${prefill.po.number}` : "New purchase invoice"}
-        subtitle={prefill
-          ? <>Enter the supplier&apos;s bill for goods received on <Link href={`/purchase-orders/${prefill.po.id}`} className="text-brand-700 hover:underline">{prefill.po.number}</Link>. Posting it updates the PO, latest prices and stock.</>
-          : "Enter the supplier's bill. Posting it updates the item's latest price, the vendor master and stock automatically."}
-        back={prefill ? { href: `/purchase-orders/${prefill.po.id}`, label: prefill.po.number } : { href: "/purchases", label: "Purchase invoices" }}
-      />
-      <Flash err={sp.err} />
+    <FormPage width="wide"
+      title={prefill ? `Bill against ${prefill.po.number}` : "New purchase invoice"}
+      subtitle={prefill
+        ? <>Enter the supplier&apos;s bill for goods received on <Link href={`/purchase-orders/${prefill.po.id}`} className="text-brand-700 hover:underline dark:text-brand-300">{prefill.po.number}</Link>. Posting it updates the PO, latest prices and stock.</>
+        : "Enter the supplier's bill. Posting it updates the item's latest price, the vendor master and stock automatically."}
+      back={prefill ? { href: `/purchase-orders/${prefill.po.id}`, label: prefill.po.number } : { href: "/purchases", label: "Purchase invoices" }}
+      notices={sp.err ? <Flash err={sp.err} /> : undefined}>
       <PurchaseForm
         action={createPurchase}
         vendors={data.vendors.filter((v) => v.active || v.id === vendor?.id)}
@@ -59,6 +60,6 @@ export default async function NewPurchasePage({ searchParams }: { searchParams: 
         po={prefill ? { id: prefill.po.id, number: prefill.po.number } : null}
         initial={{ vendorId: vendor?.id ?? null, invoiceNo: "", invoiceDate: today, dueDate: vendor ? addDays(today, vendor.paymentTermsDays) : "", projectId, notes: "", lines }}
       />
-    </div>
+    </FormPage>
   );
 }

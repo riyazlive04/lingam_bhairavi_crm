@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, asc, desc, eq } from "drizzle-orm";
-import { CalendarClock, ClipboardCheck, FileText, Printer, Receipt, RefreshCw, Wrench } from "lucide-react";
+import { Ban, CalendarClock, ClipboardCheck, FileText, Printer, Receipt, RefreshCw, UserCog, Wrench } from "lucide-react";
 import { getDb } from "@/db";
 import { amcContracts, amcVisits, customers, projects, serviceCalls, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
@@ -9,15 +9,19 @@ import { fmtDate, fmtDateTime, money, todayIST } from "@/lib/format";
 import {
   BILLING_FREQUENCIES, COVERAGE, billingSchedule, checklistStats, currentBillingPeriod, effectiveAmcStatus, expiryInfo, renewalDates, slaState,
 } from "@/lib/amc";
-import { Badge, Card, DL, EmptyState, Field, Flash, Input, LinkButton, PageHeader, Select, Table, Td, Th, Textarea, cx } from "@/components/ui";
+import { Field, Flash, Input, LinkButton, Select, Textarea } from "@/components/ui";
+import {
+  Callout, ConfirmButton, DetailPage, KeyValueGrid, MenuLink, MetaChip, Metric, ResponsiveTable, SectionCard, StatusPill, Tabs, activeTab,
+  type Column, type TabItem,
+} from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
-import { AmcStatusBadge, SystemChips } from "../_components/system-chips";
+import { ExpiryPill, SystemChips } from "../_components/system-chips";
 import { amcAccess } from "../_lib/access";
 import { assignContractEngineer, cancelContract, renewContract } from "../actions";
 
 export const metadata = { title: "AMC contract" };
 
-export default async function ContractPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
+export default async function ContractPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string; tab?: string }> }) {
   const user = await requireUser("amc");
   const { id } = await params;
   const sp = await searchParams;
@@ -57,185 +61,246 @@ export default async function ContractPage({ params, searchParams }: { params: P
   const planned = visits.filter((v) => v.v.status !== "cancelled").length;
   const renew = renewalDates(c.endDate);
   const invoiceHref = `/billing/invoices/new?customerId=${c.customerId}&amcId=${c.id}`;
+  const callHref = `/service-calls/new?customerId=${c.customerId}&contractId=${c.id}`;
   const now = new Date();
+  const lateVisits = visits.filter(({ v }) => v.status === "scheduled" && v.scheduledDate < today);
+  // The next visit an engineer can record: the earliest scheduled or missed one.
+  const nextVisit = visits.find(({ v }) => v.status === "scheduled" || v.status === "missed");
+  const canRecord = acc.write && live;
+  const freqLabel = BILLING_FREQUENCIES[c.billingFrequency as keyof typeof BILLING_FREQUENCIES] ?? c.billingFrequency;
+
+  // ------------------------------------------------------------------ tabs
+  const showManage = acc.manage && live;
+  const tabIds = ["visits", "calls", ...(acc.money ? ["billing" as const] : []), ...(showManage ? ["manage" as const] : [])] as const;
+  const tab = activeTab(sp.tab, tabIds);
+  const base = `/amc/${c.id}`;
+  const tabItems: TabItem[] = [
+    { id: "visits", label: "Visits", count: planned, alert: lateVisits.length > 0 },
+    { id: "calls", label: "Service calls", count: calls.length },
+    ...(acc.money ? [{ id: "billing", label: "Billing" }] : []),
+    ...(showManage ? [{ id: "manage", label: "Renew and assign" }] : []),
+  ];
+
+  // ------------------------------------------------------------------ tables
+  type Visit = (typeof visits)[number];
+  const visitCols: Column<Visit>[] = [
+    {
+      key: "n", header: "Visit", card: "title", nowrap: true,
+      cell: ({ v }, i) => <Link href={`/amc/${c.id}/visits/${v.id}`} className="rt-stretch font-medium text-brand-700 hover:underline dark:text-brand-300">Visit {i + 1}</Link>,
+    },
+    {
+      key: "date", header: "Date", card: "subtitle", nowrap: true,
+      cell: ({ v }) => {
+        const late = v.status === "scheduled" && v.scheduledDate < today;
+        return <span className={late ? "font-medium text-danger" : undefined}>{v.status === "done" ? `Done ${fmtDate(v.doneDate)}` : `Planned ${fmtDate(v.scheduledDate)}`}</span>;
+      },
+    },
+    {
+      key: "status", header: "Status", card: "badge",
+      cell: ({ v }) => (v.status === "scheduled" && v.scheduledDate < today ? <StatusPill status="overdue" /> : <StatusPill status={v.status} />),
+    },
+    { key: "engineer", header: "Engineer", cell: ({ engineerName }) => engineerName ?? <span className="text-ink-faint">No engineer</span> },
+    {
+      key: "result", header: "Checklist", priority: 3,
+      cell: ({ v }) => {
+        const stats = checklistStats(v.checklist ?? []);
+        if (v.status !== "done" || stats.total === 0) return <span className="text-ink-faint">-</span>;
+        return <>{stats.ok} OK{stats.notOk > 0 && <span className="font-medium text-danger">, {stats.notOk} not OK</span>}</>;
+      },
+    },
+    {
+      key: "actions", header: <span className="sr-only">Actions</span>, label: "Actions", card: "actions", align: "right",
+      cell: ({ v }) => (
+        <div className="relative z-[1] flex flex-wrap justify-end gap-2 max-sm:justify-start">
+          {canRecord && (v.status === "scheduled" || v.status === "missed") && (
+            <LinkButton size="sm" href={`/amc/${c.id}/visits/${v.id}`}><ClipboardCheck className="icon-sm" aria-hidden /> Record visit</LinkButton>
+          )}
+          {v.status === "done" && (
+            <LinkButton size="sm" variant="ghost" href={`/amc/${c.id}/visits/${v.id}/print`}><Printer className="icon-sm" aria-hidden /> Print report</LinkButton>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  type Call = (typeof calls)[number];
+  const callCols: Column<Call>[] = [
+    {
+      key: "no", header: "Call", card: "title", nowrap: true,
+      cell: (s) => <><Link href={`/service-calls/${s.id}`} className="rt-stretch font-medium text-brand-700 hover:underline dark:text-brand-300">{s.number}</Link><div className="text-caption font-normal text-ink-soft">{fmtDateTime(s.raisedAt)}</div></>,
+    },
+    { key: "issue", header: "Issue", card: "subtitle", className: "max-w-72 truncate", cell: (s) => s.description },
+    { key: "status", header: "Status", card: "badge", cell: (s) => <StatusPill status={s.status} /> },
+    {
+      key: "sla", header: "SLA", nowrap: true,
+      cell: (s) => {
+        const sla = slaState(s, now);
+        return <span className={sla.state === "breached" ? "font-medium text-danger" : "text-ink-soft"}>{sla.label}</span>;
+      },
+    },
+    ...(acc.money ? [{ key: "charge", header: "Charge", align: "right" as const, card: "amount" as const, nowrap: true,
+      cell: (s: Call) => (s.chargeable ? money(s.chargeAmount) : "Under AMC") }] : []),
+  ];
+
+  // ------------------------------------------------------------------ actions
+  const primary = canRecord && nextVisit
+    ? <LinkButton href={`/amc/${c.id}/visits/${nextVisit.v.id}`}><ClipboardCheck className="icon-sm" aria-hidden /> Record visit</LinkButton>
+    : canRecord
+      ? <LinkButton href={callHref}><Wrench className="icon-sm" aria-hidden /> Log a call</LinkButton>
+      : null;
+  const secondary = (
+    <>
+      <LinkButton variant="secondary" href={`/amc/${c.id}/print`}><Printer className="icon-sm" aria-hidden /> Print contract</LinkButton>
+      {canRecord && nextVisit && <LinkButton variant="secondary" href={callHref}><Wrench className="icon-sm" aria-hidden /> Log a call</LinkButton>}
+      {acc.money && acc.billing && live && Number(c.value) > 0 && (
+        <LinkButton variant="secondary" href={invoiceHref}><Receipt className="icon-sm" aria-hidden /> Create invoice</LinkButton>
+      )}
+    </>
+  );
+  const more = showManage && (
+    <>
+      <MenuLink href={`${base}?tab=manage`} icon={RefreshCw}>Renew contract</MenuLink>
+      <MenuLink href={`${base}?tab=manage`} icon={UserCog}>Change engineer</MenuLink>
+      <form action={cancelContract} className="mt-1 space-y-1.5 border-t border-line pt-2">
+        <input type="hidden" name="id" value={c.id} />
+        <label className="block px-1 text-caption font-medium text-ink-soft">
+          Reason for cancelling
+          <Textarea name="reason" rows={2} maxLength={500} placeholder="e.g. Customer moved to another vendor" className="mt-1 min-h-14" />
+        </label>
+        <ConfirmButton variant="ghost" className="text-danger" confirmVariant="danger" stacked pendingText="Cancelling…" confirmLabel="Yes, cancel contract"
+          confirm="Cancel this contract? Remaining visits will be cancelled.">
+          <Ban className="icon-sm" aria-hidden /> Cancel contract
+        </ConfirmButton>
+      </form>
+    </>
+  );
 
   return (
-    <div className="max-w-5xl space-y-6">
-      <PageHeader
-        eyebrow="AMC contract"
-        title={c.number}
-        subtitle={<span className="inline-flex flex-wrap items-center gap-2">{row.customerName}<AmcStatusBadge status={status} />{live && <Badge tone={exp.tone}>{exp.label}</Badge>}</span>}
-        back={{ href: "/amc", label: "AMC contracts" }}
-        actions={<>
-          <LinkButton variant="secondary" href={`/amc/${c.id}/print`}><Printer className="h-4 w-4" aria-hidden /> Print contract</LinkButton>
-          {acc.write && live && <LinkButton variant="secondary" href={`/service-calls/new?customerId=${c.customerId}&contractId=${c.id}`}><Wrench className="h-4 w-4" aria-hidden /> Log service call</LinkButton>}
-        </>}
-      />
-      <Flash ok={sp.ok} err={sp.err} />
-
-      {(renewalOf.length > 0 || renewedAs.length > 0) && (
-        <div className="flex flex-wrap gap-3 rounded-xl border border-line bg-muted px-4 py-3 text-sm">
-          {renewalOf.map((r) => <span key={r.id}>Renewal of <Link className="font-medium text-brand-700 hover:underline dark:text-brand-300" href={`/amc/${r.id}`}>{r.number}</Link></span>)}
-          {renewedAs.map((r) => <span key={r.id}>Renewed as <Link className="font-medium text-brand-700 hover:underline dark:text-brand-300" href={`/amc/${r.id}`}>{r.number}</Link> ({r.status})</span>)}
-        </div>
-      )}
-
-      <Card title="Contract details" icon={FileText}>
-        <DL items={[
-          ["Customer", <span key="c">{row.customerName}{row.customerPhone && <> · <a href={`tel:${row.customerPhone}`} className="hover:text-brand-700">{row.customerPhone}</a></>}</span>],
-          ["Project", c.projectId ? <Link key="p" href={`/projects/${c.projectId}`} className="text-brand-700 hover:underline dark:text-brand-300">{row.projectCode} · {row.projectName}</Link> : "-"],
-          ["Site", <span key="s" className="whitespace-pre-line">{c.siteAddress || "-"}</span>],
-          ["Systems", <SystemChips key="sy" systems={c.systems} />],
-          ["Period", `${fmtDate(c.startDate)} to ${fmtDate(c.endDate)}`],
-          ["Coverage", COVERAGE[c.coverage as keyof typeof COVERAGE] ?? c.coverage],
-          ["Breakdown response", `Within ${c.responseHours} hours`],
-          ["Preventive visits", `${c.visitsPerYear} per year · ${done} of ${planned} done`],
-          ["Engineer", row.engineerName ?? "Unassigned"],
-          ...(acc.money ? [
-            ["Contract value", `${money(c.value)} excl. GST`] as [string, string],
-            ["Billing", BILLING_FREQUENCIES[c.billingFrequency as keyof typeof BILLING_FREQUENCIES] ?? c.billingFrequency] as [string, string],
-          ] : []),
-        ]} />
-        {c.scope && <div className="mt-5"><div className="text-xs font-medium text-ink-soft">Scope of work</div><p className="mt-1 whitespace-pre-line text-sm text-ink">{c.scope}</p></div>}
-        {c.notes && <div className="mt-4"><div className="text-xs font-medium text-ink-soft">Notes</div><p className="mt-1 whitespace-pre-line text-sm text-ink">{c.notes}</p></div>}
-      </Card>
-
-      <Card title={`Visit schedule (${done} of ${planned} done)`} icon={CalendarClock} bodyClassName="p-0">
-        {visits.length === 0 ? (
-          <p className="p-4 text-sm text-ink-soft sm:p-5">No preventive visits on this contract (visits per year is 0). Breakdown calls can still be logged.</p>
-        ) : (
-          <ul className="divide-y divide-line">
-            {visits.map(({ v, engineerName }, i) => {
-              const late = v.status === "scheduled" && v.scheduledDate < today;
-              const stats = checklistStats(v.checklist ?? []);
-              return (
-                <li key={v.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-semibold text-ink">Visit {i + 1}</span>
-                      <AmcStatusBadge status={v.status} />
-                      {late && <Badge tone="red">Overdue</Badge>}
-                    </div>
-                    <div className={cx("mt-0.5 text-sm", late ? "text-red-600" : "text-ink-soft")}>
-                      {v.status === "done" ? `Done ${fmtDate(v.doneDate)}` : `Planned ${fmtDate(v.scheduledDate)}`} · {engineerName ?? "No engineer"}
-                      {v.status === "done" && stats.total > 0 && <> · {stats.ok} OK{stats.notOk ? <span className="font-medium text-red-600">, {stats.notOk} not OK</span> : ""}</>}
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 flex-wrap gap-2">
-                    {acc.write && (v.status === "scheduled" || v.status === "missed") && live && (
-                      <LinkButton size="sm" href={`/amc/${c.id}/visits/${v.id}`}><ClipboardCheck className="h-4 w-4" aria-hidden /> Record visit</LinkButton>
-                    )}
-                    {v.status === "done" && <>
-                      <LinkButton size="sm" variant="secondary" href={`/amc/${c.id}/visits/${v.id}`}>View report</LinkButton>
-                      <LinkButton size="sm" variant="ghost" href={`/amc/${c.id}/visits/${v.id}/print`}><Printer className="h-4 w-4" aria-hidden /> Print</LinkButton>
-                    </>}
-                    {(v.status === "cancelled" || ((v.status === "scheduled" || v.status === "missed") && (!acc.write || !live))) && (
-                      <LinkButton size="sm" variant="ghost" href={`/amc/${c.id}/visits/${v.id}`}>Details</LinkButton>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </Card>
-
-      {acc.money && (
-        <Card title="Billing" icon={Receipt} actions={acc.billing && live ? <LinkButton size="sm" href={invoiceHref}>Create invoice</LinkButton> : undefined}>
-          {Number(c.value) <= 0 ? (
-            <p className="text-sm text-ink-soft">No contract value set, so there is nothing to bill.</p>
-          ) : (
-            <>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-xl bg-muted p-3">
-                  <div className="text-xs font-medium text-ink-soft">Amount due this period</div>
-                  <div className="mt-1 font-display text-xl font-bold tabular-nums text-ink">{current ? money(current.amount) : "-"}</div>
-                  <div className="text-xs text-ink-soft">{current ? `Period ${current.index} of ${periods.length}: ${fmtDate(current.from)} to ${fmtDate(current.to)}` : "Contract term is over"}</div>
-                </div>
-                <div className="rounded-xl bg-muted p-3">
-                  <div className="text-xs font-medium text-ink-soft">Per {c.billingFrequency === "one_time" ? "contract" : "period"}</div>
-                  <div className="mt-1 font-display text-xl font-bold tabular-nums text-ink">{money(periods[0]?.amount ?? 0)}</div>
-                  <div className="text-xs text-ink-soft">{BILLING_FREQUENCIES[c.billingFrequency as keyof typeof BILLING_FREQUENCIES] ?? c.billingFrequency}, excl. GST</div>
-                </div>
-                <div className="rounded-xl bg-muted p-3">
-                  <div className="text-xs font-medium text-ink-soft">Contract value</div>
-                  <div className="mt-1 font-display text-xl font-bold tabular-nums text-ink">{money(c.value)}</div>
-                  <div className="text-xs text-ink-soft">{periods.length} billing period{periods.length === 1 ? "" : "s"}</div>
-                </div>
-              </div>
-              {!acc.billing && <p className="mt-3 text-xs text-ink-soft">Accounts raises the invoice from Billing.</p>}
-            </>
+    <DetailPage
+      back={{ href: "/amc", label: "AMC contracts" }}
+      eyebrow="AMC contract"
+      title={c.number}
+      status={<><StatusPill status={status} />{live && <ExpiryPill info={exp} />}</>}
+      meta={
+        <>
+          <MetaChip label="Customer">{row.customerName}</MetaChip>
+          <MetaChip label="Period">{fmtDate(c.startDate)} to {fmtDate(c.endDate)}</MetaChip>
+          <MetaChip label="Engineer">{row.engineerName ?? "Unassigned"}</MetaChip>
+          <MetaChip label="Visits">{done} of {planned} done</MetaChip>
+          {acc.money && <MetaChip label="Value">{money(c.value)}</MetaChip>}
+        </>
+      }
+      primaryAction={primary}
+      secondaryActions={secondary}
+      moreActions={more || undefined}
+      notices={
+        <>
+          <Flash ok={sp.ok} err={sp.err} />
+          {renewalOf.map((r) => (
+            <Callout key={`of-${r.id}`} tone="info" title="Renewal contract">
+              This contract renews <Link className="font-medium text-brand-700 hover:underline dark:text-brand-300" href={`/amc/${r.id}`}>{r.number}</Link>.
+            </Callout>
+          ))}
+          {renewedAs.map((r) => (
+            <Callout key={`as-${r.id}`} tone="success" title={`Renewed as ${r.number}`}
+              action={<LinkButton size="sm" variant="secondary" href={`/amc/${r.id}`}>Open {r.number}</LinkButton>}>
+              The new contract is {r.status}. Visits and calls continue there.
+            </Callout>
+          ))}
+          {live && lateVisits.length > 0 && (
+            <Callout tone="danger" title={`${lateVisits.length} visit${lateVisits.length === 1 ? " is" : "s are"} overdue`}>
+              The planned date has passed. Record the visit, or reschedule it with the site.
+            </Callout>
           )}
-        </Card>
+          {status === "expired" && renewedAs.length === 0 && (
+            <Callout tone="warning" title="This contract has lapsed">
+              The end date has passed and it has not been renewed yet.{showManage ? " Use Renew and assign to create the next contract." : ""}
+            </Callout>
+          )}
+        </>
+      }
+      tabs={<Tabs label="Contract sections" basePath={base} params={{ tab: sp.tab }} active={tab} items={tabItems} />}
+      aside={
+        <SectionCard title="Contract details" icon={FileText}>
+          <KeyValueGrid columns={1} items={[
+            { label: "Customer", value: <>{row.customerName}{row.customerPhone && <> · <a href={`tel:${row.customerPhone}`} className="text-brand-700 hover:underline dark:text-brand-300">{row.customerPhone}</a></>}</> },
+            { label: "Project", value: c.projectId ? <Link href={`/projects/${c.projectId}`} className="text-brand-700 hover:underline dark:text-brand-300">{row.projectCode} · {row.projectName}</Link> : null },
+            { label: "Site", value: c.siteAddress ? <span className="whitespace-pre-line">{c.siteAddress}</span> : null },
+            { label: "Systems", value: <SystemChips systems={c.systems} /> },
+            { label: "Coverage", value: COVERAGE[c.coverage as keyof typeof COVERAGE] ?? c.coverage },
+            { label: "Breakdown response", value: `Within ${c.responseHours} hours` },
+            { label: "Preventive visits", value: `${c.visitsPerYear} per year` },
+            ...(acc.money ? [
+              { label: "Contract value", value: `${money(c.value)} excl. GST` },
+              { label: "Billing", value: freqLabel },
+            ] : []),
+            ...(c.scope ? [{ label: "Scope of work", value: <span className="whitespace-pre-line font-normal">{c.scope}</span> }] : []),
+            ...(c.notes ? [{ label: "Notes", value: <span className="whitespace-pre-line font-normal">{c.notes}</span> }] : []),
+          ]} />
+        </SectionCard>
+      }
+    >
+      {tab === "visits" && (
+        <SectionCard title="Visit schedule" count={planned} icon={CalendarClock} flush={visits.length > 0}
+          description={`${done} of ${planned} done`}
+          empty={visits.length === 0 && "No preventive visits on this contract because visits per year is 0. Breakdown calls can still be logged."}>
+          <ResponsiveTable flush rows={visits} columns={visitCols} rowKey={({ v }) => v.id} caption="Visit schedule"
+            rowClassName={({ v }) => v.status === "cancelled" && "opacity-60"} />
+        </SectionCard>
       )}
 
-      <Card title={`Service calls (${calls.length})`} icon={Wrench} bodyClassName={calls.length ? "p-0" : undefined}
-        actions={acc.write && live ? <LinkButton size="sm" variant="secondary" href={`/service-calls/new?customerId=${c.customerId}&contractId=${c.id}`}>Log call</LinkButton> : undefined}>
-        {calls.length === 0 ? (
-          <p className="text-sm text-ink-soft">No breakdown calls on this contract yet.</p>
-        ) : (
-          <Table className="rounded-none border-0 shadow-none">
-            <thead><tr><Th>Call</Th><Th>Issue</Th><Th>Status</Th><Th>SLA</Th>{acc.money && <Th className="text-right">Charge</Th>}</tr></thead>
-            <tbody>
-              {calls.map((s) => {
-                const sla = slaState(s, now);
-                return (
-                  <tr key={s.id}>
-                    <Td className="whitespace-nowrap"><Link href={`/service-calls/${s.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{s.number}</Link><div className="text-xs text-ink-soft">{fmtDateTime(s.raisedAt)}</div></Td>
-                    <Td className="max-w-72 truncate">{s.description}</Td>
-                    <Td><AmcStatusBadge status={s.status} /></Td>
-                    <Td className={cx("whitespace-nowrap text-xs", sla.state === "breached" && "font-semibold text-red-600")}>{sla.label}</Td>
-                    {acc.money && <Td className="text-right tabular-nums">{s.chargeable ? money(s.chargeAmount) : "AMC"}</Td>}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
-        )}
-      </Card>
+      {tab === "calls" && (
+        <SectionCard title="Service calls" count={calls.length} icon={Wrench} flush={calls.length > 0}
+          actions={canRecord && <LinkButton size="sm" variant="secondary" href={callHref}>Log a call</LinkButton>}
+          empty={calls.length === 0 && "No breakdown calls on this contract yet."}>
+          <ResponsiveTable flush rows={calls} columns={callCols} rowKey={(s) => s.id} caption="Service calls" />
+        </SectionCard>
+      )}
 
-      {acc.manage && live && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card title="Renew contract" icon={RefreshCw}>
+      {tab === "billing" && acc.money && (
+        <SectionCard title="Billing" icon={Receipt}
+          actions={acc.billing && live && Number(c.value) > 0 && <LinkButton size="sm" href={invoiceHref}>Create invoice</LinkButton>}
+          empty={Number(c.value) <= 0 && "No contract value set, so there is nothing to bill."}>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Metric label="Due this period" value={current ? money(current.amount) : "-"}
+              hint={current ? `Period ${current.index} of ${periods.length}: ${fmtDate(current.from)} to ${fmtDate(current.to)}` : "Contract term is over"} />
+            <Metric label={`Per ${c.billingFrequency === "one_time" ? "contract" : "period"}`} value={money(periods[0]?.amount ?? 0)} hint={`${freqLabel}, excl. GST`} />
+            <Metric label="Contract value" value={money(c.value)} hint={`${periods.length} billing period${periods.length === 1 ? "" : "s"}`} />
+          </div>
+          {!acc.billing && <p className="mt-3 text-caption text-ink-soft">Accounts raises the invoice from Billing.</p>}
+        </SectionCard>
+      )}
+
+      {tab === "manage" && showManage && (
+        <>
+          <SectionCard title="Renew contract" icon={RefreshCw} description="Creates a new contract with the same systems, scope and terms. This one is marked renewed.">
             <form action={renewContract} className="space-y-4">
               <input type="hidden" name="id" value={c.id} />
-              <p className="text-sm text-ink-soft">Creates a new contract with the same systems, scope and terms. This one is marked renewed.</p>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="New start"><Input type="date" name="startDate" defaultValue={renew.startDate} /></Field>
                 <Field label="New end"><Input type="date" name="endDate" defaultValue={renew.endDate} /></Field>
-                <Field label="New value (₹, excl. GST)" hint="Leave as is to keep the same value."><Input type="number" name="value" min={0} step="0.01" inputMode="decimal" defaultValue={Number(c.value) || ""} /></Field>
-                <Field label="Visits per year"><Input type="number" name="visitsPerYear" min={0} max={52} inputMode="numeric" defaultValue={c.visitsPerYear} /></Field>
+                <Field label="New value (₹, excl. GST)" hint="Leave as is to keep the same value."><Input type="number" name="value" min={0} step="0.01" inputMode="decimal" className="text-right" defaultValue={Number(c.value) || ""} /></Field>
+                <Field label="Visits per year"><Input type="number" name="visitsPerYear" min={0} max={52} inputMode="numeric" className="text-right" defaultValue={c.visitsPerYear} /></Field>
               </div>
-              <SubmitButton pendingText="Renewing...">Renew</SubmitButton>
+              <div className="flex justify-end">
+                <SubmitButton pendingText="Renewing…" className="max-sm:w-full">Renew contract</SubmitButton>
+              </div>
             </form>
-          </Card>
-          <div className="space-y-6">
-            <Card title="Engineer">
-              <form action={assignContractEngineer} className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                <input type="hidden" name="id" value={c.id} />
-                <Field label="Assigned engineer" className="flex-1" hint="Upcoming visits move to the new engineer.">
-                  <Select name="engineerId" defaultValue={c.engineerId ?? ""}>
-                    <option value="">Unassigned</option>
-                    {engineerList.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-                  </Select>
-                </Field>
-                <SubmitButton variant="secondary">Save</SubmitButton>
-              </form>
-            </Card>
-            <Card title="Cancel contract">
-              <form action={cancelContract} className="space-y-3">
-                <input type="hidden" name="id" value={c.id} />
-                <Field label="Reason"><Textarea name="reason" rows={2} maxLength={500} placeholder="e.g. Customer moved to another vendor" /></Field>
-                <SubmitButton variant="danger" confirm="Cancel this contract? Remaining visits will be cancelled.">Cancel contract</SubmitButton>
-              </form>
-            </Card>
-          </div>
-        </div>
+          </SectionCard>
+          <SectionCard title="Engineer" icon={UserCog} description="Upcoming visits move to the new engineer.">
+            <form action={assignContractEngineer} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <input type="hidden" name="id" value={c.id} />
+              <Field label="Assigned engineer" className="flex-1">
+                <Select name="engineerId" defaultValue={c.engineerId ?? ""}>
+                  <option value="">Unassigned</option>
+                  {engineerList.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </Select>
+              </Field>
+              <SubmitButton variant="secondary">Save engineer</SubmitButton>
+            </form>
+          </SectionCard>
+        </>
       )}
-
-      {!live && visits.length === 0 && calls.length === 0 && (
-        <EmptyState title="Nothing more to do here">This contract is {status}.</EmptyState>
-      )}
-    </div>
+    </DetailPage>
   );
 }

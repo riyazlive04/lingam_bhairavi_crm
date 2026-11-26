@@ -4,7 +4,8 @@ import { getDb } from "@/db";
 import { items } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
-import { Flash, PageHeader } from "@/components/ui";
+import { Flash } from "@/components/ui";
+import { FormPage } from "@/components/patterns";
 import { ItemForm } from "../../_components/item-form";
 import { itemLookups } from "../../_components/item-lookups";
 import { updateItem } from "../../actions";
@@ -21,10 +22,8 @@ export default async function EditItemPage({ params, searchParams }: { params: P
   if (!item) notFound();
   const { groups, makes } = await itemLookups(db);
   return (
-    <div className="max-w-4xl">
-      <PageHeader title={`Edit ${item.code}`} subtitle={item.name} back={{ href: `/items/${item.id}`, label: item.name }} />
-      <Flash err={sp.err} />
+    <FormPage title={`Edit ${item.code}`} subtitle={item.name} back={{ href: `/items/${item.id}`, label: item.name }} notices={<Flash err={sp.err} />}>
       <ItemForm action={updateItem.bind(null, item.id)} item={item} groups={groups} makes={makes} cancelHref={`/items/${item.id}`} />
-    </div>
+    </FormPage>
   );
 }

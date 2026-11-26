@@ -4,9 +4,12 @@ import { getDb } from "@/db";
 import { vendors } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
-import { Flash, PageHeader } from "@/components/ui";
+import { Flash } from "@/components/ui";
+import { FormPage } from "@/components/patterns";
 import { VendorForm } from "../../_components/vendor-form";
 import { updateVendor } from "../../actions";
+
+export const metadata = { title: "Edit vendor" };
 
 export default async function EditVendorPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ err?: string }> }) {
   const user = await requireUser("vendors");
@@ -19,10 +22,9 @@ export default async function EditVendorPage({ params, searchParams }: { params:
   const [v] = await db.select().from(vendors).where(eq(vendors.id, vendorId));
   if (!v) notFound();
   return (
-    <div className="max-w-3xl">
-      <PageHeader title={`Edit ${v.name}`} back={{ href: `/vendors/${v.id}`, label: v.name }} />
-      <Flash err={sp.err} />
+    <FormPage width="narrow" eyebrow="Vendor" title={`Edit ${v.name}`} back={{ href: `/vendors/${v.id}`, label: v.name }}
+      notices={sp.err ? <Flash err={sp.err} /> : undefined}>
       <VendorForm action={updateVendor.bind(null, v.id)} vendor={v} cancelHref={`/vendors/${v.id}`} />
-    </div>
+    </FormPage>
   );
 }

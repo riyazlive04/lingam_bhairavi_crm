@@ -3,12 +3,13 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { customers, projects } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { fmtDateTime } from "@/lib/format";
+import { getCompany } from "@/lib/billing";
+import { fmtDate, fmtDateTime } from "@/lib/format";
 import { EmptyState, PageHeader } from "@/components/ui";
+import { DocumentSheet } from "@/components/patterns";
 import { projectAccess } from "../../_lib/access";
 import { loadProjectHistory } from "../../_lib/history";
 import { HistoryFeed, HistoryFilters, applyHistoryFilter, historyFilter, type HistorySP } from "../../_components/history-feed";
-import { PrintButton } from "../../_components/print-button";
 
 export const metadata = { title: "Project history" };
 
@@ -29,7 +30,7 @@ export default async function ProjectHistoryPage({ params, searchParams }: { par
   if (!row) notFound();
   const p = row.p;
   const acc = projectAccess(user, p);
-  const back = { href: `/projects/${p.id}`, label: p.name };
+  const back = { href: `/projects/${p.id}?tab=history`, label: `Back to ${p.name}` };
 
   if (!acc.spend) {
     return (
@@ -40,21 +41,23 @@ export default async function ProjectHistoryPage({ params, searchParams }: { par
     );
   }
 
-  const all = await loadProjectHistory(db, p, user, acc.full);
+  const [all, company] = await Promise.all([loadProjectHistory(db, p, user, acc.full), getCompany(db)]);
   const filter = historyFilter(sp);
   const events = applyHistoryFilter(all, filter);
 
   return (
-    <div>
-      <PageHeader
-        eyebrow="Project history"
-        title={p.name}
-        subtitle={`${p.code} · ${row.customerName} · printed ${fmtDateTime(new Date())} by ${user.name}`}
-        back={back}
-        actions={<PrintButton label="Print or save PDF" />}
-      />
+    <DocumentSheet
+      company={company}
+      title="Project history"
+      numberLabel="Project"
+      number={p.code}
+      date={fmtDate(new Date())}
+      meta={[["Printed by", user.name], ["Printed at", fmtDateTime(new Date())]]}
+      facts={[["Project", p.name], ["Customer", row.customerName], ...(p.siteAddress ? [["Site", p.siteAddress] as [string, string]] : []), ["Events", String(events.length)]]}
+      toolbar={{ backHref: back.href, backLabel: back.label }}
+    >
       <HistoryFilters action={`/projects/${p.id}/history`} events={all} filter={filter} />
       <HistoryFeed events={events} />
-    </div>
+    </DocumentSheet>
   );
 }

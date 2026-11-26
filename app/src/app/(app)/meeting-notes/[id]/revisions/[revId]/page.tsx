@@ -1,16 +1,21 @@
 import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
+import { CheckSquare, Square } from "lucide-react";
 import { getDb } from "@/db";
 import { meetingNoteRevisions, meetingNotes, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { fmtDate, fmtDateTime } from "@/lib/format";
-import { Badge, Card, PageHeader, cx } from "@/components/ui";
+import { Flash, LinkButton, cx } from "@/components/ui";
+import { Callout, DetailPage, MetaChip, SectionCard, StatusPill } from "@/components/patterns";
 import { Markdown } from "../../../_components/markdown";
 import { readSnapshot } from "../../../_lib/types";
 
-export default async function RevisionSnapshotPage({ params }: { params: Promise<{ id: string; revId: string }> }) {
+export const metadata = { title: "Meeting note revision" };
+
+export default async function RevisionSnapshotPage({ params, searchParams }: { params: Promise<{ id: string; revId: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
   await requireUser("meetings");
   const { id, revId } = await params;
+  const sp = await searchParams;
   const nid = Number(id), rid = Number(revId);
   if (!Number.isInteger(nid) || nid <= 0 || !Number.isInteger(rid) || rid <= 0) notFound();
   const db = await getDb();
@@ -26,35 +31,54 @@ export default async function RevisionSnapshotPage({ params }: { params: Promise
   if (!s) notFound();
 
   return (
-    <div className="max-w-4xl space-y-6">
-      <PageHeader
-        title={s.title}
-        subtitle={<span className="inline-flex flex-wrap items-center gap-2"><Badge tone="amber">Snapshot v{row.r.version}</Badge> {fmtDate(s.meetingDate)} · current version is v{row.currentVersion}</span>}
-        back={{ href: `/meeting-notes/${nid}`, label: "Back to current version" }}
-      />
-      <div role="note" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-        Read-only view of v{row.r.version} as it was before {row.by ?? "someone"} saved v{row.r.version + 1} on {fmtDateTime(row.r.createdAt)}
-        {row.r.changeSummary ? <>: “{row.r.changeSummary}”</> : null}.
-      </div>
-      {s.attendees && <p className="text-sm text-ink-soft"><span className="font-medium text-ink">Attendees:</span> {s.attendees}</p>}
-      <Card title="Summary"><Markdown md={s.summary} /></Card>
-      <Card title="Decisions"><Markdown md={s.decisions} empty="No decisions recorded." /></Card>
-      <Card title="Action items">
-        {s.actionItems.length ? (
-          <ul className="space-y-1 text-sm">
-            {s.actionItems.map((a, i) => (
-              <li key={i} className={cx(a.done ? "text-ink-faint line-through" : "text-ink")}>
-                {a.done ? "☑" : "☐"} {a.text}{a.owner ? ` (${a.owner})` : ""}{a.due ? ` (due ${fmtDate(a.due)})` : ""}
-              </li>
-            ))}
-          </ul>
-        ) : <p className="text-sm text-ink-faint">No action items.</p>}
-      </Card>
-      <Card title="Open questions"><Markdown md={s.openQuestions} empty="No open questions." /></Card>
-      <details className="rounded-xl border border-line bg-surface shadow-sm">
-        <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-ink">Transcript / raw notes</summary>
-        <div className="max-h-[70vh] overflow-y-auto border-t border-line p-4"><Markdown md={s.transcript} empty="No transcript saved." /></div>
-      </details>
-    </div>
+    <DetailPage
+      back={{ href: `/meeting-notes/${nid}`, label: "Back to current version" }}
+      eyebrow="Meeting note snapshot"
+      title={s.title}
+      status={<StatusPill semantic="warning" label={`Snapshot v${row.r.version}`} />}
+      meta={
+        <>
+          <MetaChip label="Date">{fmtDate(s.meetingDate)}</MetaChip>
+          <MetaChip label="Current version">v{row.currentVersion}</MetaChip>
+          {s.attendees && <MetaChip label="Attendees">{s.attendees}</MetaChip>}
+        </>
+      }
+      notices={
+        <>
+          <Flash ok={sp.ok} err={sp.err} />
+          <Callout tone="warning" title={`Read-only view of v${row.r.version}`}
+            action={<LinkButton href={`/meeting-notes/${nid}`} variant="secondary" size="sm">Open current version</LinkButton>}>
+            This is how the note looked before {row.by ?? "someone"} saved v{row.r.version + 1} on {fmtDateTime(row.r.createdAt)}
+            {row.r.changeSummary ? <>: “{row.r.changeSummary}”</> : null}.
+          </Callout>
+        </>
+      }
+    >
+      <SectionCard title="Summary"><Markdown md={s.summary} empty="No summary written." /></SectionCard>
+      <SectionCard title="Decisions"><Markdown md={s.decisions} empty="No decisions recorded." /></SectionCard>
+      <SectionCard title="Action items" count={s.actionItems.length} empty={s.actionItems.length === 0 && "No action items in this version."}>
+        <ul className="space-y-2 text-sm">
+          {s.actionItems.map((a, i) => (
+            <li key={i} className="flex items-start gap-2">
+              {a.done ? <CheckSquare className="icon-sm mt-0.5 text-success" aria-label="Done" /> : <Square className="icon-sm mt-0.5 text-ink-soft" aria-label="Open" />}
+              <span className={cx(a.done ? "text-ink-faint line-through" : "text-ink")}>
+                {a.text}{a.owner ? ` (${a.owner})` : ""}{a.due ? ` · due ${fmtDate(a.due)}` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </SectionCard>
+      <SectionCard title="Open questions"><Markdown md={s.openQuestions} empty="No open questions." /></SectionCard>
+      <SectionCard title="Transcript or raw notes" empty={!s.transcript && "No transcript saved."}>
+        <details className="group">
+          <summary className="cursor-pointer select-none rounded-md text-sm font-medium text-brand-700 hover:underline dark:text-brand-300">
+            <span className="group-open:hidden">Show transcript</span><span className="hidden group-open:inline">Hide transcript</span>
+          </summary>
+          <div className="mt-3 max-h-[70vh] overflow-y-auto rounded-xl border border-line bg-surface-2 p-4">
+            <Markdown md={s.transcript} empty="No transcript saved." />
+          </div>
+        </details>
+      </SectionCard>
+    </DetailPage>
   );
 }

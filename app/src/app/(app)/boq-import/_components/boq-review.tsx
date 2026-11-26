@@ -1,11 +1,15 @@
 "use client";
 /**
- * Review screen of the consultant BOQ import: sheet tabs, matched items with latest cost (rule 10), editable
- * quantities and rates, live totals (rule 3), then "Create quotation" / "Save as BOQ template".
+ * Review screen of the consultant BOQ import (step 2 of 2): sheet tabs, matched items with latest cost (rule 10),
+ * editable quantities and rates, live totals (rule 3), then "Create quotation" / "Save as BOQ template".
+ * Desktop: a dense LineItemsTable with a sticky header. Phones: each row becomes a card (Tailwind `max-sm:` grid).
  */
-import { memo, startTransition, useActionState, useCallback, useId, useMemo, useState } from "react";
-import { AlertTriangle, CircleAlert, FileSpreadsheet, RotateCcw, Search, X } from "lucide-react";
-import { Badge, Button, Card, cx, Field, Input, Select, Table, Td, Th, type Tone } from "@/components/ui";
+import { memo, startTransition, useActionState, useCallback, useId, useMemo, useState, type ReactNode } from "react";
+import { FileSpreadsheet, RotateCcw, Search, X } from "lucide-react";
+import { Button, cx, Field, Input, Select } from "@/components/ui";
+import {
+  Callout, FormFooter, FormPage, FormSection, LineItemsTable, MoneySummary, SectionCard, StatusPill, SummaryRows, li, type StatusSemantic,
+} from "@/components/patterns";
 import {
   boqTotals, splitMakes, statusForScore, summariseRows, supplyFromCost, type MatchStatus, type RowMatch,
 } from "@/lib/boq-import";
@@ -83,13 +87,21 @@ function priceRow(r: RowState, byId: ReadonlyMap<number, ImportCatalogItem>, mar
   return { it, cost, suggested, supply, erection, qty: toNum(r.qty) };
 }
 
-const STATUS_CHIP: Record<MatchStatus | "chosen" | "free", { tone: Tone; label: string }> = {
-  matched: { tone: "green", label: "Matched" },
-  check: { tone: "amber", label: "Check" },
-  none: { tone: "gray", label: "No match" },
-  chosen: { tone: "blue", label: "Chosen" },
-  free: { tone: "gray", label: "Free text" },
+
+const STATUS_CHIP: Record<MatchStatus | "chosen" | "free", { semantic: StatusSemantic; label: string }> = {
+  matched: { semantic: "success", label: "Matched" },
+  check: { semantic: "warning", label: "Check" },
+  none: { semantic: "neutral", label: "No match" },
+  chosen: { semantic: "info", label: "Chosen" },
+  free: { semantic: "neutral", label: "Free text" },
 };
+
+/** Phone card layout for a table cell: drop the table cell box and padding below 640px. */
+const pc = "max-sm:block max-sm:border-0! max-sm:p-0!";
+/** Visible label above an input, phones only (the column header does the job from 640px). */
+function PhoneLabel({ children }: { children: ReactNode }) {
+  return <span className="mb-0.5 block text-left text-caption text-ink-soft sm:hidden">{children}</span>;
+}
 
 export function BoqReview({ data, catalog, showCost, defaultMarkup, defaultGst, today, canTemplate, onReset }: {
   data: AnalyseResult;
@@ -226,193 +238,243 @@ export function BoqReview({ data, catalog, showCost, defaultMarkup, defaultGst, 
   const sheetCounts = useMemo(() => data.sheets.map((_, si) => rows.filter((r) => r.sheet === si).length), [rows, data.sheets]);
   const errorText = clientError ?? (createState.status === "error" ? createState.message : null);
 
+
+  const filters: { id: Filter; label: string; count: number; attention?: boolean }[] = [
+    { id: "all", label: "All rows", count: summary.items },
+    { id: "check", label: "Needs a check", count: summary.check, attention: summary.check > 0 },
+    { id: "unmatched", label: "Priced by hand", count: summary.unmatched },
+    { id: "excluded", label: "Excluded", count: summary.excluded },
+  ];
+  const colCount = showCost ? 11 : 10;
+  const multiSheet = data.sheets.length > 1;
+  const footerNote = (
+    <div className="flex items-baseline gap-x-3 max-sm:justify-between sm:flex-col">
+      <span className="font-display text-heading font-bold tabular-nums text-ink">{money(totals.grand)}</span>
+      <span>{totals.lineCount} line{totals.lineCount === 1 ? "" : "s"} in the quotation · incl. GST{showCost && totals.supply > 0 ? ` · margin ${totals.marginPct}%` : ""}</span>
+    </div>
+  );
+
   return (
-    <div className="space-y-6">
-      {/* header: file + quotation details */}
-      <Card
-        title={<span className="inline-flex items-center gap-2"><FileSpreadsheet className="h-4 w-4 text-ink-faint" aria-hidden />{data.fileName}</span>}
-        subtitle={`For ${data.customer.name}. ${summary.items} item rows on ${data.sheets.length} sheet${data.sheets.length === 1 ? "" : "s"}.`}
-        actions={<Button type="button" variant="secondary" size="sm" onClick={onReset}><RotateCcw className="h-3.5 w-3.5" aria-hidden />Upload another file</Button>}
-      >
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <Field label="Project name" className="lg:col-span-2">
+    <FormPage
+      width="wide"
+      eyebrow="Step 2 of 2"
+      title="Check the matches"
+      subtitle={`${data.fileName} for ${data.customer.name}. ${summary.items} item rows on ${data.sheets.length} sheet${data.sheets.length === 1 ? "" : "s"}.`}
+      back={{ href: "/quotations", label: "Quotations" }}
+    >
+      <div className="space-y-4">
+        <FormSection
+          title="Quotation details"
+          columns={3}
+          aside={<Button type="button" variant="secondary" size="sm" onClick={onReset}><RotateCcw className="icon-sm" aria-hidden /> Upload another file</Button>}
+        >
+          <Field label="Project name">
             <Input value={projectName} maxLength={200} onChange={(e) => setProjectName(e.target.value)} />
           </Field>
-          <Field label="Site location" className="lg:col-span-1">
+          <Field label="Site location">
             <Input value={siteLocation} maxLength={200} onChange={(e) => setSiteLocation(e.target.value)} />
           </Field>
-          {showCost && (
-            <Field label="Markup % on cost" hint="Applies to every auto-priced row">
-              <Input type="number" inputMode="decimal" min={0} max={500} step="0.5" value={markupText} onChange={(e) => setMarkupText(e.target.value)} />
-            </Field>
-          )}
-          <Field label="GST %">
-            <Input type="number" inputMode="decimal" min={0} max={100} step="0.5" value={gstText} onChange={(e) => setGstText(e.target.value)} />
-          </Field>
           {makes.length > 0 && (
-            <Field label="Preferred make" className="sm:col-span-2 lg:col-span-2" hint="Switches matched rows to this make where the catalogue has it">
+            <Field label="Preferred make" hint="Switches matched rows to this make where the catalogue has it">
               <Select value={preferredMake} onChange={(e) => applyPreferredMake(e.target.value)}>
                 <option value="">No preference</option>
                 {makes.map((m) => <option key={m} value={m}>{m}</option>)}
               </Select>
             </Field>
           )}
-        </div>
+          {showCost && (
+            <Field label="Markup % on cost" hint="Applies to every auto-priced row">
+              <Input type="number" inputMode="decimal" min={0} max={500} step="0.5" value={markupText} className="text-right" onChange={(e) => setMarkupText(e.target.value)} />
+            </Field>
+          )}
+          <Field label="GST %">
+            <Input type="number" inputMode="decimal" min={0} max={100} step="0.5" value={gstText} className="text-right" onChange={(e) => setGstText(e.target.value)} />
+          </Field>
+        </FormSection>
+
         {data.warnings.length > 0 && (
-          <ul className="mt-4 space-y-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/60 dark:text-amber-200">
-            {data.warnings.map((w) => (
-              <li key={w} className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />{w}</li>
-            ))}
-          </ul>
+          <Callout tone="warning" title={`${data.warnings.length} thing${data.warnings.length === 1 ? "" : "s"} to know about this file`}>
+            <ul className="list-disc space-y-0.5 pl-5">{data.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
+          </Callout>
         )}
-      </Card>
 
-      {/* summary chips + filter */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2" aria-live="polite">
-          <Badge tone="green" dot>{summary.matched} matched</Badge>
-          <Badge tone="amber" dot>{summary.check} to check</Badge>
-          <Badge tone="red" dot>{summary.unmatched} unmatched</Badge>
-          <Badge tone="gray" dot>{summary.excluded} excluded</Badge>
-        </div>
-        <label className="flex items-center gap-2 text-sm text-ink-soft">
-          <span>Show</span>
-          <Select value={filter} onChange={(e) => setFilter(e.target.value as Filter)} className="h-8 w-auto py-1 text-[13px]">
-            <option value="all">All rows</option>
-            <option value="check">Needs a check</option>
-            <option value="unmatched">Unmatched (priced by hand)</option>
-            <option value="excluded">Excluded</option>
-          </Select>
-        </label>
-      </div>
-
-      {/* sheet tabs */}
-      <div role="tablist" aria-label="Sheets in this BOQ" className="-mb-px flex gap-1 overflow-x-auto border-b border-line">
-        {data.sheets.map((s, i) => (
-          <button
-            key={s.name + i}
-            id={`${tabsId}-tab${i}`}
-            type="button"
-            role="tab"
-            aria-selected={i === tab}
-            aria-controls={`${tabsId}-panel`}
-            onClick={() => { setTab(i); setPickerFor(null); }}
-            className={cx(
-              "shrink-0 whitespace-nowrap rounded-t-lg border border-b-0 px-3 py-2 text-sm font-medium transition-colors",
-              i === tab ? "border-line bg-surface text-ink" : "border-transparent text-ink-soft hover:bg-muted hover:text-ink",
-            )}
-          >
-            {s.name} <span className="ml-1 rounded-full bg-muted px-1.5 text-xs text-ink-soft">{sheetCounts[i]}</span>
-          </button>
-        ))}
-      </div>
-
-      <div id={`${tabsId}-panel`} role="tabpanel" aria-labelledby={`${tabsId}-tab${tab}`}>
-        {sheet?.headerRow != null && (
-          <p className="mb-2 text-xs text-ink-soft">Header found on row {sheet.headerRow}. Row numbers below are the Excel row numbers.</p>
-        )}
-        {visible.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-line-strong bg-surface px-6 py-10 text-center text-sm text-ink-soft">No rows on this sheet match the filter.</div>
-        ) : (
-          <Table tall>
-            <thead>
-              <tr>
-                <Th className="w-10"><span className="sr-only">Include</span></Th>
-                <Th>Row</Th>
-                <Th>Ref</Th>
-                <Th>Description</Th>
-                <Th className="text-right">Qty</Th>
-                <Th>Unit</Th>
-                <Th>Matched item</Th>
-                {showCost && <Th>Latest cost</Th>}
-                <Th className="text-right">Supply rate</Th>
-                <Th className="text-right">Erection rate</Th>
-                <Th className="text-right">Amount</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((e) => e.kind === "item" ? (
-                <ItemRow
-                  key={rows[e.index].key}
-                  index={e.index}
-                  row={rows[e.index]}
-                  markup={markup}
-                  showCost={showCost}
-                  today={today}
-                  catalog={catalog}
-                  hay={hay}
-                  byId={byId}
-                  pickerOpen={pickerFor === rows[e.index].key}
-                  onOpenPicker={setPickerFor}
-                  onPick={pickItem}
-                  onUpdate={update}
-                />
-              ) : (
-                <tr key={`${e.kind}-${e.row.rowNo}`}>
-                  <Td className={cx(e.kind === "section" ? "font-semibold text-ink" : "text-ink-faint")} colSpan={showCost ? 11 : 10}>
-                    <span className="mr-2 font-mono text-xs font-normal text-ink-faint">Row {e.row.rowNo}</span>
-                    {e.kind === "section"
-                      ? <>{e.row.section ?? e.row.description}</>
-                      : <span className="text-xs">Skipped: {e.row.note ?? "not a BOQ item"}. <span className="italic">{e.row.description.replace(/\s*\n\s*/g, " ").slice(0, 110)}{e.row.description.length > 110 ? "…" : ""}</span></span>}
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        )}
-      </div>
-
-      {/* totals and actions */}
-      <Card title="Totals" subtitle="Only ticked rows with a quantity above zero are counted">
-        <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
-            <Total label="Supply" value={money(totals.supply)} />
-            <Total label="Erection" value={money(totals.erection)} />
-            <Total label={`GST ${gstPct}%`} value={money(totals.tax)} />
-            <Total label="Grand total" value={money(totals.grand)} strong />
-            {showCost && <Total label="Material cost" value={money(totals.cost)} />}
-            {showCost && <Total label="Material margin" value={`${totals.marginPct}%`} />}
-            <Total label="Lines in quotation" value={String(totals.lineCount)} />
-          </dl>
-          <div className="flex flex-col gap-3 lg:w-80">
-            {canTemplate && (
-              <div className="rounded-lg border border-line p-3">
-                <label className="flex items-center gap-2 text-sm font-medium text-ink">
-                  <input type="checkbox" checked={saveTemplate} onChange={(e) => setSaveTemplate(e.target.checked)} className="h-4 w-4" />
-                  Also save as a BOQ template
-                </label>
-                <label className="mt-2 block">
-                  <span className="sr-only">Template name</span>
-                  <Input value={templateName} maxLength={160} onChange={(e) => setTemplateName(e.target.value)} placeholder="Template name" />
-                </label>
-                <p className="mt-1.5 text-xs text-ink-soft">Keeps the rows, sections and matched items with quantity 0, for the next similar job.</p>
+        <section className="rounded-2xl border border-line bg-surface shadow-sm" aria-labelledby="boq-rows-title">
+          <header className="space-y-3 border-b border-line px-4 py-3 sm:px-5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-2">
+                <FileSpreadsheet className="icon-sm text-ink-faint" aria-hidden />
+                <h2 id="boq-rows-title" className="truncate text-subheading text-ink">BOQ rows</h2>
               </div>
+              <p className="flex flex-wrap items-center gap-1.5" aria-live="polite">
+                <StatusPill semantic="success" label={`${summary.matched} matched`} />
+                <StatusPill semantic="warning" label={`${summary.check} to check`} />
+                <StatusPill semantic="danger" label={`${summary.unmatched} unmatched`} />
+                <StatusPill semantic="neutral" label={`${summary.excluded} excluded`} />
+              </p>
+            </div>
+            <ClientPills label="Show rows" items={filters} active={filter} onChange={setFilter} />
+          </header>
+
+          {multiSheet && (
+            <div role="tablist" aria-label="Sheets in this BOQ" className="flex gap-1 overflow-x-auto border-b border-line px-2 sm:px-3">
+              {data.sheets.map((s, i) => {
+                const on = i === tab;
+                return (
+                  <button
+                    key={s.name + i}
+                    id={`${tabsId}-tab${i}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={on}
+                    aria-controls={`${tabsId}-panel`}
+                    onClick={() => { setTab(i); setPickerFor(null); }}
+                    className={cx(
+                      "-mb-px inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 text-sm font-medium transition-colors",
+                      on ? "border-brand-600 text-brand-700 dark:text-brand-300" : "border-transparent text-ink-soft hover:border-line-strong hover:text-ink",
+                    )}
+                  >
+                    {s.name}
+                    <span className={cx("rounded-full px-1.5 text-[11px] leading-[18px] tabular-nums",
+                      on ? "bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-200" : "bg-muted text-ink-soft")}>{sheetCounts[i]}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div id={`${tabsId}-panel`} role={multiSheet ? "tabpanel" : undefined} aria-labelledby={multiSheet ? `${tabsId}-tab${tab}` : undefined}>
+            {sheet?.headerRow != null && (
+              <p className="px-4 pt-3 text-caption text-ink-soft sm:px-5">Header found on row {sheet.headerRow}. Row numbers below are the Excel row numbers.</p>
             )}
-            {errorText && (
-              <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/60 dark:text-red-200">
-                <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />{errorText}
-              </div>
-            )}
-            <Button type="button" size="lg" onClick={() => submit("quote")} disabled={creating}>
-              {creating ? "Creating…" : "Create quotation"}
-            </Button>
-            {canTemplate && (
-              <Button type="button" variant="secondary" onClick={() => submit("template")} disabled={creating || !templateName.trim()}>
-                Save as BOQ template only
-              </Button>
+            {visible.length === 0 ? (
+              <p className="px-4 py-8 text-center text-sm text-ink-soft">No rows on this sheet match this filter. Choose &ldquo;All rows&rdquo; to see everything.</p>
+            ) : (
+              <LineItemsTable
+                caption="BOQ rows"
+                className={cx(
+                  "mt-2 max-h-[calc(100dvh-14rem)] rounded-none! border-x-0! border-b-0!",
+                  // Phones: each row becomes a card.
+                  "max-sm:max-h-none max-sm:[&_table]:block max-sm:[&_table]:min-w-0! max-sm:[&_tbody]:block max-sm:[&_thead]:hidden",
+                )}
+              >
+                <thead>
+                  <tr>
+                    <th className="w-10"><span className="sr-only">Include</span></th>
+                    <th className="w-12">Row</th>
+                    <th className="w-16">Ref</th>
+                    <th>Description</th>
+                    <th className={cx(li.num, "w-24")}>Qty</th>
+                    <th className="w-20">Unit</th>
+                    <th>Matched item</th>
+                    {showCost && <th>Latest cost</th>}
+                    <th className={cx(li.num, "w-28")}>Supply rate</th>
+                    <th className={cx(li.num, "w-24")}>Erection rate</th>
+                    <th className={cx(li.num, "w-28")}>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map((e) => e.kind === "item" ? (
+                    <ItemRow
+                      key={rows[e.index].key}
+                      index={e.index}
+                      row={rows[e.index]}
+                      markup={markup}
+                      showCost={showCost}
+                      today={today}
+                      catalog={catalog}
+                      hay={hay}
+                      byId={byId}
+                      pickerOpen={pickerFor === rows[e.index].key}
+                      onOpenPicker={setPickerFor}
+                      onPick={pickItem}
+                      onUpdate={update}
+                    />
+                  ) : (
+                    <tr key={`${e.kind}-${e.row.rowNo}`} className="max-sm:block">
+                      <td colSpan={colCount} className={cx("max-sm:block max-sm:px-4!", e.kind === "section" ? "bg-surface-2 py-2! font-semibold text-ink" : "text-ink-faint")}>
+                        <span className="mr-2 text-caption font-normal tabular-nums text-ink-faint">Row {e.row.rowNo}</span>
+                        {e.kind === "section"
+                          ? <>{e.row.section ?? e.row.description}</>
+                          : <span className="text-caption">Skipped: {e.row.note ?? "not a BOQ item"}. <span className="italic">{e.row.description.replace(/\s*\n\s*/g, " ").slice(0, 110)}{e.row.description.length > 110 ? "…" : ""}</span></span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </LineItemsTable>
             )}
           </div>
+        </section>
+
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
+          {canTemplate ? (
+            <SectionCard title="Save for the next similar job" className="h-fit">
+              <label className="flex items-center gap-2 text-sm font-medium text-ink">
+                <input type="checkbox" checked={saveTemplate} onChange={(e) => setSaveTemplate(e.target.checked)} className="icon-sm" />
+                Also save as a BOQ template
+              </label>
+              <Field label="Template name" className="mt-3" hint="Keeps the rows, sections and matched items with quantity 0.">
+                <Input value={templateName} maxLength={160} onChange={(e) => setTemplateName(e.target.value)} />
+              </Field>
+            </SectionCard>
+          ) : <div className="max-lg:hidden" />}
+          <SectionCard title="Totals" description="Only ticked rows with a quantity above zero are counted." className="h-fit">
+            <MoneySummary
+              rows={[{ label: "Supply", value: totals.supply }, { label: "Erection", value: totals.erection }]}
+              tax={totals.tax} taxLabel={`GST (${gstPct}%)`}
+              total={totals.grand} totalLabel="Grand total"
+            />
+            {showCost && (
+              <div className="mt-4 rounded-xl bg-muted p-3">
+                <p className="mb-2 text-overline uppercase text-ink-faint">Internal</p>
+                <SummaryRows rows={[["Material cost", money(totals.cost)], ["Material margin", `${totals.marginPct}%`], ["Lines in quotation", totals.lineCount]]} />
+              </div>
+            )}
+          </SectionCard>
         </div>
-      </Card>
-    </div>
+
+        {errorText && <Callout tone="danger" title="Nothing was created yet">{errorText}</Callout>}
+
+        <FormFooter note={footerNote}>
+          {canTemplate && (
+            <Button type="button" variant="secondary" onClick={() => submit("template")} disabled={creating || !templateName.trim()}>
+              Save as template only
+            </Button>
+          )}
+          <Button type="button" onClick={() => submit("quote")} disabled={creating}>
+            {creating ? "Creating…" : "Create quotation"}
+          </Button>
+        </FormFooter>
+      </div>
+    </FormPage>
   );
 }
 
-function Total({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+/** Client-side segmented filter, styled like FilterPills (which is link based). */
+function ClientPills<T extends string>({ items, active, onChange, label }: {
+  items: { id: T; label: string; count: number; attention?: boolean }[]; active: T; onChange: (id: T) => void; label: string;
+}) {
   return (
-    <div className="min-w-0">
-      <dt className="text-xs text-ink-soft">{label}</dt>
-      <dd className={cx("tabular-nums text-ink", strong ? "text-lg font-bold" : "font-medium")}>{value}</dd>
+    <div role="group" aria-label={label} className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+      {items.map((it) => {
+        const on = it.id === active;
+        return (
+          <button
+            key={it.id}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onChange(it.id)}
+            className={cx(
+              "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors",
+              on ? "border-brand-600 bg-brand-600 text-white shadow-xs"
+                : it.attention ? "border-warning-line bg-warning-soft text-warning hover:border-warning"
+                  : "border-line bg-surface text-ink-soft hover:border-line-strong hover:text-ink",
+            )}
+          >
+            {it.label}
+            <span className={cx("rounded-full px-1.5 text-[11px] leading-[18px] tabular-nums", on ? "bg-white/20 text-white" : "bg-muted text-ink-soft")}>{it.count}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -426,6 +488,7 @@ function costText(it: ImportCatalogItem, today: string) {
   const stale = it.costSource === "purchase" && isCostStale(it.costDate, it.volatile, today);
   return { text: parts.join(" · "), stale, age: stale ? costAgeDays(it.costDate, today) : null };
 }
+
 
 const ItemRow = memo(function ItemRow({
   index, row, markup, showCost, today, catalog, hay, byId, pickerOpen, onOpenPicker, onPick, onUpdate,
@@ -452,39 +515,52 @@ const ItemRow = memo(function ItemRow({
   const cost = it && showCost && it.cost != null ? costText(it, today) : null;
   const amount = priced.qty * (priced.supply + priced.erection);
   return (
-    <tr className={cx(!row.include && "opacity-60")}>
-      <Td>
-        <input
-          type="checkbox"
-          className="mt-1 h-4 w-4"
-          checked={row.include}
-          aria-label={`Include ${label}`}
-          onChange={(e) => onUpdate(index, { include: e.target.checked, includeTouched: true })}
-        />
-      </Td>
-      <Td className="font-mono text-xs text-ink-faint">{row.rowNo}</Td>
-      <Td className="whitespace-nowrap font-mono text-xs">{row.ref ?? "-"}</Td>
-      <Td>
-        <div className="w-[24rem] max-w-[70vw] whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink">{row.description}</div>
-        {row.note && <div className="mt-1 text-xs text-ink-faint">{row.note}</div>}
-      </Td>
-      <Td className="text-right">
-        <Input
-          type="number" inputMode="decimal" min={0} step="any" className="h-8 w-24 text-right"
-          value={row.qty}
-          aria-label={`Quantity for ${label}`}
-          onChange={(e) => {
-            const v = e.target.value;
-            onUpdate(index, (r) => ({ qty: v, include: r.includeTouched ? r.include : toNum(v) > 0 }));
-          }}
-        />
-        {zeroQty && !row.include && <div className="mt-1 whitespace-nowrap text-[11px] text-ink-soft">zero qty, excluded</div>}
-      </Td>
-      <Td>
-        <Input className="h-8 w-20" maxLength={20} value={row.unit} placeholder={it?.uom ?? "Nos"} aria-label={`Unit for ${label}`} onChange={(e) => onUpdate(index, { unit: e.target.value })} />
-      </Td>
-      <Td>
-        <div className="w-[17rem]">
+    <tr className={cx(
+      "max-sm:grid max-sm:grid-cols-2 max-sm:gap-x-3 max-sm:gap-y-2 max-sm:border-b max-sm:border-line max-sm:px-4 max-sm:py-3",
+      !row.include && "opacity-60",
+    )}>
+      <td className={cx(pc, "max-sm:col-span-2")}>
+        <label className="flex items-center gap-2 pt-1.5 max-sm:pt-0">
+          <input
+            type="checkbox"
+            className="icon-sm"
+            checked={row.include}
+            aria-label={`Include ${label}`}
+            onChange={(e) => onUpdate(index, { include: e.target.checked, includeTouched: true })}
+          />
+          <span className="text-caption text-ink-soft sm:hidden" aria-hidden>Include · Excel row {row.rowNo}{row.ref ? ` · Ref ${row.ref}` : ""}</span>
+        </label>
+      </td>
+      <td className="pt-2.5! text-caption tabular-nums text-ink-faint max-sm:hidden">{row.rowNo}</td>
+      <td className="pt-2.5! whitespace-nowrap text-caption max-sm:hidden">{row.ref ?? "-"}</td>
+      <td className={cx(pc, "max-sm:col-span-2")}>
+        <div className="w-[24rem] whitespace-pre-wrap break-words pt-1 text-[13px] leading-relaxed text-ink max-sm:w-auto">{row.description}</div>
+        {row.note && <div className="mt-1 text-caption text-ink-faint">{row.note}</div>}
+      </td>
+      <td className={cx(pc, li.num, "max-sm:order-1")}>
+        <label className="block">
+          <PhoneLabel>Qty</PhoneLabel>
+          <input
+            type="number" inputMode="decimal" min={0} step="any"
+            className={cx(li.numInput, "w-24 max-sm:w-full max-sm:border-line", !zeroQty && row.include && "font-semibold text-brand-700 dark:text-brand-300")}
+            value={row.qty}
+            aria-label={`Quantity for ${label}`}
+            onChange={(e) => {
+              const v = e.target.value;
+              onUpdate(index, (r) => ({ qty: v, include: r.includeTouched ? r.include : toNum(v) > 0 }));
+            }}
+          />
+        </label>
+        {zeroQty && !row.include && <div className="mt-1 whitespace-nowrap px-2 text-[11px] text-ink-soft max-sm:text-left">Zero quantity, excluded</div>}
+      </td>
+      <td className={cx(pc, "max-sm:order-1")}>
+        <label className="block">
+          <PhoneLabel>Unit</PhoneLabel>
+          <input className={cx(li.input, "w-20 max-sm:w-full max-sm:border-line")} maxLength={20} value={row.unit} placeholder={it?.uom ?? "Nos"} aria-label={`Unit for ${label}`} onChange={(e) => onUpdate(index, { unit: e.target.value })} />
+        </label>
+      </td>
+      <td className={cx(pc, "max-sm:col-span-2")}>
+        <div className="w-[17rem] pt-1 max-sm:w-auto max-sm:rounded-xl max-sm:bg-surface-2 max-sm:p-2.5">
           {pickerOpen ? (
             <ItemSearch catalog={catalog} hay={hay} onPick={(id) => onPick(index, id)} onCancel={() => onOpenPicker(null)} />
           ) : (
@@ -494,20 +570,26 @@ const ItemRow = memo(function ItemRow({
                   {it ? (
                     <>
                       <div className="text-[13px] font-medium text-ink">{it.name}</div>
-                      <div className="text-xs text-ink-soft">{[it.code, it.size, it.make].filter(Boolean).join(" · ")}</div>
+                      <div className="text-caption text-ink-soft">{[it.code, it.size, it.make].filter(Boolean).join(" · ")}</div>
                     </>
                   ) : <div className="text-[13px] text-ink-soft">No catalogue item. Price this line by hand.</div>}
                 </div>
-                <Badge tone={chip.tone} className="shrink-0">{chip.label}{it && !row.chosenByUser ? ` ${row.score}` : ""}</Badge>
+                <StatusPill semantic={chip.semantic} label={`${chip.label}${it && !row.chosenByUser ? ` ${row.score}` : ""}`} className="shrink-0" />
               </div>
-              {row.reason && !row.chosenByUser && <div className="mt-1 text-xs text-ink-faint">{row.reason}</div>}
+              {row.reason && !row.chosenByUser && <div className="mt-1 text-caption text-ink-faint">{row.reason}</div>}
+              {cost && (
+                <div className="mt-1 text-caption text-ink-soft sm:hidden">
+                  Latest cost {cost.text}
+                  {cost.stale && <span className="ml-1 inline-block"><StatusPill semantic="warning" label={`Stale, ${cost.age} days`} noDot /></span>}
+                </div>
+              )}
               {quickPicks.length > 0 && (
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {quickPicks.map((a) => {
                     const alt = byId.get(a.itemId);
                     return alt ? (
                       <button key={a.itemId} type="button" onClick={() => onPick(index, a.itemId)}
-                        className="max-w-full truncate rounded-md border border-line px-1.5 py-0.5 text-left text-[11px] text-ink-soft hover:border-line-strong hover:text-ink"
+                        className="max-w-full truncate rounded-md border border-line bg-surface px-1.5 py-0.5 text-left text-[11px] text-ink-soft hover:border-line-strong hover:text-ink max-sm:py-1.5"
                         title={`Use ${alt.name}`}>
                         {alt.name}{alt.make ? `, ${alt.make}` : ""}
                       </button>
@@ -516,58 +598,61 @@ const ItemRow = memo(function ItemRow({
                 </div>
               )}
               <div className="mt-1.5 flex gap-1">
-                <Button type="button" variant="ghost" size="sm" className="h-7 px-2" onClick={() => onOpenPicker(row.key)} aria-label={`Change item for ${label}`}>
-                  <Search className="h-3.5 w-3.5" aria-hidden />{it ? "Change" : "Find item"}
+                <Button type="button" variant="ghost" size="sm" className="h-7 px-2 max-sm:h-9" onClick={() => onOpenPicker(row.key)} aria-label={`Change item for ${label}`}>
+                  <Search className="icon-xs" aria-hidden />{it ? "Change" : "Find item"}
                 </Button>
                 {it && (
-                  <Button type="button" variant="ghost" size="sm" className="h-7 px-2" onClick={() => onPick(index, null)} aria-label={`Clear item for ${label}`}>
-                    <X className="h-3.5 w-3.5" aria-hidden />Clear
+                  <Button type="button" variant="ghost" size="sm" className="h-7 px-2 max-sm:h-9" onClick={() => onPick(index, null)} aria-label={`Clear item for ${label}`}>
+                    <X className="icon-xs" aria-hidden />Clear
                   </Button>
                 )}
               </div>
             </>
           )}
         </div>
-      </Td>
+      </td>
       {showCost && (
-        <Td>
+        <td className="max-sm:hidden">
           {cost ? (
-            <div className="w-44 text-xs text-ink-soft">
+            <div className="w-44 pt-1.5 text-caption text-ink-soft">
               {cost.text}
-              {cost.stale && (
-                <span className="ml-1 inline-block rounded-full bg-amber-50 px-1.5 py-px text-[11px] font-medium text-amber-800 ring-1 ring-inset ring-amber-200 dark:bg-amber-950/70 dark:text-amber-300 dark:ring-amber-900">
-                  Stale, {cost.age} days
-                </span>
-              )}
+              {cost.stale && <span className="ml-1 inline-block"><StatusPill semantic="warning" label={`Stale, ${cost.age} days`} noDot /></span>}
             </div>
-          ) : <span className="text-xs text-ink-faint">-</span>}
-        </Td>
+          ) : <span className="inline-block pt-1.5 text-caption text-ink-faint">-</span>}
+        </td>
       )}
-      <Td className="text-right">
-        <Input
-          type="number" inputMode="decimal" min={0} step="any" className="h-8 w-28 text-right"
-          value={row.supply ?? numText(priced.suggested)}
-          aria-label={`Supply rate for ${label}`}
-          onChange={(e) => onUpdate(index, { supply: e.target.value })}
-        />
+      <td className={cx(pc, li.num, "max-sm:order-1")}>
+        <label className="block">
+          <PhoneLabel>Supply rate</PhoneLabel>
+          <input
+            type="number" inputMode="decimal" min={0} step="any" className={cx(li.numInput, "w-28 max-sm:w-full max-sm:border-line")}
+            value={row.supply ?? numText(priced.suggested)}
+            aria-label={`Supply rate for ${label}`}
+            onChange={(e) => onUpdate(index, { supply: e.target.value })}
+          />
+        </label>
         {row.supply != null && it && (
-          <button type="button" className="mt-1 whitespace-nowrap text-[11px] text-brand-700 hover:underline dark:text-brand-300" onClick={() => onUpdate(index, { supply: null })}>
+          <button type="button" className="mt-1 whitespace-nowrap px-2 text-[11px] font-medium text-brand-700 hover:underline dark:text-brand-300" onClick={() => onUpdate(index, { supply: null })}>
             Use suggested {money(priced.suggested)}
           </button>
         )}
-        {row.sourceRate != null && <div className="mt-1 whitespace-nowrap text-[11px] text-ink-faint">Sheet rate {money(row.sourceRate)}</div>}
-      </Td>
-      <Td className="text-right">
-        <Input
-          type="number" inputMode="decimal" min={0} step="any" className="h-8 w-24 text-right"
-          value={row.erection ?? numText(it?.erectionRate ?? 0)}
-          aria-label={`Erection rate for ${label}`}
-          onChange={(e) => onUpdate(index, { erection: e.target.value })}
-        />
-      </Td>
-      <Td className="whitespace-nowrap text-right tabular-nums">
+        {row.sourceRate != null && <div className="mt-1 whitespace-nowrap px-2 text-[11px] text-ink-faint max-sm:text-left">Sheet rate {money(row.sourceRate)}</div>}
+      </td>
+      <td className={cx(pc, li.num, "max-sm:order-1")}>
+        <label className="block">
+          <PhoneLabel>Erection rate</PhoneLabel>
+          <input
+            type="number" inputMode="decimal" min={0} step="any" className={cx(li.numInput, "w-24 max-sm:w-full max-sm:border-line")}
+            value={row.erection ?? numText(it?.erectionRate ?? 0)}
+            aria-label={`Erection rate for ${label}`}
+            onChange={(e) => onUpdate(index, { erection: e.target.value })}
+          />
+        </label>
+      </td>
+      <td className={cx(pc, li.num, "pt-2.5! whitespace-nowrap font-medium max-sm:order-1 max-sm:col-span-2 max-sm:flex max-sm:justify-between")}>
+        <span className="text-caption font-normal text-ink-soft sm:hidden">Amount</span>
         {row.include && priced.qty > 0 ? money(amount) : <span className="text-ink-faint">-</span>}
-      </Td>
+      </td>
     </tr>
   );
 });

@@ -3,7 +3,7 @@ import { cx } from "@/components/ui";
 /** Accessible "delivered X/Y" progress bar (server-safe). */
 export function LineProgress({ done, total, className }: { done: number; total: number; className?: string }) {
   const pctDone = total > 0 ? Math.round((done / total) * 100) : 0;
-  const tone = total > 0 && done >= total ? "bg-emerald-500" : done > 0 ? "bg-amber-500" : "bg-ink-faint";
+  const tone = total > 0 && done >= total ? "bg-success" : done > 0 ? "bg-warning" : "bg-ink-faint";
   return (
     <div className={cx("min-w-28", className)}>
       <div className="mb-1 flex items-center justify-between gap-2 text-xs">

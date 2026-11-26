@@ -1,6 +1,7 @@
 /** Rule 11 approval panel on the quotation page: status, reasons, history and the request / approve / reject forms. */
 import { ShieldCheck } from "lucide-react";
-import { Badge, Card, Field, Textarea, type Tone } from "@/components/ui";
+import { Field, Textarea } from "@/components/ui";
+import { ActivityFeed, SectionCard, StatusPill, type StatusSemantic } from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { fmtDateTime } from "@/lib/format";
 import { APPROVAL_MODE_LABEL, parseApprovalStatus, type ApprovalMode } from "@/lib/pricing";
@@ -29,13 +30,14 @@ type Props = {
 const HISTORY_LABEL: Record<string, string> = {
   pending: "Approval requested", approved: "Approved", rejected: "Not approved", not_required: "Approval no longer needed",
 };
+const HISTORY_SEMANTIC: Record<string, StatusSemantic> = { pending: "warning", approved: "success", rejected: "danger", not_required: "neutral" };
 
-export function approvalChip(status: string, needs: boolean): { label: string; tone: Tone } {
+export function approvalChip(status: string, needs: boolean): { label: string; semantic: StatusSemantic } {
   const s = parseApprovalStatus(status);
-  if (s === "pending") return { label: "Awaiting approval", tone: "amber" };
-  if (s === "approved") return { label: "Approved", tone: "green" };
-  if (s === "rejected") return { label: "Not approved", tone: "red" };
-  return needs ? { label: "Approval needed", tone: "amber" } : { label: "No approval needed", tone: "gray" };
+  if (s === "pending") return { label: "Awaiting approval", semantic: "warning" };
+  if (s === "approved") return { label: "Approved", semantic: "success" };
+  if (s === "rejected") return { label: "Not approved", semantic: "danger" };
+  return needs ? { label: "Approval needed", semantic: "warning" } : { label: "No approval needed", semantic: "neutral" };
 }
 
 export function ApprovalPanel(p: Props) {
@@ -53,7 +55,7 @@ export function ApprovalPanel(p: Props) {
   }
 
   return (
-    <Card title="Approval" icon={ShieldCheck} actions={<Badge tone={chip.tone} dot>{chip.label}</Badge>}>
+    <SectionCard id="approval" title="Approval" icon={ShieldCheck} actions={<StatusPill semantic={chip.semantic} label={chip.label} />}>
       <div className="space-y-3 text-sm">
         {needs ? (
           <ul className="list-disc space-y-0.5 pl-5 text-ink-soft">
@@ -64,16 +66,16 @@ export function ApprovalPanel(p: Props) {
             {p.mode === "off" ? "Approval before sending is switched off in Settings." : "Prices meet the margin policy, so this quotation can be sent without approval."}
           </p>
         )}
-        {trail.length > 0 && <p className="text-xs text-ink-soft">{trail.join(", ")}.</p>}
+        {trail.length > 0 && <p className="text-caption text-ink-soft">{trail.join(", ")}.</p>}
         {p.approvalNote && (status !== "not_required" || needs) && (
-          <p className="whitespace-pre-line rounded-lg bg-muted p-2 text-xs text-ink"><span className="font-medium">Note: </span>{p.approvalNote}</p>
+          <p className="whitespace-pre-line rounded-lg bg-muted p-2.5 text-caption text-ink"><span className="font-medium">Note: </span>{p.approvalNote}</p>
         )}
-        {status === "pending" && !p.isAdmin && <p className="text-xs text-ink-soft">Sending, emailing and marking won are locked until an admin approves.</p>}
+        {status === "pending" && !p.isAdmin && <p className="text-caption text-ink-soft">Sending, emailing and marking won are locked until an admin approves.</p>}
 
         {showRequest && (
           <form action={requestApproval} className="space-y-2">
             <input type="hidden" name="id" value={p.quotationId} />
-            <Field label="Note for the approver" hint="Optional, e.g. why the price is lower than usual">
+            <Field label="Note for the approver" hint="Optional, for example why the price is lower than usual">
               <Textarea name="note" rows={2} maxLength={1000} className="min-h-16" />
             </Field>
             <SubmitButton className="w-full" pendingText="Requesting…">{status === "rejected" ? "Request approval again" : "Request approval"}</SubmitButton>
@@ -85,16 +87,16 @@ export function ApprovalPanel(p: Props) {
             <form action={approveQuotation} className="space-y-2">
               <input type="hidden" name="id" value={p.quotationId} />
               <Field label="Approval note" hint="Optional"><Textarea name="note" rows={2} maxLength={1000} className="min-h-16" /></Field>
-              <SubmitButton variant="success" className="w-full" pendingText="Approving…">Approve</SubmitButton>
+              <SubmitButton className="w-full" pendingText="Approving…">Approve prices</SubmitButton>
             </form>
-            <details className="rounded-lg border border-line p-3">
-              <summary className="cursor-pointer text-sm font-semibold text-red-700 dark:text-red-400">Reject</summary>
-              <form action={rejectQuotation} className="mt-3 space-y-2">
+            <details className="group rounded-lg border border-line">
+              <summary className="cursor-pointer select-none rounded-lg px-3 py-2 text-sm font-medium text-ink hover:bg-muted">Send back with a note</summary>
+              <form action={rejectQuotation} className="space-y-2 border-t border-line p-3">
                 <input type="hidden" name="id" value={p.quotationId} />
                 <Field label="What should sales change?" required>
                   <Textarea name="note" rows={2} required minLength={3} maxLength={1000} className="min-h-16" />
                 </Field>
-                <SubmitButton variant="danger" className="w-full" pendingText="Saving…">Reject with note</SubmitButton>
+                <SubmitButton variant="danger" className="w-full" pendingText="Saving…" confirm="Send this quotation back to sales as not approved?">Reject with note</SubmitButton>
               </form>
             </details>
           </div>
@@ -103,26 +105,25 @@ export function ApprovalPanel(p: Props) {
         {showDirectApprove && (
           <form action={approveQuotation}>
             <input type="hidden" name="id" value={p.quotationId} />
-            <SubmitButton variant="secondary" size="sm" className="w-full" pendingText="Approving…" confirm="Approve these prices now?">Approve now (admin)</SubmitButton>
+            <SubmitButton variant="secondary" size="sm" className="w-full" pendingText="Approving…" confirm="Approve these prices now as admin?">Approve now</SubmitButton>
           </form>
         )}
 
         {p.history.length > 0 && (
-          <details className="text-xs">
-            <summary className="cursor-pointer font-medium text-ink-soft">History ({p.history.length})</summary>
-            <ol className="mt-2 space-y-1.5 border-l border-line pl-3">
-              {p.history.map((h) => (
-                <li key={h.id} className="text-ink-soft">
-                  <span className="font-medium text-ink">{HISTORY_LABEL[h.status] ?? h.status}</span>
-                  {h.reason ? ` (${h.reason})` : ""} by {h.userName ?? "system"}, {fmtDateTime(h.at)}
-                  {h.note && <div className="whitespace-pre-line text-ink">“{h.note}”</div>}
-                </li>
-              ))}
-            </ol>
-          </details>
+          <div className="border-t border-line pt-3">
+            <p className="mb-2 text-overline uppercase text-ink-faint">History</p>
+            <ActivityFeed items={p.history.map((h) => ({
+              id: h.id,
+              title: <>{HISTORY_LABEL[h.status] ?? h.status}{h.reason ? <span className="text-ink-soft"> ({h.reason})</span> : null}</>,
+              by: h.userName ?? "System",
+              at: fmtDateTime(h.at),
+              semantic: HISTORY_SEMANTIC[h.status] ?? "neutral",
+              body: h.note ? <span className="whitespace-pre-line">“{h.note}”</span> : undefined,
+            }))} />
+          </div>
         )}
-        <p className="text-[11px] text-ink-faint">Policy: {APPROVAL_MODE_LABEL[p.mode]}.</p>
+        <p className="text-caption text-ink-faint">Policy: {APPROVAL_MODE_LABEL[p.mode]}.</p>
       </div>
-    </Card>
+    </SectionCard>
   );
 }

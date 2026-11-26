@@ -5,12 +5,9 @@ import { customers, items, projects, salesInvoiceLines, salesInvoices, salesOrde
 import { requireUser } from "@/lib/auth";
 import { fmtDate, money, qty, round2 } from "@/lib/format";
 import { amountInWords, getCompany } from "@/lib/billing";
-import { LinkButton } from "@/components/ui";
-import { PrintButton } from "../../../../orders/_components/print-button";
+import { DocNotes, DocSignature, DocTable, DocTotals, DocumentSheet, GstSummaryTable } from "@/components/patterns";
 
 export const metadata = { title: "Tax invoice" };
-
-const td = "border border-line px-2 py-1.5";
 
 export default async function InvoicePrintPage({ params }: { params: Promise<{ id: string }> }) {
   await requireUser("billing");
@@ -42,117 +39,72 @@ export default async function InvoicePrintPage({ params }: { params: Promise<{ i
     cur.tax = round2(cur.tax + (Number(l.amount) * r) / 100);
     byRate.set(r, cur);
   }
-  const rates = [...byRate.entries()].sort((a, b) => a[0] - b[0]);
+  const summary = [...byRate.entries()].sort((a, b) => a[0] - b[0]).map(([rate, v]) => {
+    const cgst = intra ? round2(v.tax / 2) : 0;
+    return { rate, taxable: v.taxable, cgst, sgst: intra ? round2(v.tax - cgst) : 0, igst: intra ? 0 : v.tax };
+  });
   const tax = Number(inv.taxAmount);
   const halfA = round2(tax / 2);
 
+  const facts: [string, string][] = [];
+  if (row.po) facts.push(["Buyer's PO", `${row.po}${row.poDate ? ` dated ${fmtDate(row.poDate)}` : ""}`]);
+  if (row.projectName) facts.push(["Project", row.projectName]);
+  if (row.site) facts.push(["Site", row.site]);
+  facts.push(["Place of supply", c.state || company.state || "-"], ["Tax", intra ? "CGST + SGST" : "IGST"]);
+
   return (
-    <>
-      <div className="no-print mb-4 flex flex-wrap items-center justify-between gap-2">
-        <LinkButton href={`/billing/invoices/${inv.id}`} variant="ghost">← Back to {inv.number}</LinkButton>
-        <PrintButton label="Print / Save PDF" />
-      </div>
-      {inv.status === "cancelled" && <p className="mb-2 text-center text-lg font-bold uppercase text-red-600">Cancelled</p>}
-      <article className="print-area mx-auto max-w-4xl rounded-xl border border-line bg-surface p-4 text-sm text-ink shadow-sm sm:p-8 print:max-w-none print:p-0">
-        <header className="flex flex-col gap-3 border-b border-line pb-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-brand-700 print:text-black">{company.name}</h1>
-            <p className="whitespace-pre-line text-ink-soft">{company.address}</p>
-            {company.gstin && <p>GSTIN: <strong>{company.gstin}</strong>{company.pan ? ` · PAN: ${company.pan}` : ""}</p>}
-            <p className="text-ink-soft">{[company.phone && `Ph: ${company.phone}`, company.email].filter(Boolean).join(" · ")}</p>
-          </div>
-          <div className="sm:text-right">
-            <p className="text-lg font-semibold uppercase tracking-wide">Tax Invoice</p>
-            <p>Invoice no: <strong>{inv.number}</strong></p>
-            <p>Date: {fmtDate(inv.invoiceDate)}</p>
-            <p>Due date: {fmtDate(inv.dueDate)}</p>
-          </div>
-        </header>
+    <DocumentSheet
+      company={company}
+      title="Tax invoice"
+      numberLabel="Invoice no."
+      number={inv.number}
+      date={fmtDate(inv.invoiceDate)}
+      meta={[["Due date", fmtDate(inv.dueDate)]]}
+      party={{ label: "Bill to", name: c.name, address: c.address, city: c.city, state: c.state, gstin: c.gstin }}
+      facts={facts}
+      watermark={inv.status === "cancelled" ? "Cancelled" : undefined}
+      toolbar={{ backHref: `/billing/invoices/${inv.id}`, backLabel: `Back to ${inv.number}` }}
+    >
+      <DocTable>
+        <thead>
+          <tr>
+            <th>#</th><th>Description</th><th>HSN/SAC</th><th className="num">Qty</th><th className="num">Rate</th><th className="num">Taxable value</th><th className="num">GST %</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map(({ l, hsn, uom }, i) => (
+            <tr key={l.id}>
+              <td>{i + 1}</td>
+              <td className="whitespace-normal">{l.description}</td>
+              <td>{hsn || "-"}</td>
+              <td className="num">{qty(l.qty)} {uom ?? ""}</td>
+              <td className="num">{money(l.rate)}</td>
+              <td className="num">{money(l.amount)}</td>
+              <td className="num">{l.gstRate}%</td>
+            </tr>
+          ))}
+        </tbody>
+      </DocTable>
 
-        <section className="grid gap-4 border-b border-line py-4 sm:grid-cols-2">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">Bill to</p>
-            <p className="font-semibold">{c.name}</p>
-            <p className="whitespace-pre-line">{c.address || ""}{c.city ? `\n${c.city}` : ""}{c.state ? `, ${c.state}` : ""}</p>
-            <p>GSTIN: {c.gstin || "Unregistered"}</p>
-          </div>
-          <div className="space-y-0.5 sm:text-right">
-            {row.po && <p>Buyer&apos;s PO: <strong>{row.po}</strong>{row.poDate ? ` dt ${fmtDate(row.poDate)}` : ""}</p>}
-            {row.projectName && <p>Project: {row.projectName}</p>}
-            {row.site && <p className="whitespace-pre-line">Site: {row.site}</p>}
-            <p>Place of supply: {c.state || company.state}</p>
-            <p>Tax: {intra ? "CGST + SGST" : "IGST"}</p>
-          </div>
-        </section>
+      <section className="grid gap-4 sm:grid-cols-2">
+        <GstSummaryTable intra={intra} rows={summary} />
+        <DocTotals
+          taxable={Number(inv.subtotal)}
+          {...(intra ? { cgst: halfA, sgst: round2(tax - halfA) } : { igst: tax })}
+          total={Number(inv.total)}
+          totalLabel="Invoice total"
+          note={Number(inv.paidAmount) > 0 ? `Received so far: ${money(inv.paidAmount)}` : undefined}
+          words={amountInWords(Number(inv.total))}
+        />
+      </section>
 
-        <div className="overflow-x-auto py-4">
-          <table className="w-full min-w-max border-collapse">
-            <thead>
-              <tr className="bg-muted print:bg-transparent">
-                <th className={`${td} text-left`}>#</th><th className={`${td} text-left`}>Description</th><th className={`${td} text-left`}>HSN/SAC</th>
-                <th className={`${td} text-right`}>Qty</th><th className={`${td} text-right`}>Rate</th><th className={`${td} text-right`}>Taxable value</th><th className={`${td} text-right`}>GST %</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map(({ l, hsn, uom }, i) => (
-                <tr key={l.id}>
-                  <td className={td}>{i + 1}</td>
-                  <td className={`${td} whitespace-normal`}>{l.description}</td>
-                  <td className={td}>{hsn || "-"}</td>
-                  <td className={`${td} text-right tabular-nums`}>{qty(l.qty)} {uom ?? ""}</td>
-                  <td className={`${td} text-right tabular-nums`}>{money(l.rate)}</td>
-                  <td className={`${td} text-right tabular-nums`}>{money(l.amount)}</td>
-                  <td className={`${td} text-right tabular-nums`}>{l.gstRate}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <DocNotes title="Terms">
+        {inv.notes && <p className="whitespace-pre-line"><strong>Notes:</strong> {inv.notes}</p>}
+        {company.bank && <p><strong>Bank details:</strong> {company.bank}</p>}
+        <p>Payment due within {c.paymentTermsDays} days of invoice date. Interest may be charged on overdue amounts. Subject to Hosur jurisdiction. E. &amp; O.E.</p>
+      </DocNotes>
 
-        <section className="grid gap-4 sm:grid-cols-2">
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-xs">
-              <thead><tr className="bg-muted print:bg-transparent">
-                <th className={`${td} text-left`}>GST rate</th><th className={`${td} text-right`}>Taxable</th>
-                {intra ? <><th className={`${td} text-right`}>CGST</th><th className={`${td} text-right`}>SGST</th></> : <th className={`${td} text-right`}>IGST</th>}
-              </tr></thead>
-              <tbody>
-                {rates.map(([r, v]) => (
-                  <tr key={r}>
-                    <td className={td}>{r}%</td><td className={`${td} text-right tabular-nums`}>{money(v.taxable)}</td>
-                    {intra ? <><td className={`${td} text-right tabular-nums`}>{money(round2(v.tax / 2))}</td><td className={`${td} text-right tabular-nums`}>{money(round2(v.tax - round2(v.tax / 2)))}</td></>
-                      : <td className={`${td} text-right tabular-nums`}>{money(v.tax)}</td>}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <dl className="space-y-1">
-            <div className="flex justify-between"><dt>Taxable value</dt><dd className="tabular-nums">{money(inv.subtotal)}</dd></div>
-            {intra ? (
-              <>
-                <div className="flex justify-between"><dt>CGST</dt><dd className="tabular-nums">{money(halfA)}</dd></div>
-                <div className="flex justify-between"><dt>SGST</dt><dd className="tabular-nums">{money(round2(tax - halfA))}</dd></div>
-              </>
-            ) : <div className="flex justify-between"><dt>IGST</dt><dd className="tabular-nums">{money(tax)}</dd></div>}
-            <div className="flex justify-between border-t border-line pt-1 text-base font-bold"><dt>Invoice total</dt><dd className="tabular-nums">{money(inv.total)}</dd></div>
-            {Number(inv.paidAmount) > 0 && <div className="flex justify-between text-ink-soft"><dt>Received</dt><dd className="tabular-nums">{money(inv.paidAmount)}</dd></div>}
-          </dl>
-        </section>
-        <p className="mt-3 border-y border-line py-2"><span className="text-ink-soft">Amount in words:</span> <strong>{amountInWords(Number(inv.total))}</strong></p>
-
-        {inv.notes && <p className="mt-3 whitespace-pre-line"><strong>Notes:</strong> {inv.notes}</p>}
-        {company.bank && <p className="mt-3"><strong>Bank details:</strong> {company.bank}</p>}
-        <p className="mt-3 text-xs text-ink-soft">Payment due within {c.paymentTermsDays} days of invoice date. Interest may be charged on overdue amounts. Subject to Hosur jurisdiction. E. &amp; O.E.</p>
-
-        <footer className="mt-10 flex justify-end">
-          <div className="text-right">
-            <p className="text-xs">For {company.name}</p>
-            <div className="h-12" />
-            <p className="border-t border-line pt-1">Authorised signatory</p>
-          </div>
-        </footer>
-      </article>
-    </>
+      <DocSignature company={company.name} left="Received by (name and signature)" />
+    </DocumentSheet>
   );
 }

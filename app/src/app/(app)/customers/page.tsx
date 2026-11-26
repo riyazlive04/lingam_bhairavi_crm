@@ -7,13 +7,20 @@ import { customerOutstanding } from "@/lib/billing";
 import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
 import { money, todayIST } from "@/lib/format";
-import { Badge, EmptyState, FilterBar, Flash, LinkButton, PageHeader, Select, Stat, Table, Td, Th, cx } from "@/components/ui";
+import { Badge, Flash, LinkButton, Select, cx } from "@/components/ui";
+import {
+  FilterPills, ListEmpty, ListFilters, ListPage, Metric, MetricStrip, Pagination, ResponsiveTable, StatusPill,
+  type Column, type FilterPillItem,
+} from "@/components/patterns";
 import { CUSTOMER_TYPES } from "./_components/customer-form";
-import { Pager, qs } from "../items/_components/tabs";
+
+export const metadata = { title: "Customers" };
 
 const PAGE_SIZE = 100;
+type SP = { q?: string; type?: string; status?: string; due?: string; page?: string; ok?: string; err?: string };
+const TYPE_TONE = { customer: "blue", consultant: "violet", builder: "amber" } as const;
 
-export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ q?: string; type?: string; status?: string; due?: string; page?: string; ok?: string; err?: string }> }) {
+export default async function CustomersPage({ searchParams }: { searchParams: Promise<SP> }) {
   const user = await requireUser("customers");
   const sp = await searchParams;
   const db = await getDb();
@@ -44,62 +51,112 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
   const totalNet = [...recvBy.values()].reduce((s, r) => s + r.netDue, 0);
   const totalOverdue = [...recvBy.values()].reduce((s, r) => s + r.overdue, 0);
 
-  return (
-    <div>
-      <PageHeader title="Customers" subtitle="Customers, consultants and builders, with their quotations, orders, invoices and refill assets."
-        actions={write && <LinkButton href="/customers/new"><Plus size={16} aria-hidden /> New customer</LinkButton>} />
-      <Flash ok={sp.ok} err={sp.err} />
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Customers" value={all.length} />
-        <Stat label="Invoices due" value={money(totalOut)} href={"/customers" + qs({ due: 1 })} />
-        <Stat label="Net due" value={money(totalNet)} hint="After credit notes and advances" />
-        <Stat label="Overdue" value={money(totalOverdue)} tone={totalOverdue > 0 ? "bad" : "default"} />
-      </div>
-      <FilterBar q={sp.q} placeholder="Search name, city, phone, GSTIN…">
-        <label className="sm:w-44"><span className="sr-only">Type</span>
-          <Select name="type" defaultValue={type}>
-            <option value="">All types</option>
-            {Object.entries(CUSTOMER_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </Select>
-        </label>
-        <label className="sm:w-40"><span className="sr-only">Status</span>
-          <Select name="status" defaultValue={sp.status ?? ""}>
-            <option value="">Active</option><option value="inactive">Inactive</option><option value="all">All</option>
-          </Select>
-        </label>
-        <label className="flex items-center gap-1.5 text-sm text-ink-soft whitespace-nowrap">
-          <input type="checkbox" name="due" value="1" defaultChecked={sp.due === "1"} className="h-4 w-4 accent-brand-600" /> With dues
-        </label>
-      </FilterBar>
-      {list.length === 0 ? (
-        <EmptyState title="No customers found" action={write && <LinkButton href="/customers/new">Add a customer</LinkButton>}>Try clearing the filters.</EmptyState>
-      ) : (
+  const qs = (patch: Partial<SP>) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries({ q: sp.q, type, status: sp.status, due: sp.due, page: sp.page, ...patch })) if (v) p.set(k, String(v));
+    const s = p.toString();
+    return s ? `/customers?${s}` : "/customers";
+  };
+  const activeFilters = [sp.q?.trim(), type, sp.due === "1" ? "1" : ""].filter(Boolean).length;
+  const filtered = activeFilters > 0 || (!!sp.status && sp.status !== "");
+
+  const statusPills: FilterPillItem[] = [
+    { label: "Active", href: qs({ status: undefined, page: undefined }), active: !sp.status || (sp.status !== "inactive" && sp.status !== "all") },
+    { label: "Inactive", href: qs({ status: "inactive", page: undefined }), active: sp.status === "inactive" },
+    { label: "All", href: qs({ status: "all", page: undefined }), active: sp.status === "all" },
+  ];
+
+  type Row = (typeof list)[number];
+  const columns: Column<Row>[] = [
+    {
+      key: "name", header: "Customer", card: "title",
+      cell: (c) => (
         <>
-          <Table>
-            <thead><tr><Th>Customer</Th><Th>Type</Th><Th>City</Th><Th>Contact</Th><Th className="text-right">Invoices due</Th><Th className="text-right">Net due</Th><Th className="text-right">Overdue</Th></tr></thead>
-            <tbody>
-              {list.map((c) => {
-                const r = recvBy.get(c.id);
-                const overLimit = c.creditLimit > 0 && (r?.outstanding ?? 0) > c.creditLimit;
-                return (
-                  <tr key={c.id} className="hover:bg-muted/50">
-                    <Td><Link href={`/customers/${c.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{c.name}</Link>{!c.active && <> <Badge>inactive</Badge></>}</Td>
-                    <Td><Badge tone={c.type === "customer" ? "blue" : c.type === "consultant" ? "violet" : "amber"}>{CUSTOMER_TYPES[c.type as keyof typeof CUSTOMER_TYPES] ?? c.type}</Badge></Td>
-                    <Td>{c.city ?? "-"}</Td>
-                    <Td className="text-xs">{c.contactPerson ?? "-"}{c.phone && <div><a href={`tel:${c.phone}`} className="text-ink-soft hover:underline">{c.phone}</a></div>}</Td>
-                    <Td className={cx("text-right tabular-nums", overLimit && "font-semibold text-red-600")} title={overLimit ? "Over credit limit" : undefined}>
-                      {r && r.outstanding > 0.5 ? money(r.outstanding) : <span className="text-ink-faint">-</span>}</Td>
-                    <Td className={cx("text-right tabular-nums", r && r.netDue < -0.5 && "text-emerald-700 dark:text-emerald-400")} title={r && r.netDue < -0.5 ? "Customer is in credit" : undefined}>
-                      {r && Math.abs(r.netDue) > 0.5 ? money(r.netDue) : <span className="text-ink-faint">-</span>}</Td>
-                    <Td className="text-right tabular-nums">{r && r.overdue > 0.5 ? <span className="font-medium text-red-600">{money(r.overdue)}</span> : <span className="text-ink-faint">-</span>}</Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
-          <Pager page={page} pages={pages} href={(p) => "/customers" + qs({ q: sp.q, type, status: sp.status, due: sp.due, page: p })} />
+          <Link href={`/customers/${c.id}`} className="rt-stretch font-medium text-brand-700 hover:underline dark:text-brand-300">{c.name}</Link>
+          {!c.active && <> <StatusPill semantic="neutral" label="Inactive" noDot /></>}
         </>
-      )}
-    </div>
+      ),
+    },
+    {
+      key: "type", header: "Type", card: "badge",
+      cell: (c) => <Badge tone={TYPE_TONE[c.type as keyof typeof TYPE_TONE] ?? "gray"}>{CUSTOMER_TYPES[c.type as keyof typeof CUSTOMER_TYPES] ?? c.type}</Badge>,
+    },
+    { key: "city", header: "City", card: "subtitle", cell: (c) => c.city ?? "-" },
+    {
+      key: "contact", header: "Contact", priority: 3,
+      cell: (c) => (
+        <span className="text-caption">
+          {c.contactPerson ?? "-"}
+          {c.phone && <span className="block"><a href={`tel:${c.phone}`} className="text-ink-soft hover:underline">{c.phone}</a></span>}
+        </span>
+      ),
+    },
+    {
+      key: "out", header: "Invoices due", align: "right", nowrap: true,
+      cell: (c) => {
+        const r = recvBy.get(c.id);
+        const overLimit = c.creditLimit > 0 && (r?.outstanding ?? 0) > c.creditLimit;
+        if (!r || r.outstanding <= 0.5) return <span className="text-ink-faint">-</span>;
+        return <span className={cx(overLimit && "font-semibold text-danger")} title={overLimit ? "Over credit limit" : undefined}>{money(r.outstanding)}{overLimit && <span className="sr-only"> (over credit limit)</span>}</span>;
+      },
+    },
+    {
+      key: "net", header: "Net due", align: "right", card: "amount", nowrap: true,
+      cell: (c) => {
+        const r = recvBy.get(c.id);
+        if (!r || Math.abs(r.netDue) <= 0.5) return <span className="text-ink-faint">-</span>;
+        return <span className={cx(r.netDue < -0.5 && "text-success")} title={r.netDue < -0.5 ? "Customer is in credit" : undefined}>{money(r.netDue)}</span>;
+      },
+    },
+    {
+      key: "overdue", header: "Overdue", align: "right", nowrap: true,
+      cell: (c) => {
+        const r = recvBy.get(c.id);
+        return r && r.overdue > 0.5 ? <span className="font-medium text-danger">{money(r.overdue)}</span> : <span className="text-ink-faint">-</span>;
+      },
+    },
+  ];
+
+  return (
+    <ListPage
+      title="Customers"
+      subtitle="Customers, consultants and builders, with their quotations, orders, invoices and refill assets."
+      primaryAction={write && <LinkButton href="/customers/new"><Plus className="icon-sm" aria-hidden /> New customer</LinkButton>}
+      notices={<Flash ok={sp.ok} err={sp.err} />}
+      stats={
+        <MetricStrip>
+          <Metric label="Customers" value={all.length} />
+          <Metric label="Invoices due" value={money(totalOut)} href={qs({ due: "1", page: undefined })} />
+          <Metric label="Net due" value={money(totalNet)} hint="After credit notes and advances" />
+          <Metric label="Overdue" value={money(totalOverdue)} tone={totalOverdue > 0 ? "bad" : "default"} />
+        </MetricStrip>
+      }
+      filters={
+        <>
+          <FilterPills label="Filter by status" items={statusPills} />
+          <ListFilters q={sp.q} placeholder="Search name, city, phone, GSTIN" clearHref={qs({ q: undefined, type: undefined, due: undefined, page: undefined })}
+            activeCount={activeFilters} hidden={{ status: sp.status }}>
+            <Select name="type" defaultValue={type} aria-label="Type">
+              <option value="">All types</option>
+              {Object.entries(CUSTOMER_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </Select>
+            <label className="flex h-9.5 items-center gap-2 rounded-lg px-1 text-sm whitespace-nowrap text-ink-soft">
+              <input type="checkbox" name="due" value="1" defaultChecked={sp.due === "1"} className="icon-sm accent-brand-600" /> With dues only
+            </label>
+          </ListFilters>
+        </>
+      }
+      isEmpty={list.length === 0}
+      empty={
+        <ListEmpty filtered={filtered} noun="customers" clearHref="/customers"
+          action={write && <LinkButton href="/customers/new"><Plus className="icon-sm" aria-hidden /> Add the first customer</LinkButton>}>
+          Add a customer to start quoting, or they appear here once you create a quotation for them.
+        </ListEmpty>
+      }
+      resultSummary={`${all.length} customer${all.length === 1 ? "" : "s"}`}
+      pagination={<Pagination page={page} pages={pages} total={all.length} noun="customers" href={(p) => qs({ page: String(p) })} />}
+    >
+      <ResponsiveTable rows={list} columns={columns} rowKey={(c) => c.id} caption="Customers" />
+    </ListPage>
   );
 }

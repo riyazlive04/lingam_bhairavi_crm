@@ -6,13 +6,25 @@ import { amcContracts, amcVisits, customers, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { addDays, fmtDate, money0, moneyShort, todayIST } from "@/lib/format";
 import { AMC_STATUSES, amcSummary, effectiveAmcStatus, expiryInfo } from "@/lib/amc";
-import { Badge, EmptyState, FilterBar, Flash, LinkButton, PageHeader, Select, Stat, Table, Td, Th, cx } from "@/components/ui";
-import { AmcStatusBadge, SystemChips } from "./_components/system-chips";
+import { Flash, LinkButton, Select } from "@/components/ui";
+import {
+  FilterPills, ListEmpty, ListFilters, ListPage, Metric, MetricStrip, ResponsiveTable, StatusPill, type Column, type FilterPillItem,
+} from "@/components/patterns";
+import { ExpiryPill, SystemChips } from "./_components/system-chips";
 import { amcAccess } from "./_lib/access";
 
 export const metadata = { title: "AMC contracts" };
 
 type SP = { q?: string; status?: string; customerId?: string; engineerId?: string; expiring?: string; mine?: string; ok?: string; err?: string };
+
+const STATUS_PILLS: { id: string; label: string }[] = [
+  { id: "live", label: "Active and lapsed" },
+  { id: "active", label: "Active" },
+  { id: "expired", label: "Expired" },
+  { id: "renewed", label: "Renewed" },
+  { id: "cancelled", label: "Cancelled" },
+  { id: "all", label: "All" },
+];
 
 export default async function AmcPage({ searchParams }: { searchParams: Promise<SP> }) {
   const user = await requireUser("amc");
@@ -73,110 +85,110 @@ export default async function AmcPage({ searchParams }: { searchParams: Promise<
   ]);
   const filtered = !!(q || status !== "live" || customerId || engineerId || sp.expiring);
 
+  const qs = (patch: Partial<SP>) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries({ ...sp, ok: undefined, err: undefined, ...patch })) if (v) p.set(k, String(v));
+    const s = p.toString();
+    return s ? `/amc?${s}` : "/amc";
+  };
+  const activeFilters = [q, sp.customerId, sp.engineerId, sp.expiring, sp.mine].filter(Boolean).length;
+  const pills: FilterPillItem[] = STATUS_PILLS.map((s) => ({
+    label: s.label, href: qs({ status: s.id === "live" ? undefined : s.id }), active: status === s.id,
+  }));
+
+  type Row = (typeof rows)[number];
+  const columns: Column<Row>[] = [
+    {
+      key: "number", header: "Contract", card: "title", nowrap: true,
+      cell: (r) => (
+        <>
+          <Link href={`/amc/${r.id}`} className="rt-stretch font-medium text-brand-700 hover:underline dark:text-brand-300">{r.number}</Link>
+          {r.engineerName && <div className="text-caption font-normal text-ink-soft">{r.engineerName}</div>}
+        </>
+      ),
+    },
+    { key: "customer", header: "Customer", card: "subtitle", className: "max-w-56 truncate", cell: (r) => r.customerName },
+    { key: "status", header: "Status", card: "badge", cell: (r) => <StatusPill status={effectiveAmcStatus(r.status, r.endDate, today)} /> },
+    { key: "systems", header: "Systems", priority: 3, className: "min-w-40", cell: (r) => <SystemChips systems={r.systems} /> },
+    ...(acc.money ? [{
+      key: "value", header: "Value", align: "right" as const, card: "amount" as const, nowrap: true,
+      cell: (r: Row) => <>{money0(r.value)}<div className="text-caption font-normal text-ink-soft">{r.billingFrequency.replace("_", " ")}</div></>,
+    }] : []),
+    { key: "period", header: "Period", nowrap: true, priority: 3, cell: (r) => <>{fmtDate(r.startDate)}<div className="text-caption text-ink-soft">to {fmtDate(r.endDate)}</div></> },
+    {
+      key: "next", header: "Next visit", nowrap: true,
+      cell: (r) => {
+        if (!r.nextVisit) return <span className="text-ink-faint">-</span>;
+        return r.nextVisit < today
+          ? <span className="inline-flex items-center gap-1.5 font-medium text-danger">{fmtDate(r.nextVisit)} <StatusPill status="overdue" /></span>
+          : fmtDate(r.nextVisit);
+      },
+    },
+    { key: "visits", header: "Visits done", align: "right", nowrap: true, cell: (r) => `${Number(r.done ?? 0)} of ${Number(r.planned ?? 0)}` },
+    {
+      key: "expiry", header: "Expiry",
+      cell: (r) => {
+        const st = effectiveAmcStatus(r.status, r.endDate, today);
+        return st === "active" || st === "expired" ? <ExpiryPill info={expiryInfo(r.endDate, today)} /> : <span className="text-ink-faint">-</span>;
+      },
+    },
+  ];
+
   return (
-    <div>
-      <PageHeader
-        title="AMC Contracts"
-        subtitle="Annual maintenance contracts, their preventive visits and renewals. Breakdown calls live under Service Calls."
-        actions={<>
-          <LinkButton variant="secondary" href="/service-calls"><Wrench className="h-4 w-4" aria-hidden /> Service calls</LinkButton>
-          {acc.manage && <LinkButton href="/amc/new"><Plus className="h-4 w-4" aria-hidden /> New contract</LinkButton>}
-        </>}
-      />
-      <Flash ok={sp.ok} err={sp.err} />
-
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Active contracts" value={summary.activeContracts} icon={FileSignature}
-          hint={summary.expiredNotRenewed ? `${summary.expiredNotRenewed} lapsed, not renewed` : "all current"} href="/amc?status=active" />
-        {acc.money
-          ? <Stat label="Annual AMC value" value={moneyShort(summary.annualValue)} icon={IndianRupee} hint="excl. GST, active contracts" />
-          : <Stat label="Open service calls" value={summary.openCalls} icon={Wrench} hint={summary.breachedCalls ? `${summary.breachedCalls} past SLA` : "none past SLA"} tone={summary.breachedCalls ? "bad" : "default"} href="/service-calls" />}
-        <Stat label="Visits due this week" value={summary.visitsDueThisWeek} icon={CalendarClock}
-          hint={summary.visitsOverdue ? `${summary.visitsOverdue} overdue` : "none overdue"} tone={summary.visitsOverdue ? "warn" : "default"} />
-        <Stat label="Renewals due in 30 days" value={summary.renewalsDue30} icon={RefreshCw} tone={summary.renewalsDue30 ? "warn" : "default"} href="/amc?expiring=30" />
-      </div>
-
-      <FilterBar q={sp.q} placeholder="Contract no, customer, site">
-        <Select name="status" defaultValue={status} aria-label="Status" className="sm:max-w-40">
-          <option value="live">Active and lapsed</option>
-          <option value="active">Active</option>
-          <option value="expired">Expired</option>
-          <option value="renewed">Renewed</option>
-          <option value="cancelled">Cancelled</option>
-          <option value="all">All</option>
-        </Select>
-        <Select name="customerId" defaultValue={sp.customerId ?? ""} aria-label="Customer" className="sm:max-w-52">
-          <option value="">All customers</option>
-          {customerList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </Select>
-        <Select name="engineerId" defaultValue={sp.engineerId ?? ""} aria-label="Engineer" className="sm:max-w-44">
-          <option value="">All engineers</option>
-          {engineerList.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-        </Select>
-        <label className="inline-flex items-center gap-2 text-sm text-ink">
-          <input type="checkbox" name="expiring" value="30" defaultChecked={sp.expiring === "30"} className="h-4 w-4 accent-brand-600" /> Ending in 30 days
-        </label>
-        {user.role === "engineer" && (
-          <label className="inline-flex items-center gap-2 text-sm text-ink">
-            <input type="checkbox" name="mine" value="1" defaultChecked={sp.mine === "1"} className="h-4 w-4 accent-brand-600" /> My contracts
-          </label>
-        )}
-      </FilterBar>
-      {filtered && <p className="-mt-2 mb-3 text-sm"><Link href="/amc" className="text-ink-soft hover:text-brand-700">Clear filters</Link></p>}
-
-      {rows.length === 0 ? (
-        <EmptyState
-          icon={FileSignature}
-          title={filtered ? "No contracts match these filters" : "No AMC contracts yet"}
-          action={acc.manage && !filtered ? <LinkButton href="/amc/new">Create the first contract</LinkButton> : undefined}
-        >
-          {filtered ? "Try clearing a filter." : "Add an AMC when a customer signs up for maintenance. Visits are planned for you."}
-        </EmptyState>
-      ) : (
-        <Table>
-          <thead>
-            <tr>
-              <Th>Contract</Th>
-              <Th>Customer</Th>
-              <Th>Systems</Th>
-              {acc.money && <Th className="text-right">Value</Th>}
-              <Th>Period</Th>
-              <Th>Next visit</Th>
-              <Th className="text-right">Visits</Th>
-              <Th>Expiry</Th>
-              <Th>Status</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => {
-              const st = effectiveAmcStatus(r.status, r.endDate, today);
-              const exp = expiryInfo(r.endDate, today);
-              const live = st === "active" || st === "expired";
-              const nextLate = r.nextVisit && r.nextVisit < today;
-              return (
-                <tr key={r.id} className="hover:bg-muted/60">
-                  <Td>
-                    <Link href={`/amc/${r.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{r.number}</Link>
-                    {r.engineerName && <div className="text-xs text-ink-soft">{r.engineerName}</div>}
-                  </Td>
-                  <Td className="max-w-56 truncate">{r.customerName}</Td>
-                  <Td className="min-w-40"><SystemChips systems={r.systems} /></Td>
-                  {acc.money && <Td className="text-right tabular-nums">{money0(r.value)}<div className="text-xs capitalize text-ink-soft">{r.billingFrequency.replace("_", " ")}</div></Td>}
-                  <Td className="whitespace-nowrap text-xs">{fmtDate(r.startDate)}<div className="text-ink-soft">to {fmtDate(r.endDate)}</div></Td>
-                  <Td className={cx("whitespace-nowrap", nextLate && "font-semibold text-red-600")}>
-                    {r.nextVisit ? fmtDate(r.nextVisit) : <span className="text-ink-faint">-</span>}
-                    {nextLate && <div className="text-xs font-normal">overdue</div>}
-                  </Td>
-                  <Td className="text-right tabular-nums">{Number(r.done ?? 0)} / {Number(r.planned ?? 0)}</Td>
-                  <Td>{live ? <Badge tone={exp.tone}>{exp.label}</Badge> : <span className="text-ink-faint">-</span>}</Td>
-                  <Td><AmcStatusBadge status={st} /></Td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </Table>
-      )}
-      {rows.length >= 500 && <p className="mt-2 text-xs text-ink-soft">Showing the first 500 contracts. Use the filters to narrow things down.</p>}
-    </div>
+    <ListPage
+      title="AMC contracts"
+      subtitle="Annual maintenance contracts, their preventive visits and renewals. Breakdown calls live under Service calls."
+      secondaryActions={<LinkButton variant="secondary" href="/service-calls"><Wrench className="icon-sm" aria-hidden /> Service calls</LinkButton>}
+      primaryAction={acc.manage && <LinkButton href="/amc/new"><Plus className="icon-sm" aria-hidden /> New contract</LinkButton>}
+      notices={<Flash ok={sp.ok} err={sp.err} />}
+      stats={
+        <MetricStrip>
+          <Metric label="Active contracts" value={summary.activeContracts} icon={FileSignature}
+            hint={summary.expiredNotRenewed ? `${summary.expiredNotRenewed} lapsed, not renewed` : "All current"} href="/amc?status=active" />
+          {acc.money
+            ? <Metric label="Annual AMC value" value={moneyShort(summary.annualValue)} icon={IndianRupee} hint="Excl. GST, active contracts" />
+            : <Metric label="Open service calls" value={summary.openCalls} icon={Wrench} hint={summary.breachedCalls ? `${summary.breachedCalls} past SLA` : "None past SLA"}
+                tone={summary.breachedCalls ? "bad" : "default"} href="/service-calls" />}
+          <Metric label="Visits due this week" value={summary.visitsDueThisWeek} icon={CalendarClock}
+            hint={summary.visitsOverdue ? `${summary.visitsOverdue} overdue` : "None overdue"} tone={summary.visitsOverdue ? "warn" : "default"} />
+          <Metric label="Renewals due in 30 days" value={summary.renewalsDue30} icon={RefreshCw} tone={summary.renewalsDue30 ? "warn" : "default"} href="/amc?expiring=30" />
+        </MetricStrip>
+      }
+      filters={
+        <>
+          <FilterPills label="Filter by status" items={pills} />
+          <ListFilters q={sp.q} placeholder="Contract no, customer, site" activeCount={activeFilters}
+            clearHref={qs({ q: undefined, customerId: undefined, engineerId: undefined, expiring: undefined, mine: undefined })}
+            hidden={{ status: status === "live" ? undefined : status }}>
+            <Select name="customerId" defaultValue={sp.customerId ?? ""} aria-label="Customer">
+              <option value="">All customers</option>
+              {customerList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+            <Select name="engineerId" defaultValue={sp.engineerId ?? ""} aria-label="Engineer">
+              <option value="">All engineers</option>
+              {engineerList.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </Select>
+            <label className="inline-flex min-h-9.5 items-center gap-2 text-sm text-ink">
+              <input type="checkbox" name="expiring" value="30" defaultChecked={sp.expiring === "30"} className="icon-sm accent-brand-600" /> Ending in 30 days
+            </label>
+            {user.role === "engineer" && (
+              <label className="inline-flex min-h-9.5 items-center gap-2 text-sm text-ink">
+                <input type="checkbox" name="mine" value="1" defaultChecked={sp.mine === "1"} className="icon-sm accent-brand-600" /> My contracts
+              </label>
+            )}
+          </ListFilters>
+        </>
+      }
+      isEmpty={rows.length === 0}
+      empty={
+        <ListEmpty filtered={filtered} noun="contracts" clearHref="/amc" title={filtered ? undefined : "No AMC contracts yet"}
+          action={acc.manage && <LinkButton href="/amc/new"><Plus className="icon-sm" aria-hidden /> Create the first contract</LinkButton>}>
+          Add an AMC when a customer signs up for maintenance. Visits are planned for you.
+        </ListEmpty>
+      }
+      resultSummary={rows.length >= 500 ? "Showing the first 500 contracts. Use the filters to narrow things down." : `${rows.length} contract${rows.length === 1 ? "" : "s"}`}
+    >
+      <ResponsiveTable rows={rows} columns={columns} rowKey={(r) => r.id} caption="AMC contracts" />
+    </ListPage>
   );
 }

@@ -7,9 +7,12 @@ import { requireUser } from "@/lib/auth";
 import { canRead, canWrite } from "@/lib/rbac";
 import { fmtDate, money, moneyShort, todayIST } from "@/lib/format";
 import { PO_STATUSES, PO_STATUS_LABEL, isPoStatus } from "@/lib/purchase-orders";
-import { Badge, Button, EmptyState, Flash, Input, LinkButton, PageHeader, Select, Stat, Table, Td, Th, cx } from "@/components/ui";
-import { Pager, qs } from "../items/_components/tabs";
-import { PoStatusBadge, ReceivedBar } from "./_components/po-bits";
+import { Badge, Flash, LinkButton, Select, cx } from "@/components/ui";
+import {
+  Callout, FilterPills, ListEmpty, ListFilters, ListPage, Metric, MetricStrip, Pagination, ResponsiveTable,
+  type Column, type FilterPillItem,
+} from "@/components/patterns";
+import { PoStatusBadge, ReceivedBar, qs } from "./_components/po-bits";
 
 export const metadata = { title: "Purchase orders" };
 
@@ -83,108 +86,97 @@ export default async function PurchaseOrdersPage({ searchParams }: { searchParam
   const showOrders = canRead(user.role, "orders");
   const showProjects = canRead(user.role, "projects");
 
-  return (
-    <div>
-      <PageHeader
-        title="Purchase orders"
-        subtitle="Orders placed with vendors, often against a customer's purchase order. Bills raised from a PO update what has been received."
-        actions={write && <LinkButton href="/purchase-orders/new"><Plus size={16} aria-hidden /> New PO</LinkButton>}
-      />
-      <Flash ok={sp.ok} err={sp.err} />
-
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Open with vendors" value={moneyShort(summary.openValue)} hint={`${summary.openN} PO${summary.openN === 1 ? "" : "s"} awaiting material`} href={href({ status: "open", page: undefined })} />
-        <Stat label="Overdue deliveries" value={summary.overdueN} tone={summary.overdueN > 0 ? "bad" : "default"} hint="Past the expected date" href={href({ status: "overdue", page: undefined })} />
-        <Stat label="Ordered this month" value={moneyShort(summary.monthValue)} />
-        <Stat label="Drafts to send" value={summary.drafts} tone={summary.drafts > 0 ? "warn" : "default"} href={href({ status: "draft", page: undefined })} />
-      </div>
-
-      <nav aria-label="Filter by status" className="mb-4 flex gap-2 overflow-x-auto pb-1">
-        <Pill href={href({ status: undefined, page: undefined })} active={!status} label="All" n={allN} />
-        <Pill href={href({ status: "open", page: undefined })} active={status === "open"} label="Open" n={statusN("sent") + statusN("partial")} />
-        {PO_STATUSES.map((s) => <Pill key={s} href={href({ status: s, page: undefined })} active={status === s} label={PO_STATUS_LABEL[s]} n={statusN(s)} />)}
-      </nav>
-
-      <form method="get" className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-        {status && <input type="hidden" name="status" value={status} />}
-        {soId && <input type="hidden" name="so" value={soId} />}
-        <label className="lg:col-span-2"><span className="sr-only">Search</span><Input name="q" defaultValue={sp.q} placeholder="PO no., vendor, customer order…" /></label>
-        <label><span className="sr-only">Vendor</span>
-          <Select name="vendor" defaultValue={sp.vendor ?? ""}>
-            <option value="">All vendors</option>
-            {vendorList.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-          </Select>
-        </label>
-        <label><span className="sr-only">Project</span>
-          <Select name="project" defaultValue={sp.project ?? ""}>
-            <option value="">All projects</option>
-            {projectList.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
-          </Select>
-        </label>
-        <div className="flex gap-2">
-          <Button type="submit" variant="secondary">Filter</Button>
-          {Object.values(filters).some(Boolean) && <LinkButton href="/purchase-orders" variant="ghost">Clear</LinkButton>}
-        </div>
-      </form>
-      {soId && <p className="mb-3 text-sm text-ink-soft">Showing POs for one customer order. <Link href={href({ so: undefined, page: undefined })} className="text-brand-700 hover:underline">Show all</Link></p>}
-
-      {rows.length === 0 ? (
-        <EmptyState
-          title={Object.values(filters).some(Boolean) ? "No purchase orders match these filters" : "No purchase orders yet"}
-          action={write && <LinkButton href="/purchase-orders/new">Raise a purchase order</LinkButton>}
-        >
-          Raise a PO to a vendor, or open a customer order and use “Create vendor PO” to buy its pending lines.
-        </EmptyState>
-      ) : (
+  const activeFilters = [sp.q?.trim(), sp.vendor, sp.project, sp.so].filter(Boolean).length;
+  type Row = (typeof rows)[number];
+  const columns: Column<Row>[] = [
+    { key: "no", header: "PO", card: "title", nowrap: true,
+      cell: ({ po }) => <Link href={`/purchase-orders/${po.id}`} className="rt-stretch font-medium text-brand-700 hover:underline dark:text-brand-300">{po.number}</Link> },
+    { key: "vendor", header: "Vendor", card: "subtitle", className: "max-w-56 truncate", cell: (r) => r.vendorName ?? "-" },
+    { key: "date", header: "Date", nowrap: true,
+      cell: ({ po }) => {
+        const live = po.status === "sent" || po.status === "partial";
+        const late = live && po.expectedDate != null && po.expectedDate < today;
+        return (
+          <>
+            {fmtDate(po.poDate)}
+            {po.expectedDate && <div className={cx("text-caption", late ? "font-medium text-danger" : "text-ink-soft")}>Due {fmtDate(po.expectedDate)}{late ? ", late" : ""}</div>}
+          </>
+        );
+      } },
+    { key: "for", header: "For", className: "max-w-60 whitespace-normal",
+      cell: ({ po, soNumber, customerName, projectCode, projectName }) => (
         <>
-          <Table>
-            <thead><tr><Th>PO</Th><Th>Vendor</Th><Th>Date</Th><Th>For</Th><Th>Status</Th><Th className="text-right">Value</Th><Th>Received</Th></tr></thead>
-            <tbody>
-              {rows.map(({ po, vendorName, soNumber, customerName, projectCode, projectName }) => {
-                const live = po.status === "sent" || po.status === "partial";
-                const late = live && po.expectedDate != null && po.expectedDate < today;
-                return (
-                  <tr key={po.id} className="hover:bg-muted/50">
-                    <Td className="whitespace-nowrap"><Link href={`/purchase-orders/${po.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{po.number}</Link></Td>
-                    <Td className="max-w-56 truncate">{vendorName ?? "-"}</Td>
-                    <Td className="whitespace-nowrap">
-                      {fmtDate(po.poDate)}
-                      {po.expectedDate && <div className={cx("text-xs", late ? "font-medium text-red-600" : "text-ink-soft")}>Due {fmtDate(po.expectedDate)}{late ? ", late" : ""}</div>}
-                    </Td>
-                    <Td className="max-w-60 whitespace-normal">
-                      {soNumber ? (
-                        <div>{showOrders ? <Link href={`/orders/${po.salesOrderId}`} className="hover:underline">{soNumber}</Link> : soNumber}
-                          {customerName && <span className="text-xs text-ink-soft"> · {customerName}</span>}</div>
-                      ) : null}
-                      {projectCode && <div title={projectName ?? undefined}>{showProjects ? <Link href={`/projects/${po.projectId}`}><Badge tone="violet">{projectCode}</Badge></Link> : <Badge tone="violet">{projectCode}</Badge>}</div>}
-                      {!soNumber && !projectCode && <span className="text-ink-faint">Stock</span>}
-                    </Td>
-                    <Td><PoStatusBadge status={po.status} /></Td>
-                    <Td className="whitespace-nowrap text-right tabular-nums">{money(po.total)}</Td>
-                    <Td>{po.status === "draft" || po.status === "cancelled" ? <span className="text-ink-faint">-</span> : <ReceivedBar pct={pctOf.get(po.id) ?? 0} />}</Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
-          <Pager page={page} pages={Math.ceil(total / PAGE_SIZE)} href={(p) => href({ page: p })} />
+          {soNumber ? (
+            <div>{showOrders ? <Link href={`/orders/${po.salesOrderId}`} className="relative z-[1] hover:underline">{soNumber}</Link> : soNumber}
+              {customerName && <span className="text-caption text-ink-soft"> · {customerName}</span>}</div>
+          ) : null}
+          {projectCode && <div title={projectName ?? undefined}>{showProjects ? <Link href={`/projects/${po.projectId}`} className="relative z-[1]"><Badge tone="violet">{projectCode}</Badge></Link> : <Badge tone="violet">{projectCode}</Badge>}</div>}
+          {!soNumber && !projectCode && <span className="text-ink-faint">Stock</span>}
         </>
-      )}
-    </div>
-  );
-}
+      ) },
+    { key: "status", header: "Status", card: "badge", cell: ({ po }) => <PoStatusBadge status={po.status} /> },
+    { key: "value", header: "Value", align: "right", card: "amount", nowrap: true, cell: ({ po }) => money(po.total) },
+    { key: "recv", header: "Received", priority: 3,
+      cell: ({ po }) => po.status === "draft" || po.status === "cancelled" ? <span className="text-ink-faint">-</span> : <ReceivedBar pct={pctOf.get(po.id) ?? 0} /> },
+  ];
+  const pills: FilterPillItem[] = [
+    { label: "All", href: href({ status: undefined, page: undefined }), active: !status, count: allN },
+    { label: "Open", href: href({ status: "open", page: undefined }), active: status === "open", count: statusN("sent") + statusN("partial") },
+    { label: "Overdue", href: href({ status: "overdue", page: undefined }), active: status === "overdue", count: summary.overdueN, attention: summary.overdueN > 0 },
+    ...PO_STATUSES.map((s) => ({ label: PO_STATUS_LABEL[s], href: href({ status: s, page: undefined }), active: status === s, count: statusN(s) })),
+  ];
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-function Pill({ href, active, label, n }: { href: string; active: boolean; label: string; n: number }) {
   return (
-    <Link
-      href={href}
-      aria-current={active ? "page" : undefined}
-      className={cx(
-        "shrink-0 rounded-lg border px-3 py-1.5 text-sm transition-colors",
-        active ? "border-brand-500 bg-brand-50 font-medium text-brand-700 dark:bg-brand-800/30 dark:text-brand-200" : "border-line bg-surface text-ink-soft hover:bg-muted",
-      )}
+    <ListPage
+      title="Purchase orders"
+      subtitle="Orders placed with vendors, often against a customer's purchase order. Bills raised from a PO update what has been received."
+      primaryAction={write && <LinkButton href="/purchase-orders/new"><Plus className="icon-sm" aria-hidden /> New PO</LinkButton>}
+      notices={
+        <>
+          <Flash ok={sp.ok} err={sp.err} />
+          {soId && (
+            <Callout tone="info" action={<LinkButton href={href({ so: undefined, page: undefined })} variant="secondary" size="sm">Show all POs</LinkButton>}>
+              Showing POs for one customer order.
+            </Callout>
+          )}
+        </>
+      }
+      stats={
+        <MetricStrip>
+          <Metric label="Open with vendors" value={moneyShort(summary.openValue)} hint={`${summary.openN} PO${summary.openN === 1 ? "" : "s"} awaiting material`} href={href({ status: "open", page: undefined })} />
+          <Metric label="Overdue deliveries" value={summary.overdueN} tone={summary.overdueN > 0 ? "bad" : "default"} hint="Past the expected date" href={href({ status: "overdue", page: undefined })} />
+          <Metric label="Ordered this month" value={moneyShort(summary.monthValue)} />
+          <Metric label="Drafts to send" value={summary.drafts} tone={summary.drafts > 0 ? "warn" : "default"} href={href({ status: "draft", page: undefined })} />
+        </MetricStrip>
+      }
+      filters={
+        <>
+          <FilterPills label="Filter by status" items={pills} />
+          <ListFilters q={sp.q} placeholder="Search PO no., vendor, customer order" clearHref={href({ q: undefined, vendor: undefined, project: undefined, so: undefined, page: undefined })}
+            activeCount={activeFilters} hidden={{ status, so: soId }}>
+            <Select name="vendor" defaultValue={sp.vendor ?? ""} aria-label="Vendor">
+              <option value="">All vendors</option>
+              {vendorList.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+            </Select>
+            <Select name="project" defaultValue={sp.project ?? ""} aria-label="Project">
+              <option value="">All projects</option>
+              {projectList.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
+            </Select>
+          </ListFilters>
+        </>
+      }
+      isEmpty={rows.length === 0}
+      empty={
+        <ListEmpty filtered={Object.values(filters).some(Boolean)} noun="purchase orders" clearHref="/purchase-orders"
+          action={write && <LinkButton href="/purchase-orders/new"><Plus className="icon-sm" aria-hidden /> Raise a purchase order</LinkButton>}>
+          Raise a PO to a vendor, or open a customer order and use Create vendor PO to buy its pending lines.
+        </ListEmpty>
+      }
+      resultSummary={`${total} purchase order${total === 1 ? "" : "s"}`}
+      pagination={<Pagination page={page} pages={pages} total={total} noun="purchase orders" href={(p) => href({ page: p })} />}
     >
-      {label} <span className="tabular-nums">({n})</span>
-    </Link>
+      <ResponsiveTable rows={rows} columns={columns} rowKey={(r) => r.po.id} caption="Purchase orders" />
+    </ListPage>
   );
 }

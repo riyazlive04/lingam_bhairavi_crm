@@ -15,7 +15,7 @@ Why your entries matter most: **every quotation price comes from the purchase in
 ## 1. Daily workflow
 
 ### Entering a supplier (purchase) invoice as soon as it arrives
-1. Go to **Purchase Invoices → New**.
+1. Go to **Purchase Invoices** and click **New**.
 2. Choose the vendor (type to search). If the vendor is new, create them with name, GSTIN, phone, email, payment terms in days and categories.
 3. Enter the invoice number and invoice date exactly as printed.
 4. **Project:** select the project if the material is for a particular site, so it counts in that project's cost. Leave it blank for general store stock.

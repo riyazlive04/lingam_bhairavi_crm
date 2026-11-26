@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
-import { Card, Field, Input, LinkButton, Select, Textarea, cx } from "@/components/ui";
+import { Field, Input, Select, Textarea, cx } from "@/components/ui";
+import { FormFooter, FormSection } from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { money } from "@/lib/format";
 import { createContract } from "../actions";
@@ -82,9 +83,8 @@ export function ContractForm(p: {
   const perPeriod = Number(value) > 0 ? Number(value) / (periods[freq] ?? 1) : 0;
 
   return (
-    <form action={createContract} className="space-y-6">
-      <Card title="Customer and site">
-        <div className="grid gap-4 sm:grid-cols-2">
+    <form action={createContract} className="space-y-4">
+      <FormSection title="Customer and site" description="Who the contract is with and where the systems are.">
           <Field label="Customer" required>
             <Select name="customerId" required value={customerId || ""} onChange={(e) => onCustomer(Number(e.target.value))}>
               <option value="" disabled>Select customer</option>
@@ -100,32 +100,30 @@ export function ContractForm(p: {
           <Field label="Site address" className="sm:col-span-2">
             <Textarea name="siteAddress" rows={2} maxLength={1000} value={site} onChange={(e) => setSite(e.target.value)} />
           </Field>
-        </div>
-      </Card>
+      </FormSection>
 
-      <Card title="Systems covered">
+      <FormSection title="Systems covered" description="Tick every system we maintain. The scope fills in from your choice." columns={1}>
         <fieldset>
           <legend className="sr-only">Systems covered</legend>
           <div className="grid gap-2 sm:grid-cols-2">
             {Object.entries(p.systems).map(([k, label]) => {
               const on = systems.includes(k);
               return (
-                <label key={k} className={cx("flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
-                  on ? "border-brand-500 bg-brand-50 text-ink dark:bg-brand-950/40" : "border-line hover:border-line-strong")}>
-                  <input type="checkbox" name="systems" value={k} checked={on} onChange={() => toggle(k)} className="h-4 w-4 accent-brand-600" />
+                <label key={k} className={cx("flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm text-ink transition",
+                  on ? "border-brand-500 bg-brand-50 dark:bg-brand-950/40" : "border-line hover:border-line-strong")}>
+                  <input type="checkbox" name="systems" value={k} checked={on} onChange={() => toggle(k)} className="icon-sm accent-brand-600" />
                   {label}
                 </label>
               );
             })}
           </div>
         </fieldset>
-        <Field label="Scope of work" className="mt-4" hint={scopeEdited ? "Edited by you. Changing systems will not overwrite it." : "Filled in from the systems and coverage. Edit freely."}>
+        <Field label="Scope of work" hint={scopeEdited ? "Edited by you. Changing systems will not overwrite it." : "Filled in from the systems and coverage. Edit freely."}>
           <Textarea name="scope" rows={7} maxLength={5000} value={scope} onChange={(e) => { setScope(e.target.value); setScopeEdited(true); }} />
         </Field>
-      </Card>
+      </FormSection>
 
-      <Card title="Term and commercials">
-        <div className="grid gap-4 sm:grid-cols-2">
+      <FormSection title="Term and commercials" description="Dates, value, billing and how fast we respond to breakdowns.">
           <Field label="Start date" required><Input type="date" name="startDate" required value={start} onChange={(e) => onStart(e.target.value)} /></Field>
           <Field label="End date" required hint="Defaults to one year.">
             <Input type="date" name="endDate" required value={end} min={start} onChange={(e) => { setEnd(e.target.value); setEndEdited(true); }} />
@@ -156,13 +154,11 @@ export function ContractForm(p: {
             </Select>
           </Field>
           <Field label="Notes" className="sm:col-span-2"><Textarea name="notes" rows={2} maxLength={5000} /></Field>
-        </div>
-      </Card>
+      </FormSection>
 
-      <div className="flex flex-wrap gap-2">
-        <SubmitButton pendingText="Creating...">Create contract</SubmitButton>
-        <LinkButton variant="secondary" href="/amc">Cancel</LinkButton>
-      </div>
+      <FormFooter cancelHref="/amc" note="Visits are planned for you as soon as the contract is saved.">
+        <SubmitButton pendingText="Creating…">Create contract</SubmitButton>
+      </FormFooter>
     </form>
   );
 }

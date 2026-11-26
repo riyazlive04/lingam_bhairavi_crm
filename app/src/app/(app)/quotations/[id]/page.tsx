@@ -1,18 +1,25 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, asc, desc, eq, inArray, like, ne, or, sql } from "drizzle-orm";
-import { Copy, FileSpreadsheet, GitBranch, MessageCircle, Pencil, Phone, Printer } from "lucide-react";
+import {
+  CheckCircle2, Copy, FileSpreadsheet, GitBranch, Handshake, IndianRupee, Mail, MessageCircle, Pencil, Phone, Printer, RefreshCw, Send, Trash2, XCircle,
+} from "lucide-react";
 import { getDb } from "@/db";
 import { auditLog, boqTemplates, customers, followUps, items, projects, quotationLines, quotations, salesOrders, users, vendors } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canRead, canSeeCost, canWrite } from "@/lib/rbac";
 import { SYSTEMS, type SystemKey } from "@/lib/constants";
-import { addDays, daysBetween, fmtDate, fmtDateTime, money, pct, todayIST } from "@/lib/format";
+import { addDays, daysBetween, fmtDate, fmtDateTime, money, money0, pct, todayIST } from "@/lib/format";
 import { approvalBlocks, approvalReasons, computeQuoteTotals, getPricingSettings, linePriceWarning, parseCostSource } from "@/lib/pricing";
 import {
   FOLLOWUP_MODE_LABEL, FOLLOWUP_OUTCOME_LABEL, isEditableStatus, istDate, telLink, whatsappLink,
 } from "@/lib/quotations";
-import { Badge, Card, DL, EmptyState, Field, Flash, Input, LinkButton, PageHeader, StatusBadge, Textarea, buttonClass } from "@/components/ui";
+import { Badge, EmptyState, Field, Flash, Input, LinkButton, Textarea, buttonClass } from "@/components/ui";
+import {
+  Callout, ConfirmButton, DetailPage, KeyValueGrid, MenuLink, MenuSeparator, MetaChip, SectionCard, StatusPill, StatusTimeline, SummaryRows, Tabs,
+  activeTab, tabHref, type StatusSemantic, type TabItem,
+} from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import {
   deleteDraft, duplicateQuotation, emailQuotation, markNegotiation, markSent, markWon, refreshPrices, reviseQuotation,
@@ -24,9 +31,12 @@ import { QuoteLinesTable } from "../_components/lines-table";
 
 export const metadata = { title: "Quotation" };
 
-const OUTCOME_TONE: Record<string, "green" | "gray" | "red" | "amber"> = { positive: "green", neutral: "gray", negative: "red", no_response: "amber" };
+const OUTCOME_SEMANTIC: Record<string, StatusSemantic> = { positive: "success", neutral: "neutral", negative: "danger", no_response: "warning" };
+const link = "font-medium text-brand-700 hover:underline dark:text-brand-300";
 
-export default async function QuotationDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string; action?: string }> }) {
+type SP = { ok?: string; err?: string; action?: string; tab?: string };
+
+export default async function QuotationDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<SP> }) {
   const user = await requireUser("quotations");
   const { id: idStr } = await params;
   const id = Number(idStr);
@@ -92,234 +102,329 @@ export default async function QuotationDetailPage({ params, searchParams }: { pa
   const tel = telLink(cust?.phone);
   const overdue = open && q.nextFollowUpDate && q.nextFollowUpDate < today;
   const expiredValidity = open && q.validUntil && q.validUntil < today;
+  const showApproval = isEditableStatus(q.status) && (reasons.length > 0 || q.approvalStatus !== "not_required");
+
+  // ------------------------------------------------------------------ tabs and the inline action forms (?action=)
+  const tab = activeTab(sp.tab, ["lines", "follow-ups", "details"] as const);
+  const tabParams = { tab: sp.tab };
+  const relatedCount = orders.length + projs.length + family.length;
+  const tabItems: TabItem[] = [
+    { id: "lines", label: "Bill of quantities", count: totals.lineCount },
+    { id: "follow-ups", label: "Follow-ups", count: fups.length, alert: !!overdue },
+    { id: "details", label: "Details", count: relatedCount || undefined },
+  ];
+  const canWin = writable && editable && !sendBlocked;
+  const canLose = writable && editable;
+  const canEmail = writable && !sendBlocked;
+  const action = sp.action === "won" && canWin ? "won" : sp.action === "lost" && canLose ? "lost" : sp.action === "email" && canEmail ? "email" : null;
+  const actionHref = (a: "won" | "lost" | "email") => `${back}?action=${a}#${a}`;
+
+  // ------------------------------------------------------------------ actions
+  const editBtn = (variant: "primary" | "secondary") => (
+    <LinkButton href={`/quotations/${id}/edit`} variant={variant}><Pencil className="icon-sm" aria-hidden /> Edit quotation</LinkButton>
+  );
+  const primary = !writable ? null
+    : q.status === "draft" && !sendBlocked ? (
+      <form action={markSent} title={`Schedules the first follow-up for ${fmtDate(addDays(today, 2))}`}>
+        <input type="hidden" name="id" value={id} />
+        <SubmitButton pendingText="Updating…"><Send className="icon-sm" aria-hidden /> Mark as sent</SubmitButton>
+      </form>
+    )
+      : open && canWin ? <LinkButton href={actionHref("won")}><CheckCircle2 className="icon-sm" aria-hidden /> Mark won</LinkButton>
+        : editable ? editBtn("primary")
+          : null;
+  const primaryIsEdit = writable && !(q.status === "draft" && !sendBlocked) && !(open && canWin) && editable;
+  const secondary = (
+    <>
+      {writable && editable && !primaryIsEdit && editBtn("secondary")}
+      {canEmail && <LinkButton href={actionHref("email")} variant="secondary"><Mail className="icon-sm" aria-hidden /> Email</LinkButton>}
+      <LinkButton href={`/quotations/${id}/print`} variant="secondary"><Printer className="icon-sm" aria-hidden /> Print</LinkButton>
+      <a href={`/quotations/${id}/export`} className={buttonClass("secondary")} download><FileSpreadsheet className="icon-sm" aria-hidden /> Download Excel</a>
+    </>
+  );
+  const more = writable && (
+    <>
+      {q.status === "sent" && (
+        <form action={markNegotiation}>
+          <input type="hidden" name="id" value={id} />
+          <SubmitButton variant="ghost" pendingText="Updating…"><Handshake className="icon-sm" aria-hidden /> Mark negotiation</SubmitButton>
+        </form>
+      )}
+      <form action={duplicateQuotation}>
+        <input type="hidden" name="id" value={id} />
+        <SubmitButton variant="ghost" pendingText="Copying…"><Copy className="icon-sm" aria-hidden /> Duplicate</SubmitButton>
+      </form>
+      {q.status !== "draft" && q.status !== "won" && (
+        <form action={reviseQuotation}>
+          <input type="hidden" name="id" value={id} />
+          {open ? (
+            <ConfirmButton variant="ghost" stacked pendingText="Revising…" confirmLabel="Yes, create revision"
+              confirm="Create a new revision? This version will be marked superseded (expired).">
+              <GitBranch className="icon-sm" aria-hidden /> Revise
+            </ConfirmButton>
+          ) : (
+            <SubmitButton variant="ghost" pendingText="Revising…"><GitBranch className="icon-sm" aria-hidden /> Revise</SubmitButton>
+          )}
+        </form>
+      )}
+      {q.status === "draft" && (
+        <form action={refreshPrices}>
+          <input type="hidden" name="id" value={id} />
+          <ConfirmButton variant="ghost" stacked pendingText="Refreshing…" confirmLabel="Yes, refresh prices"
+            confirm="Re-price all item lines from the latest purchase costs (with their dates and suppliers) at this quotation's markup?">
+            <RefreshCw className="icon-sm" aria-hidden /> Refresh prices
+          </ConfirmButton>
+        </form>
+      )}
+      {(canLose || q.status === "draft") && <MenuSeparator />}
+      {canLose && <MenuLink href={actionHref("lost")} icon={XCircle} danger>Mark lost</MenuLink>}
+      {q.status === "draft" && (
+        <form action={deleteDraft}>
+          <input type="hidden" name="id" value={id} />
+          <ConfirmButton variant="ghost" className="text-danger" confirmVariant="danger" stacked pendingText="Deleting…" confirmLabel="Yes, delete draft"
+            confirm="Delete this draft quotation permanently?">
+            <Trash2 className="icon-sm" aria-hidden /> Delete draft
+          </ConfirmButton>
+        </form>
+      )}
+    </>
+  );
+
+  // ------------------------------------------------------------------ inline action forms
+  const cancelAction = <LinkButton href={back} variant="ghost" size="sm">Cancel</LinkButton>;
+  const actionCard = action === "won" ? (
+    <SectionCard id="won" title="Mark won and create the sales order" icon={CheckCircle2} actions={cancelAction}
+      description={`Contract value excluding GST: ${money(totals.taxable)}`}>
+      <form action={markWon} className="space-y-4">
+        <input type="hidden" name="id" value={id} />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Customer PO number"><Input name="customerPoNumber" maxLength={80} /></Field>
+          <Field label="Customer PO date"><Input type="date" name="customerPoDate" defaultValue={today} max={today} /></Field>
+          <Field label="Expected delivery"><Input type="date" name="expectedDelivery" min={today} /></Field>
+          <Field label="Project name"><Input name="projectName" defaultValue={q.projectName ?? ""} maxLength={200} /></Field>
+          {showCost && (
+            <Field label="Project budget (₹)" hint={`Leave blank to use material cost plus erection (${money(totals.cost + totals.erection * (1 - q.discountPct / 100))})`}>
+              <Input type="number" name="budget" min={0} step="0.01" inputMode="decimal" className="text-right" />
+            </Field>
+          )}
+          <label className="flex items-center gap-2 self-end pb-2 text-sm text-ink"><input type="checkbox" name="createProject" defaultChecked /> Also create a project</label>
+        </div>
+        <div className="flex justify-end">
+          <SubmitButton pendingText="Creating order…" className="max-sm:w-full" confirm="Mark as won and create the sales order?">Mark won and create order</SubmitButton>
+        </div>
+      </form>
+    </SectionCard>
+  ) : action === "lost" ? (
+    <SectionCard id="lost" title="Mark lost" icon={XCircle} actions={cancelAction} description="The reason helps when you review lost business later.">
+      <LostForm quotationId={id} back={back} idPrefix="lost" />
+    </SectionCard>
+  ) : action === "email" ? (
+    <SectionCard id="email" title="Email to customer" icon={Mail} actions={cancelAction}
+      description={q.status === "draft" ? "The quotation is attached as a PDF and marked as sent." : "The quotation is attached as a PDF."}>
+      <form action={emailQuotation} className="space-y-4">
+        <input type="hidden" name="id" value={id} />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="To" required><Input type="email" name="to" defaultValue={cust?.email ?? ""} required maxLength={200} /></Field>
+          <Field label="CC"><Input type="email" name="cc" maxLength={200} /></Field>
+          <Field label="Message" className="sm:col-span-2" hint="Optional. A standard covering note is used if you leave this empty.">
+            <Textarea name="message" rows={3} maxLength={2000} />
+          </Field>
+        </div>
+        <div className="flex justify-end">
+          <SubmitButton pendingText="Queuing…" className="max-sm:w-full"><Send className="icon-sm" aria-hidden /> Send email{q.status === "draft" ? " and mark sent" : ""}</SubmitButton>
+        </div>
+      </form>
+    </SectionCard>
+  ) : null;
+
+  // ------------------------------------------------------------------ details
+  const contact: ReactNode = cust?.phone || cust?.email ? (
+    <span className="flex flex-wrap items-center gap-3">
+      {tel && <a href={tel} className={`inline-flex items-center gap-1 ${link}`}><Phone className="icon-xs" aria-hidden />{cust?.phone}</a>}
+      {wa && <a href={wa} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-medium text-success hover:underline"><MessageCircle className="icon-xs" aria-hidden />WhatsApp</a>}
+      {cust?.email && <a href={`mailto:${cust.email}`} className={link}>{cust.email}</a>}
+    </span>
+  ) : null;
+  const customerHref = canRead(user.role, "customers") ? `/customers/${q.customerId}` : undefined;
 
   return (
-    <div>
-      <PageHeader
-        title={<span className="flex flex-wrap items-center gap-2">{q.number} <StatusBadge status={q.status} />{q.revision > 0 && <Badge tone="violet">Rev {q.revision}</Badge>}</span>}
-        subtitle={<>{cust?.name ?? "Unknown customer"}{q.projectName ? ` · ${q.projectName}` : ""}</>}
-        back={{ href: "/quotations", label: "Quotations" }}
-        actions={<>
-          <LinkButton href={`/quotations/${id}/print`} variant="secondary"><Printer className="h-4 w-4" aria-hidden /> Print</LinkButton>
-          <a href={`/quotations/${id}/export`} className={buttonClass("secondary")} download><FileSpreadsheet className="h-4 w-4" aria-hidden /> Excel</a>
-          {writable && editable && <LinkButton href={`/quotations/${id}/edit`}><Pencil className="h-4 w-4" aria-hidden /> Edit</LinkButton>}
-        </>}
-      />
-      <Flash ok={sp.ok} err={sp.err} />
-      {expiredValidity && (
-        <div role="status" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-          Validity ended on {fmtDate(q.validUntil)}. Consider sending a revision with refreshed prices.
-        </div>
-      )}
+    <DetailPage
+      back={{ href: "/quotations", label: "Quotations" }}
+      eyebrow="Quotation"
+      title={q.number}
+      status={
+        <>
+          <StatusPill status={q.status} />
+          {q.revision > 0 && <Badge tone="violet">Rev {q.revision}</Badge>}
+          {editable && q.approvalStatus === "pending" && <StatusPill semantic="warning" label="Awaiting approval" noDot />}
+          {editable && q.approvalStatus === "rejected" && <StatusPill semantic="danger" label="Not approved" noDot />}
+        </>
+      }
+      meta={
+        <>
+          <MetaChip label="Customer" href={customerHref}>{cust?.name ?? "Unknown customer"}</MetaChip>
+          {q.projectName && <MetaChip label="Project">{q.projectName}</MetaChip>}
+          <MetaChip label="Value" icon={IndianRupee}>{money0(totals.grand)}</MetaChip>
+          <MetaChip label="Valid until">{fmtDate(q.validUntil)}</MetaChip>
+          {preparer?.name && <MetaChip label="By">{preparer.name}</MetaChip>}
+        </>
+      }
+      primaryAction={primary}
+      secondaryActions={secondary}
+      moreActions={more || undefined}
+      notices={
+        <>
+          <Flash ok={sp.ok} err={sp.err} />
+          {writable && sendBlocked && (
+            <Callout tone="warning" title={q.approvalStatus === "pending" ? "Waiting for approval" : "Needs approval before sending"}
+              action={<LinkButton href="#approval" variant="secondary" size="sm">Review approval</LinkButton>}>
+              Mark as sent, email and mark won unlock once an admin approves this quotation.
+            </Callout>
+          )}
+          {expiredValidity && (
+            <Callout tone="warning" title={`Validity ended on ${fmtDate(q.validUntil)}`}>
+              Consider sending a revision with refreshed prices.
+            </Callout>
+          )}
+          {overdue && (
+            <Callout tone="danger" title={`Follow-up was due on ${fmtDate(q.nextFollowUpDate)}`}
+              action={tab !== "follow-ups" && <LinkButton href={tabHref(back, tabParams, "follow-ups", "lines")} variant="secondary" size="sm">Log a call</LinkButton>}>
+              Call or message the customer, then log what they said.
+            </Callout>
+          )}
+        </>
+      }
+      tabs={<Tabs label="Quotation sections" basePath={back} params={tabParams} active={tab} items={tabItems} />}
+      aside={
+        <>
+          {showApproval && (
+            <ApprovalPanel
+              quotationId={id} approvalStatus={q.approvalStatus} approvalNote={q.approvalNote}
+              requestedAt={q.approvalRequestedAt} requestedByName={q.approvalRequestedBy ? userName.get(q.approvalRequestedBy) ?? null : null}
+              decidedAt={q.approvedAt} decidedByName={q.approvedBy ? userName.get(q.approvedBy) ?? null : null}
+              reasons={reasons} mode={pricing.approvalMode} editable={editable} canRequest={writable} isAdmin={user.role === "admin"} history={history}
+            />
+          )}
+          <SectionCard title="Summary" icon={IndianRupee}>
+            <SummaryRows rows={[
+              ["Grand total", <span key="g" className="font-display text-heading font-bold">{money(totals.grand)}</span>],
+              ["Taxable value", money(totals.taxable)],
+              ["Lines", totals.lineCount],
+              ["Sent", q.sentAt ? `${fmtDate(istDate(q.sentAt))} (${daysBetween(istDate(q.sentAt), today)} days ago)` : "Not yet"],
+              ...(open ? [["Next follow-up", q.nextFollowUpDate
+                ? <span key="n" className={overdue ? "text-danger" : undefined}>{fmtDate(q.nextFollowUpDate)}{overdue ? " (overdue)" : ""}</span>
+                : <span key="n" className="text-warning">Not scheduled</span>] as [ReactNode, ReactNode]] : []),
+            ]} />
+            {writable && q.status === "draft" && !sendBlocked && (
+              <p className="mt-3 text-caption text-ink-soft">Marking as sent schedules the first follow-up for {fmtDate(addDays(today, 2))}.</p>
+            )}
+          </SectionCard>
+          {showCost && (
+            <SectionCard title="Cost and margin" description="Internal only. Never printed or exported.">
+              <SummaryRows rows={[
+                ["Material cost (snapshot)", money(totals.cost)],
+                ["Supply value (net of discount)", money(totals.supply * (1 - q.discountPct / 100))],
+                ["Material margin", <span key="m" className={totals.marginPct < pricing.minMarginPct ? "text-danger" : "text-success"}>{pct(totals.marginPct)}</span>],
+                ["Erection (labour) value", money(totals.erection * (1 - q.discountPct / 100))],
+                ["Markup used", pct(q.markupPct)],
+                ["Minimum margin policy", pct(pricing.minMarginPct)],
+              ]} />
+              {(below > 0 || lowMargin > 0) && (
+                <Callout tone="warning" className="mt-3">
+                  {below > 0 && `${below} line${below === 1 ? "" : "s"} below cost. `}{lowMargin > 0 && `${lowMargin} line${lowMargin === 1 ? "" : "s"} under ${pricing.minMarginPct}% margin.`}
+                </Callout>
+              )}
+            </SectionCard>
+          )}
+        </>
+      }
+    >
+      {actionCard}
 
-      <div className="mb-6 grid gap-6 lg:grid-cols-3">
-        <Card title="Details" className="lg:col-span-2">
-          <DL items={[
-            ["Customer", cust ? <span>{cust.name}{cust.contactPerson ? <span className="text-ink-soft"> · {cust.contactPerson}</span> : null}</span> : "-"],
-            ["Contact", cust?.phone || cust?.email ? (
-              <span className="flex flex-wrap items-center gap-3">
-                {tel && <a href={tel} className="inline-flex items-center gap-1 text-brand-700 hover:underline"><Phone className="h-3.5 w-3.5" aria-hidden />{cust?.phone}</a>}
-                {wa && <a href={wa} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-emerald-700 hover:underline dark:text-emerald-400"><MessageCircle className="h-3.5 w-3.5" aria-hidden />WhatsApp</a>}
-                {cust?.email && <a href={`mailto:${cust.email}`} className="text-brand-700 hover:underline">{cust.email}</a>}
-              </span>
-            ) : "-"],
-            ["Project", q.projectName || "-"],
-            ["Site location", q.siteLocation || "-"],
-            ["System", q.system ? SYSTEMS[q.system as SystemKey] ?? q.system : "Mixed"],
-            ["BOQ template", tmpl ? (canRead(user.role, "boq") ? <Link href={`/boq-templates/${tmpl.id}`} className="text-brand-700 hover:underline">{tmpl.name}</Link> : tmpl.name) : "Blank"],
-            ["Quotation date", fmtDate(q.quoteDate)],
-            ["Valid until", fmtDate(q.validUntil)],
-            ["Prepared by", preparer?.name ?? "-"],
-            ["Sent", q.sentAt ? `${fmtDateTime(q.sentAt)} (${daysBetween(istDate(q.sentAt), today)} days ago)` : "Not yet"],
-            ...(open ? [["Next follow-up", q.nextFollowUpDate ? <span className={overdue ? "font-medium text-red-600" : ""}>{fmtDate(q.nextFollowUpDate)}{overdue ? " (overdue)" : ""}</span> : <span className="text-amber-700 dark:text-amber-400">Not scheduled</span>] as [string, React.ReactNode]] : []),
-            ...(q.closedAt ? [["Closed", fmtDateTime(q.closedAt)] as [string, React.ReactNode]] : []),
-            ...(q.lostReason ? [["Lost reason", q.lostReason] as [string, React.ReactNode]] : []),
-            ...(orders.length ? [["Sales order", <span key="so" className="flex flex-wrap gap-2">{orders.map((o) => <Link key={o.id} href={`/orders/${o.id}`} className="text-brand-700 hover:underline">{o.number}</Link>)}</span>] as [string, React.ReactNode]] : []),
-            ...(projs.length ? [["Project", <span key="pr" className="flex flex-wrap gap-2">{projs.map((p) => canRead(user.role, "projects") ? <Link key={p.id} href={`/projects/${p.id}`} className="text-brand-700 hover:underline">{p.code} · {p.name}</Link> : <span key={p.id}>{p.code} · {p.name}</span>)}</span>] as [string, React.ReactNode]] : []),
-            ...(family.length ? [["Other revisions", <span key="rv" className="flex flex-wrap gap-2">{family.map((f) => <Link key={f.id} href={`/quotations/${f.id}`} className="text-brand-700 hover:underline">{f.number} <span className="text-ink-soft">({f.status})</span></Link>)}</span>] as [string, React.ReactNode]] : []),
-          ]} />
-          {q.notes && <p className="mt-4 whitespace-pre-line rounded-lg bg-muted p-3 text-sm text-ink-soft"><span className="font-medium text-ink">Internal notes: </span>{q.notes}</p>}
-        </Card>
-
-        <div className="space-y-6">
-        {(isEditableStatus(q.status) && (reasons.length > 0 || q.approvalStatus !== "not_required")) && (
-          <ApprovalPanel
-            quotationId={id} approvalStatus={q.approvalStatus} approvalNote={q.approvalNote}
-            requestedAt={q.approvalRequestedAt} requestedByName={q.approvalRequestedBy ? userName.get(q.approvalRequestedBy) ?? null : null}
-            decidedAt={q.approvedAt} decidedByName={q.approvedBy ? userName.get(q.approvedBy) ?? null : null}
-            reasons={reasons} mode={pricing.approvalMode} editable={editable} canRequest={writable} isAdmin={user.role === "admin"} history={history}
-          />
-        )}
-        {writable ? (
-          <Card title="Actions">
-            <div className="space-y-3">
-              {sendBlocked && (
-                <p role="status" className="rounded-lg bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-                  Mark as sent, Email and Mark won unlock once an admin approves this quotation.
-                </p>
-              )}
-              {q.status === "draft" && !sendBlocked && (
-                <form action={markSent}>
-                  <input type="hidden" name="id" value={id} />
-                  <SubmitButton className="w-full" pendingText="Updating…">Mark as sent</SubmitButton>
-                  <p className="mt-1 text-xs text-ink-soft">Schedules the first follow-up for {fmtDate(addDays(today, 2))}.</p>
-                </form>
-              )}
-              {q.status === "sent" && (
-                <form action={markNegotiation}>
-                  <input type="hidden" name="id" value={id} />
-                  <SubmitButton variant="secondary" className="w-full" pendingText="Updating…">Mark negotiation</SubmitButton>
-                </form>
-              )}
-              {editable && !sendBlocked && (
-                <details id="won" className="rounded-lg border border-line p-3" open={sp.action === "won"}>
-                  <summary className="cursor-pointer text-sm font-semibold text-emerald-700 dark:text-emerald-400">Mark won → create sales order</summary>
-                  <form action={markWon} className="mt-3 space-y-3">
-                    <input type="hidden" name="id" value={id} />
-                    <Field label="Customer PO number"><Input name="customerPoNumber" maxLength={80} /></Field>
-                    <Field label="Customer PO date"><Input type="date" name="customerPoDate" defaultValue={today} max={today} /></Field>
-                    <Field label="Expected delivery"><Input type="date" name="expectedDelivery" min={today} /></Field>
-                    <label className="flex items-center gap-2 text-sm text-ink"><input type="checkbox" name="createProject" defaultChecked /> Also create a project</label>
-                    <Field label="Project name"><Input name="projectName" defaultValue={q.projectName ?? ""} maxLength={200} /></Field>
-                    {showCost && (
-                      <Field label="Project budget (₹)" hint={`Blank = material cost + erection (${money(totals.cost + totals.erection * (1 - q.discountPct / 100))})`}>
-                        <Input type="number" name="budget" min={0} step="0.01" />
-                      </Field>
-                    )}
-                    <p className="text-xs text-ink-soft">Contract value (excl. GST): {money(totals.taxable)}</p>
-                    <SubmitButton variant="success" className="w-full" pendingText="Creating order…" confirm="Mark as won and create the sales order?">Mark won</SubmitButton>
-                  </form>
-                </details>
-              )}
-              {editable && (
-                <details className="rounded-lg border border-line p-3" open={sp.action === "lost"}>
-                  <summary className="cursor-pointer text-sm font-semibold text-red-700 dark:text-red-400">Mark lost</summary>
-                  <div className="mt-3"><LostForm quotationId={id} back={back} idPrefix="lost" /></div>
-                </details>
-              )}
-              {!sendBlocked && <details className="rounded-lg border border-line p-3">
-                <summary className="cursor-pointer text-sm font-semibold text-ink">Email to customer</summary>
-                <form action={emailQuotation} className="mt-3 space-y-3">
-                  <input type="hidden" name="id" value={id} />
-                  <Field label="To" required><Input type="email" name="to" defaultValue={cust?.email ?? ""} required maxLength={200} /></Field>
-                  <Field label="CC"><Input type="email" name="cc" maxLength={200} /></Field>
-                  <Field label="Message" hint="Optional. A standard covering note is used if you leave this empty"><Textarea name="message" rows={3} maxLength={2000} /></Field>
-                  <SubmitButton variant="secondary" className="w-full" pendingText="Queuing…">Send email{q.status === "draft" ? " & mark sent" : ""}</SubmitButton>
-                </form>
-              </details>}
-              <div className="grid grid-cols-2 gap-2">
-                <form action={duplicateQuotation}>
-                  <input type="hidden" name="id" value={id} />
-                  <SubmitButton variant="secondary" size="sm" className="w-full" pendingText="Copying…"><Copy className="h-4 w-4" aria-hidden /> Duplicate</SubmitButton>
-                </form>
-                {q.status !== "draft" && q.status !== "won" ? (
-                  <form action={reviseQuotation}>
-                    <input type="hidden" name="id" value={id} />
-                    <SubmitButton variant="secondary" size="sm" className="w-full" pendingText="Revising…"
-                      confirm={open ? "Create a new revision? This version will be marked superseded (expired)." : undefined}>
-                      <GitBranch className="h-4 w-4" aria-hidden /> Revise
-                    </SubmitButton>
-                  </form>
-                ) : <span />}
-              </div>
-              {q.status === "draft" && (
-                <div className="grid grid-cols-2 gap-2">
-                  <form action={refreshPrices}>
-                    <input type="hidden" name="id" value={id} />
-                    <SubmitButton variant="secondary" size="sm" className="w-full" pendingText="Refreshing…" confirm="Re-price all item lines from the latest purchase costs (with their dates and suppliers) at this quotation's markup?">Refresh prices</SubmitButton>
-                  </form>
-                  <form action={deleteDraft}>
-                    <input type="hidden" name="id" value={id} />
-                    <SubmitButton variant="danger" size="sm" className="w-full" pendingText="Deleting…" confirm="Delete this draft quotation permanently?">Delete draft</SubmitButton>
-                  </form>
-                </div>
-              )}
-            </div>
-          </Card>
-        ) : (
-          <Card title="Summary">
-            <p className="text-sm text-ink-soft">You have read-only access to quotations.</p>
-          </Card>
-        )}
-        </div>
-      </div>
-
-      <section aria-labelledby="boq-h" className="mb-6">
-        <div className="mb-2 flex items-baseline justify-between">
-          <h2 id="boq-h" className="text-lg font-semibold text-ink">Bill of quantities</h2>
-          <span className="text-sm text-ink-soft">{totals.lineCount} line{totals.lineCount === 1 ? "" : "s"}</span>
-        </div>
-        {lines.length === 0 ? (
-          <EmptyState title="No lines on this quotation" action={writable && editable && <LinkButton href={`/quotations/${id}/edit`}>Add lines</LinkButton>} />
+      {tab === "lines" && (
+        lines.length === 0 ? (
+          <EmptyState title="No lines on this quotation" action={writable && editable && <LinkButton href={`/quotations/${id}/edit`}>Add lines</LinkButton>}>
+            Open the quotation in the editor to add items from the master or free-text lines.
+          </EmptyState>
         ) : (
           <>
-          <QuoteLinesTable lines={lines} totals={totals} discountPct={q.discountPct} gstPct={q.gstPct}
-            renderMeta={(l) => (l.itemId != null || l.costSource ? (
-              <CostMeta cost={showCost ? l.costRate : null} costDate={l.costDate} vendorName={l.costVendorId ? vendorName.get(l.costVendorId) ?? null : null}
-                source={parseCostSource(l.costSource) ?? (l.itemId == null ? "manual" : null)} volatile={l.itemId != null ? volatileItem.get(l.itemId) ?? false : false} today={today} />
-            ) : null)} />
-          <p className="mt-2 text-xs text-ink-faint">Cost dates and suppliers are for internal use only. They are not printed or exported to the customer.</p>
+            <QuoteLinesTable lines={lines} totals={totals} discountPct={q.discountPct} gstPct={q.gstPct}
+              renderMeta={(l) => (l.itemId != null || l.costSource ? (
+                <CostMeta cost={showCost ? l.costRate : null} costDate={l.costDate} vendorName={l.costVendorId ? vendorName.get(l.costVendorId) ?? null : null}
+                  source={parseCostSource(l.costSource) ?? (l.itemId == null ? "manual" : null)} volatile={l.itemId != null ? volatileItem.get(l.itemId) ?? false : false} today={today} />
+              ) : null)} />
+            <p className="text-caption text-ink-faint">Cost dates and suppliers are for internal use only. They are not printed or exported to the customer.</p>
           </>
-        )}
-      </section>
+        )
+      )}
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {showCost && (
-          <Card title="Cost & margin (internal)">
-            <dl className="space-y-2 text-sm">
-              <Row label="Material cost (snapshot)" value={money(totals.cost)} />
-              <Row label="Supply value (net of discount)" value={money(totals.supply * (1 - q.discountPct / 100))} />
-              <Row label="Material margin" value={<span className={totals.marginPct < pricing.minMarginPct ? "font-semibold text-red-600" : "font-semibold text-emerald-600"}>{pct(totals.marginPct)}</span>} />
-              <Row label="Erection (labour) value" value={money(totals.erection * (1 - q.discountPct / 100))} />
-              <Row label="Markup used" value={pct(q.markupPct)} />
-              <Row label="Minimum margin policy" value={pct(pricing.minMarginPct)} />
-            </dl>
-            {(below > 0 || lowMargin > 0) && (
-              <p className="mt-3 rounded-lg bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-                {below > 0 && `${below} line${below === 1 ? "" : "s"} below cost. `}{lowMargin > 0 && `${lowMargin} line${lowMargin === 1 ? "" : "s"} under ${pricing.minMarginPct}% margin.`}
-              </p>
-            )}
-          </Card>
-        )}
-
-        <Card title={`Follow-ups (${fups.length})`} className={showCost ? "lg:col-span-2" : "lg:col-span-3"}>
+      {tab === "follow-ups" && (
+        <>
           {fuWritable && q.status !== "draft" && (
-            <details className="mb-4 rounded-lg border border-line p-3" open={open && fups.length === 0}>
-              <summary className="cursor-pointer text-sm font-semibold text-brand-700">Log a follow-up</summary>
-              <div className="mt-3"><FollowUpForm quotationId={id} back={back} idPrefix="fu" /></div>
-            </details>
+            <SectionCard title="Log a follow-up" icon={Phone}
+              actions={(tel || wa) && (
+                <>
+                  {tel && <a href={tel} className={buttonClass("secondary", "sm")}><Phone className="icon-sm" aria-hidden /> Call</a>}
+                  {wa && <a href={wa} target="_blank" rel="noopener noreferrer" className={buttonClass("secondary", "sm")}><MessageCircle className="icon-sm text-success" aria-hidden /> WhatsApp</a>}
+                </>
+              )}>
+              <FollowUpForm quotationId={id} back={`${back}?tab=follow-ups`} idPrefix="fu" />
+            </SectionCard>
           )}
-          {q.status === "draft" && <p className="mb-3 text-sm text-ink-soft">Follow-ups start once the quotation is marked as sent.</p>}
-          {fups.length === 0 ? (
-            <p className="text-sm text-ink-soft">No follow-ups logged yet.</p>
-          ) : (
-            <ol className="relative space-y-4 border-l border-line pl-5">
-              {fups.map(({ f, userName }) => (
-                <li key={f.id} className="relative">
-                  <span className="absolute -left-[1.6rem] top-1 h-3 w-3 rounded-full border-2 border-surface bg-brand-500" aria-hidden />
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="font-medium text-ink">{fmtDate(f.date)}</span>
-                    <Badge tone="blue">{FOLLOWUP_MODE_LABEL[f.mode] ?? f.mode}</Badge>
-                    {f.outcome && <Badge tone={OUTCOME_TONE[f.outcome] ?? "gray"}>{FOLLOWUP_OUTCOME_LABEL[f.outcome] ?? f.outcome}</Badge>}
-                    <span className="text-xs text-ink-soft">by {userName ?? "-"}</span>
-                  </div>
-                  {f.notes && <p className="mt-1 whitespace-pre-line text-sm text-ink">{f.notes}</p>}
-                  {f.nextDate && <p className="mt-0.5 text-xs text-ink-soft">Next follow-up: {fmtDate(f.nextDate)}</p>}
-                </li>
-              ))}
-            </ol>
-          )}
-        </Card>
-      </div>
-    </div>
-  );
-}
+          <SectionCard title="Follow-up history" count={fups.length}
+            empty={fups.length === 0 && (q.status === "draft"
+              ? "No follow-ups yet. They start once the quotation is marked as sent."
+              : "No follow-ups logged yet. After you speak to the customer, log what they said.")}>
+            <StatusTimeline items={fups.map(({ f, userName: by }) => ({
+              id: f.id,
+              title: <>{FOLLOWUP_MODE_LABEL[f.mode] ?? f.mode}{f.outcome && <span className="font-normal text-ink-soft"> · {FOLLOWUP_OUTCOME_LABEL[f.outcome] ?? f.outcome}</span>}</>,
+              at: fmtDate(f.date),
+              by: by ?? undefined,
+              semantic: f.outcome ? OUTCOME_SEMANTIC[f.outcome] ?? "neutral" : "info",
+              body: (f.notes || f.nextDate) ? (
+                <>
+                  {f.notes && <p className="whitespace-pre-line text-ink">{f.notes}</p>}
+                  {f.nextDate && <p className="mt-0.5 text-caption">Next follow-up {fmtDate(f.nextDate)}</p>}
+                </>
+              ) : undefined,
+            }))} />
+          </SectionCard>
+        </>
+      )}
 
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-ink-soft">{label}</dt>
-      <dd className="tabular-nums text-ink">{value}</dd>
-    </div>
+      {tab === "details" && (
+        <>
+          <SectionCard title="Quotation details">
+            <KeyValueGrid items={[
+              { label: "Customer", value: cust ? <>{customerHref ? <Link href={customerHref} className={link}>{cust.name}</Link> : cust.name}{cust.contactPerson ? <span className="font-normal text-ink-soft"> · {cust.contactPerson}</span> : null}</> : null },
+              { label: "Contact", value: contact },
+              { label: "Project", value: q.projectName },
+              { label: "Site location", value: q.siteLocation },
+              { label: "System", value: q.system ? SYSTEMS[q.system as SystemKey] ?? q.system : "Mixed" },
+              { label: "BOQ template", value: tmpl ? (canRead(user.role, "boq") ? <Link href={`/boq-templates/${tmpl.id}`} className={link}>{tmpl.name}</Link> : tmpl.name) : "Blank" },
+              { label: "Quotation date", value: fmtDate(q.quoteDate) },
+              { label: "Valid until", value: fmtDate(q.validUntil) },
+              { label: "Prepared by", value: preparer?.name },
+              { label: "Sent", value: q.sentAt ? `${fmtDateTime(q.sentAt)} (${daysBetween(istDate(q.sentAt), today)} days ago)` : "Not yet" },
+              ...(q.closedAt ? [{ label: "Closed", value: fmtDateTime(q.closedAt) }] : []),
+              ...(q.lostReason ? [{ label: "Lost reason", value: q.lostReason, wide: true }] : []),
+              ...(q.notes ? [{ label: "Internal notes", value: <span className="whitespace-pre-line font-normal">{q.notes}</span>, wide: true }] : []),
+            ]} />
+          </SectionCard>
+          <SectionCard title="Related records" count={relatedCount}
+            empty={relatedCount === 0 && "No sales order, project or other revision yet. Marking the quotation won creates the order."}>
+            <KeyValueGrid columns={1} items={[
+              ...(orders.length ? [{ label: "Sales order", value: <span className="flex flex-wrap gap-3">{orders.map((o) => <Link key={o.id} href={`/orders/${o.id}`} className={link}>{o.number}</Link>)}</span> }] : []),
+              ...(projs.length ? [{ label: "Project", value: <span className="flex flex-wrap gap-3">{projs.map((p) => canRead(user.role, "projects") ? <Link key={p.id} href={`/projects/${p.id}`} className={link}>{p.code} · {p.name}</Link> : <span key={p.id}>{p.code} · {p.name}</span>)}</span> }] : []),
+              ...(family.length ? [{ label: "Other revisions", value: (
+                <span className="flex flex-wrap gap-x-4 gap-y-2">
+                  {family.map((f) => <span key={f.id} className="inline-flex items-center gap-1.5"><Link href={`/quotations/${f.id}`} className={link}>{f.number}</Link><StatusPill status={f.status} /></span>)}
+                </span>
+              ) }] : []),
+            ]} />
+          </SectionCard>
+        </>
+      )}
+    </DetailPage>
   );
 }

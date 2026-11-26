@@ -6,7 +6,8 @@ import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
 import { fmtDate } from "@/lib/format";
 import { returnablePurchaseLines } from "@/lib/returns";
-import { Flash, PageHeader } from "@/components/ui";
+import { Flash } from "@/components/ui";
+import { FormPage } from "@/components/patterns";
 import { VendorReturnForm } from "../../../_components/vendor-return-form";
 import { toVendorEditorLines } from "../../../_components/lines";
 
@@ -36,10 +37,10 @@ export default async function EditVendorReturnPage({ params, searchParams }: { p
     .map((s) => [String(s.purchaseInvoiceLineId), { qty: Number(s.qty), rate: Number(s.rate), gstRate: Number(s.gstRate) }]));
 
   return (
-    <>
-      <PageHeader title="Edit draft debit note" subtitle={row.vendorName} back={{ href: `/returns/vendor/${returnId}`, label: "Draft debit note" }} />
-      <Flash err={sp.err} />
+    <FormPage title="Edit draft debit note" subtitle={row.vendorName} back={{ href: `/returns/vendor/${returnId}`, label: "Draft debit note" }} width="wide"
+      notices={<Flash err={sp.err} />}>
       <VendorReturnForm
+        cancelHref={`/returns/vendor/${returnId}`}
         returnId={returnId}
         purchaseInvoiceId={r.purchaseInvoiceId}
         details={[["Vendor", row.vendorName], ["Vendor bill", row.billNo ? `${row.billNo} dated ${fmtDate(row.billDate)}` : "-"]]}
@@ -47,6 +48,6 @@ export default async function EditVendorReturnPage({ params, searchParams }: { p
         date={r.date}
         reason={r.reason}
       />
-    </>
+    </FormPage>
   );
 }

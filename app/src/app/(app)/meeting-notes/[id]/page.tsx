@@ -1,15 +1,17 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { desc, eq } from "drizzle-orm";
-import { CheckSquare, Download, Pencil, Square } from "lucide-react";
+import { CheckSquare, Download, FileText, ListChecks, Pencil, Square } from "lucide-react";
 import { getDb } from "@/db";
 import { meetingNoteRevisions, meetingNotes, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
 import { daysBetween, fmtDate, fmtDateTime, todayIST } from "@/lib/format";
-import { Badge, Card, Flash, LinkButton, PageHeader, cx } from "@/components/ui";
+import { Badge, Flash, LinkButton, buttonClass, cx } from "@/components/ui";
+import { DetailPage, KeyValueGrid, MetaChip, SectionCard, StatusPill, StatusTimeline, type TimelineItem } from "@/components/patterns";
 import { Markdown } from "../_components/markdown";
 import { toggleActionItem } from "../actions";
+
+export const metadata = { title: "Meeting note" };
 
 export default async function MeetingNotePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
   const user = await requireUser("meetings");
@@ -34,104 +36,129 @@ export default async function MeetingNotePage({ params, searchParams }: { params
     .orderBy(desc(meetingNoteRevisions.version), desc(meetingNoteRevisions.id));
   const writable = canWrite(user.role, "meetings");
   const items = n.actionItems ?? [];
+  const openCount = items.filter((i) => !i.done).length;
   const today = todayIST();
 
+  const history: TimelineItem[] = [
+    ...revisions.map((r) => {
+      const current = r.version + 1 === n.version;
+      return {
+        id: r.id,
+        title: <span className="inline-flex flex-wrap items-center gap-2"><Badge tone={current ? "violet" : "gray"}>v{r.version + 1}{current ? " · current" : ""}</Badge> {r.changeSummary || "Updated"}</span>,
+        at: fmtDateTime(r.createdAt),
+        by: r.by ?? undefined,
+        semantic: current ? ("progress" as const) : ("neutral" as const),
+        body: (
+          <a href={`/meeting-notes/${n.id}/revisions/${r.id}`} className="text-caption font-medium text-brand-700 hover:underline dark:text-brand-300">
+            View v{r.version} as it was before this change
+          </a>
+        ),
+      };
+    }),
+    {
+      id: "created",
+      title: <span className="inline-flex flex-wrap items-center gap-2"><Badge tone={n.version === 1 ? "violet" : "gray"}>v1{n.version === 1 ? " · current" : ""}</Badge> Created</span>,
+      at: fmtDateTime(n.createdAt),
+      semantic: n.version === 1 ? "progress" : "neutral",
+    },
+  ];
+
   return (
-    <div className="max-w-4xl space-y-6">
-      <PageHeader
-        title={n.title}
-        subtitle={<span className="inline-flex flex-wrap items-center gap-2">{fmtDate(n.meetingDate)} <Badge tone="violet">v{n.version}</Badge> <span>updated {fmtDateTime(n.updatedAt)}{row.updatedByName ? ` by ${row.updatedByName}` : ""}</span></span>}
-        back={{ href: "/meeting-notes", label: "Meeting notes" }}
-        actions={
-          <>
-            <a href={`/meeting-notes/${n.id}/export`} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line bg-surface px-4 text-sm font-medium text-ink hover:bg-muted">
-              <Download className="h-4 w-4" aria-hidden /> Markdown
-            </a>
-            {writable && <LinkButton href={`/meeting-notes/${n.id}/edit`}><Pencil className="h-4 w-4" aria-hidden /> Update notes</LinkButton>}
-          </>
-        }
-      />
-      <Flash ok={sp.ok} err={sp.err} />
+    <DetailPage
+      back={{ href: "/meeting-notes", label: "Meeting notes" }}
+      eyebrow="Meeting note"
+      title={n.title}
+      status={<Badge tone="violet">v{n.version}</Badge>}
+      meta={
+        <>
+          <MetaChip label="Date">{fmtDate(n.meetingDate)}</MetaChip>
+          <MetaChip label="Open actions">{items.length ? `${openCount} of ${items.length}` : "None"}</MetaChip>
+          <MetaChip label="Updated">{fmtDateTime(n.updatedAt)}{row.updatedByName ? ` by ${row.updatedByName}` : ""}</MetaChip>
+        </>
+      }
+      primaryAction={writable && <LinkButton href={`/meeting-notes/${n.id}/edit`}><Pencil className="icon-sm" aria-hidden /> Update notes</LinkButton>}
+      secondaryActions={
+        <a href={`/meeting-notes/${n.id}/export`} className={buttonClass("secondary")}>
+          <Download className="icon-sm" aria-hidden /> Download Markdown
+        </a>
+      }
+      notices={<Flash ok={sp.ok} err={sp.err} />}
+      aside={
+        <>
+          <SectionCard title="Details">
+            <KeyValueGrid columns={1} items={[
+              { label: "Meeting date", value: fmtDate(n.meetingDate) },
+              { label: "Attendees", value: n.attendees },
+              { label: "Current version", value: `v${n.version}` },
+            ]} />
+          </SectionCard>
+          <SectionCard title="Revision history" count={n.version}>
+            <StatusTimeline items={history} />
+          </SectionCard>
+        </>
+      }
+    >
+      <SectionCard title="Summary" icon={FileText}><Markdown md={n.summary} empty="No summary written yet." /></SectionCard>
+      <SectionCard title="Decisions"><Markdown md={n.decisions} empty="No decisions recorded." /></SectionCard>
 
-      {n.attendees && (
-        <p className="text-sm text-ink-soft"><span className="font-medium text-ink">Attendees:</span> {n.attendees}</p>
-      )}
-
-      <Card title="Summary"><Markdown md={n.summary} /></Card>
-      <Card title="Decisions"><Markdown md={n.decisions} empty="No decisions recorded." /></Card>
-
-      <Card title={`Action items (${items.filter((i) => !i.done).length} open of ${items.length})`}>
-        <div id="actions" />
-        {items.length === 0 ? (
-          <p className="text-sm text-ink-faint">No action items.</p>
-        ) : (
-          <ul className="divide-y divide-line">
-            {items.map((a, i) => {
-              const overdue = !a.done && a.due && daysBetween(today, a.due) < 0;
-              const body = (
-                <span className="flex-1">
-                  <span className={cx("text-sm", a.done ? "text-ink-faint line-through" : "text-ink")}>{a.text}</span>
-                  <span className="mt-0.5 flex flex-wrap gap-2 text-xs text-ink-soft">
-                    {a.owner && <span>Owner: {a.owner}</span>}
-                    {a.due && <span className={cx(overdue && "font-semibold text-red-600")}>Due {fmtDate(a.due)}{overdue ? " (overdue)" : ""}</span>}
-                  </span>
+      <SectionCard id="actions" title="Action items" icon={ListChecks} count={items.length}
+        description={items.length ? `${openCount} open of ${items.length}` : undefined}
+        actions={items.length > 0 && <StatusPill semantic={openCount ? "warning" : "success"} label={openCount ? `${openCount} open` : "All done"} />}
+        empty={items.length === 0 && (writable ? "No action items yet. Use “Update notes” to add the follow-ups agreed in the meeting." : "No action items yet.")}>
+        <ul className="-my-2 divide-y divide-line">
+          {items.map((a, i) => {
+            const overdue = !a.done && a.due && daysBetween(today, a.due) < 0;
+            const body = (
+              <span className="min-w-0 flex-1 py-1.5">
+                <span className={cx("block text-sm", a.done ? "text-ink-faint line-through" : "text-ink")}>{a.text}</span>
+                <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-ink-soft">
+                  {a.owner && <span>Owner: {a.owner}</span>}
+                  {a.due && (overdue
+                    ? <StatusPill status="overdue" label={`Due ${fmtDate(a.due)}, overdue`} />
+                    : <span>Due {fmtDate(a.due)}</span>)}
                 </span>
-              );
-              return (
-                <li key={i} className="py-2">
-                  {writable ? (
-                    <form action={toggleActionItem} className="flex items-start gap-3">
-                      <input type="hidden" name="id" value={n.id} />
-                      <input type="hidden" name="index" value={i} />
-                      <input type="hidden" name="text" value={a.text} />
-                      <input type="hidden" name="done" value={a.done ? "0" : "1"} />
-                      <button type="submit" className="mt-0.5 rounded text-ink-soft hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-brand-600" aria-label={a.done ? `Mark “${a.text}” as open` : `Mark “${a.text}” as done`}>
-                        {a.done ? <CheckSquare className="h-5 w-5 text-emerald-600" aria-hidden /> : <Square className="h-5 w-5" aria-hidden />}
-                      </button>
-                      {body}
-                    </form>
-                  ) : (
-                    <div className="flex items-start gap-3">
-                      {a.done ? <CheckSquare className="mt-0.5 h-5 w-5 text-emerald-600" aria-label="Done" /> : <Square className="mt-0.5 h-5 w-5 text-ink-soft" aria-label="Open" />}
-                      {body}
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </Card>
+              </span>
+            );
+            return (
+              <li key={i} className="py-2">
+                {writable ? (
+                  <form action={toggleActionItem} className="flex items-start gap-2">
+                    <input type="hidden" name="id" value={n.id} />
+                    <input type="hidden" name="index" value={i} />
+                    <input type="hidden" name="text" value={a.text} />
+                    <input type="hidden" name="done" value={a.done ? "0" : "1"} />
+                    <button type="submit" className="grid h-9.5 w-9.5 shrink-0 place-items-center rounded-lg text-ink-soft hover:bg-muted hover:text-brand-700" aria-label={a.done ? `Mark “${a.text}” as open` : `Mark “${a.text}” as done`}>
+                      {a.done ? <CheckSquare className="icon-lg text-success" aria-hidden /> : <Square className="icon-lg" aria-hidden />}
+                    </button>
+                    {body}
+                  </form>
+                ) : (
+                  <div className="flex items-start gap-2">
+                    <span className="grid h-9.5 w-9.5 shrink-0 place-items-center">
+                      {a.done ? <CheckSquare className="icon-lg text-success" aria-label="Done" /> : <Square className="icon-lg text-ink-soft" aria-label="Open" />}
+                    </span>
+                    {body}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </SectionCard>
 
-      <Card title="Open questions"><Markdown md={n.openQuestions} empty="No open questions." /></Card>
+      <SectionCard title="Open questions"><Markdown md={n.openQuestions} empty="No open questions." /></SectionCard>
 
-      <details className="group rounded-xl border border-line bg-surface shadow-sm">
-        <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-ink">
-          Full transcript / raw notes {n.transcript ? <span className="font-normal text-ink-soft">({Math.ceil(n.transcript.length / 1000)}k chars)</span> : null}
-        </summary>
-        <div className="max-h-[70vh] overflow-y-auto border-t border-line p-4">
-          <Markdown md={n.transcript} empty="No transcript saved." />
-        </div>
-      </details>
-
-      <Card title={`Revision history (${n.version} version${n.version === 1 ? "" : "s"})`}>
-        <ol className="space-y-3">
-          {revisions.map((r) => (
-            <li key={r.id} className="text-sm">
-              <div className="flex flex-wrap items-baseline gap-2">
-                <Badge tone={r.version + 1 === n.version ? "violet" : "gray"}>v{r.version + 1}{r.version + 1 === n.version ? " · current" : ""}</Badge>
-                <span className="text-ink">{r.changeSummary || "Updated"}</span>
-                <span className="text-ink-soft">{fmtDateTime(r.createdAt)}{r.by ? ` · ${r.by}` : ""}</span>
-              </div>
-              <Link href={`/meeting-notes/${n.id}/revisions/${r.id}`} className="text-xs text-brand-700 hover:underline dark:text-brand-300">View snapshot of v{r.version} (before this change)</Link>
-            </li>
-          ))}
-          <li className="flex flex-wrap items-baseline gap-2 text-sm">
-            <Badge tone={n.version === 1 ? "violet" : "gray"}>v1{n.version === 1 ? " · current" : ""}</Badge>
-            <span className="text-ink-soft">Created {fmtDateTime(n.createdAt)}</span>
-          </li>
-        </ol>
-      </Card>
-    </div>
+      <SectionCard title="Full transcript or raw notes" description={n.transcript ? `${Math.ceil(n.transcript.length / 1000)}k characters` : undefined}
+        empty={!n.transcript && "No transcript saved."}>
+        <details className="group">
+          <summary className="cursor-pointer select-none rounded-md text-sm font-medium text-brand-700 hover:underline dark:text-brand-300">
+            <span className="group-open:hidden">Show transcript</span><span className="hidden group-open:inline">Hide transcript</span>
+          </summary>
+          <div className="mt-3 max-h-[70vh] overflow-y-auto rounded-xl border border-line bg-surface-2 p-4">
+            <Markdown md={n.transcript} empty="No transcript saved." />
+          </div>
+        </details>
+      </SectionCard>
+    </DetailPage>
   );
 }

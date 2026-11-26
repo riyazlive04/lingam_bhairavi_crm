@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Card, DL, Field, Input, Select, Textarea } from "@/components/ui";
+import { Field, Input, Select, Textarea } from "@/components/ui";
+import { FormFooter, FormSection, KeyValueGrid } from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { fmtDate, todayIST } from "@/lib/format";
 import { RETURN_REASONS, RETURN_REASON_KEYS } from "@/lib/returns";
@@ -19,6 +20,8 @@ export type SalesReturnFormProps = {
   date?: string;
   reason?: string;
   notes?: string | null;
+  /** Where Cancel goes in the sticky footer. */
+  cancelHref?: string;
 };
 
 /** Customer return (credit note) form shared by "new" and "edit draft". */
@@ -30,9 +33,8 @@ export function SalesReturnForm(p: SalesReturnFormProps) {
       {p.returnId && <input type="hidden" name="returnId" value={p.returnId} />}
       {p.orderId && <input type="hidden" name="orderId" value={p.orderId} />}
       {p.invoiceId && <input type="hidden" name="salesInvoiceId" value={p.invoiceId} />}
-      <Card title="Return details">
-        <div className="mb-4"><DL items={p.details} /></div>
-        <div className="grid gap-4 sm:grid-cols-2">
+      <FormSection title="Return details" description="When the goods came back and why.">
+        <div className="rounded-xl border border-line bg-surface-2 p-3 sm:col-span-2"><KeyValueGrid columns={2} items={p.details} /></div>
           <Field label="Return date" required><Input type="date" name="date" required defaultValue={p.date ?? today} max={today} /></Field>
           <Field label="Reason" required>
             <Select name="reason" required defaultValue={p.reason ?? "damaged"}>
@@ -50,17 +52,16 @@ export function SalesReturnForm(p: SalesReturnFormProps) {
           <Field label="Notes" className={!p.invoiceId && p.invoiceChoices ? undefined : "sm:col-span-2"}>
             <Textarea name="notes" maxLength={2000} defaultValue={p.notes ?? ""} className="min-h-14" placeholder="e.g. 2 detectors cracked in transit, photos on WhatsApp" />
           </Field>
-        </div>
-      </Card>
-      <Card title="Items coming back">
-        <ReturnLineEditor initial={p.lines} showRestock totalLabel="Credit note total" />
-        <p className="mt-3 text-xs text-ink-soft">Posting reduces the delivered quantity on the order. A line that comes back in full goes back to pending, so a replacement shows up in pending deliveries.</p>
-      </Card>
+      </FormSection>
+      <FormSection title="Items coming back" columns={1}
+        description="Posting reduces the delivered quantity on the order. A line that comes back in full goes back to pending, so a replacement shows up in pending deliveries.">
+        <div className="min-w-0"><ReturnLineEditor initial={p.lines} showRestock totalLabel="Credit note total" /></div>
+      </FormSection>
       {canSave && (
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <FormFooter cancelHref={p.cancelHref} note="Save a draft to finish later. Posting gives the credit note its final number.">
           <SubmitButton name="intent" value="draft" variant="secondary" pendingText="Saving…">Save draft</SubmitButton>
-          <SubmitButton name="intent" value="post" pendingText="Posting…" confirm="Post this credit note? Quantities and stock will be updated and the number is final.">Save & post</SubmitButton>
-        </div>
+          <SubmitButton name="intent" value="post" pendingText="Posting…" confirm="Post this credit note? Quantities and stock will be updated and the number is final.">Save and post</SubmitButton>
+        </FormFooter>
       )}
     </form>
   );

@@ -3,6 +3,7 @@ import { BellRing, ExternalLink, FileText, FireExtinguisher, ShieldCheck, Truck 
 import { getSession } from "@/lib/auth";
 import { Field, Input } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
+import { Callout } from "@/components/patterns";
 import { isDemoDatabase } from "@/db";
 
 export const metadata = { title: "Sign in" };
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 const DEMO = [
   ["admin@lbe.demo", "Owner / Admin"], ["sales@lbe.demo", "Sales"], ["purchase@lbe.demo", "Purchase"],
-  ["accounts@lbe.demo", "Accounts"], ["engineer@lbe.demo", "Site Engineer"], ["store@lbe.demo", "Store"],
+  ["accounts@lbe.demo", "Accounts"], ["engineer@lbe.demo", "Site engineer"], ["store@lbe.demo", "Store"],
 ];
 
 const VALUE_POINTS = [
@@ -37,7 +38,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   return (
     <div className="grid min-h-dvh lg:grid-cols-[1.05fr_1fr]">
       {/* Brand panel */}
-      <aside className="relative hidden overflow-hidden bg-gradient-to-br from-brand-700 via-brand-800 to-[#2a0c0a] text-white lg:flex lg:flex-col lg:justify-between lg:p-12">
+      <aside className="relative hidden overflow-hidden bg-gradient-to-br from-brand-700 via-brand-800 to-brand-950 text-white lg:flex lg:flex-col lg:justify-between lg:p-12">
         <div className="pointer-events-none absolute -left-24 top-1/3 h-96 w-96 rounded-full bg-brand-500/30 blur-3xl" aria-hidden />
         <div className="pointer-events-none absolute -right-20 -top-20 h-80 w-80 rounded-full bg-accent-500/25 blur-3xl" aria-hidden />
         <Flame className="pointer-events-none absolute -bottom-24 -right-16 h-[26rem] w-[26rem] text-white/[0.05]" />
@@ -58,7 +59,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <ul className="mt-10 grid gap-5">
             {VALUE_POINTS.map(({ icon: Icon, title, text }) => (
               <li key={title} className="flex gap-4">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/12 ring-1 ring-inset ring-white/15"><Icon className="h-5 w-5" aria-hidden /></span>
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/12 ring-1 ring-inset ring-white/15"><Icon className="icon-lg" aria-hidden /></span>
                 <span>
                   <span className="block font-semibold">{title}</span>
                   <span className="block text-sm text-white/75">{text}</span>
@@ -69,7 +70,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         </div>
 
         <p className="relative flex items-center gap-2 text-xs text-white/70">
-          <ShieldCheck className="h-4 w-4" aria-hidden /> Role-based access. Every change is logged in the audit trail.
+          <ShieldCheck className="icon-sm" aria-hidden /> Role-based access. Every change is logged in the audit trail.
         </p>
       </aside>
 
@@ -80,7 +81,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             <span className="grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-sm"><Flame className="h-6 w-6" /></span>
             <div>
               <p className="font-display font-bold text-ink">Linga Bhairavi Enterprise</p>
-              <p className="text-sm text-ink-soft">Fire Safety CRM · Hosur</p>
+              <p className="text-sm text-ink-soft">Fire safety CRM · Hosur</p>
             </div>
           </div>
 
@@ -89,25 +90,25 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
 
           <div className="mt-6 rounded-2xl border border-line bg-surface p-5 shadow-md sm:p-6">
             {sp.err && (
-              <p role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">{sp.err}</p>
+              <Callout tone="danger" title="Could not sign you in" className="mb-4">{sp.err}</Callout>
             )}
             <form action="/api/auth/login" method="post" className="space-y-4">
               <input type="hidden" name="next" value={sp.next ?? "/"} />
-              <Field label="Email"><Input name="email" type="email" autoComplete="username" required defaultValue={showDemo ? "admin@lbe.demo" : ""} placeholder="you@company.com" /></Field>
-              <Field label="Password"><Input name="password" type="password" autoComplete="current-password" required placeholder="Your password" /></Field>
+              <Field label="Email" required><Input className="h-11 text-base sm:h-9.5 sm:text-sm" name="email" type="email" autoComplete="username" required defaultValue={showDemo ? "admin@lbe.demo" : ""} placeholder="you@company.com" /></Field>
+              <Field label="Password" required><Input className="h-11 text-base sm:h-9.5 sm:text-sm" name="password" type="password" autoComplete="current-password" required placeholder="Your password" /></Field>
               <SubmitButton className="w-full" size="lg" pendingText="Signing you in…">Sign in</SubmitButton>
             </form>
           </div>
 
           {showDemo && (
             <details className="group mt-4 rounded-2xl border border-line bg-surface text-sm shadow-xs" open>
-              <summary className="cursor-pointer list-none rounded-2xl px-4 py-3 font-medium text-ink">
+              <summary className="cursor-pointer list-none rounded-2xl px-4 py-3 font-medium text-ink [&::-webkit-details-marker]:hidden">
                 Demo logins <span className="font-normal text-ink-soft">(password <code className="rounded bg-muted px-1 text-ink">Demo@123</code>)</span>
               </summary>
               <ul className="grid gap-1 border-t border-line px-4 py-3 text-ink-soft">
                 {DEMO.map(([e, r]) => (
                   <li key={e} className="flex items-center justify-between gap-3">
-                    <code className="truncate text-ink">{e}</code><span className="shrink-0 text-xs">{r}</span>
+                    <code className="truncate text-ink">{e}</code><span className="shrink-0 text-caption">{r}</span>
                   </li>
                 ))}
               </ul>
@@ -115,10 +116,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           )}
         </div>
 
-        <footer className="mx-auto mt-10 flex w-full max-w-sm flex-col items-center gap-1 text-center text-xs text-ink-soft sm:flex-row sm:justify-between">
+        <footer className="mx-auto mt-10 flex w-full max-w-sm flex-col items-center gap-1 text-center text-caption text-ink-soft sm:flex-row sm:justify-between">
           <span>© {year} Linga Bhairavi Enterprise</span>
           <a href="https://sirahdigital.in/" target="_blank" rel="noopener" className="inline-flex items-center gap-1 rounded hover:text-brand-700 dark:hover:text-brand-300">
-            Built by <span className="font-semibold">Sirah Digital</span> <ExternalLink className="h-3 w-3" aria-hidden />
+            Built by <span className="font-semibold">Sirah Digital</span> <ExternalLink className="icon-xs" aria-hidden />
           </a>
         </footer>
       </main>

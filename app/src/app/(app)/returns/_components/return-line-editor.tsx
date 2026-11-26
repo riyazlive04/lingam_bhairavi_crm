@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { cx, inputClass } from "@/components/ui";
+import { cx } from "@/components/ui";
+import { Callout, LineItemsTable, MoneySummary, li } from "@/components/patterns";
 import { money, qty as fmtQty, round2 } from "@/lib/format";
 
 export type ReturnEditorLine = {
@@ -35,72 +36,81 @@ export function ReturnLineEditor({ initial, showRestock, totalLabel }: { initial
   const over = lines.some((l) => l.qty > l.returnable + 1e-6);
 
   if (!lines.length) {
-    return <p className="rounded-lg border border-dashed border-line p-4 text-center text-sm text-ink-soft">Nothing on this document can be returned. Every delivered quantity has already come back.</p>;
+    return <p className="rounded-xl border border-dashed border-line-strong p-4 text-center text-sm text-ink-soft">Nothing on this document can be returned. Every delivered quantity has already come back.</p>;
   }
 
   return (
-    <div>
+    <div className="space-y-3">
       <input type="hidden" name="lines" value={JSON.stringify(valid.map((l) => ({
         key: l.key, qty: l.qty, rate: l.rate || 0, gstRate: l.gstRate, restock: showRestock && l.stockable ? l.restock : false,
       })))} />
-      <ol className="space-y-3">
-        {lines.map((l, idx) => {
-          const amt = round2((l.qty || 0) * (l.rate || 0));
-          const tooMuch = l.qty > l.returnable + 1e-6;
-          const none = l.returnable <= 1e-6;
-          return (
-            <li key={l.key} className={cx("rounded-lg border border-line bg-muted/40 p-3", none && "opacity-60")}>
-              <div className="grid gap-3 sm:grid-cols-12">
-                <div className="min-w-0 sm:col-span-4">
+      <LineItemsTable minWidth={showRestock ? 900 : 760} caption="Return lines">
+        <thead>
+          <tr>
+            <th className="w-8">#</th>
+            <th>Item</th>
+            <th className={li.num}>Qty</th>
+            <th className={li.num}>Rate</th>
+            <th className={li.num}>GST %</th>
+            {showRestock && <th>Back to stock</th>}
+            <th className={li.num}>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((l, idx) => {
+            const amt = round2((l.qty || 0) * (l.rate || 0));
+            const tooMuch = l.qty > l.returnable + 1e-6;
+            const none = l.returnable <= 1e-6;
+            const errId = `ret-err-${idx}`;
+            return (
+              <tr key={l.key} className={cx(none && "opacity-60")}>
+                <td className="pt-2.5 text-caption text-ink-soft tabular-nums">{idx + 1}</td>
+                <td className="min-w-64 max-w-md whitespace-normal py-2">
                   <span className="block text-sm font-medium text-ink">{l.description}</span>
-                  <span className="mt-0.5 block text-xs text-ink-soft">{l.info}</span>
-                  <span className="mt-0.5 block text-xs font-medium text-ink-soft">{none ? "Nothing left to return" : `Can return up to ${fmtQty(l.returnable)} ${l.uom}`}</span>
-                </div>
-                <label className="block sm:col-span-2">
-                  <span className="mb-1 block text-xs font-medium text-ink-soft">Qty ({l.uom})</span>
-                  <input className={inputClass} type="number" inputMode="decimal" step="any" min={0} max={l.returnable} disabled={none}
-                    value={Number.isFinite(l.qty) ? l.qty : ""} aria-invalid={tooMuch || undefined}
-                    onChange={(e) => set(idx, { qty: e.target.value === "" ? 0 : Number(e.target.value) })} />
-                  {tooMuch && <span className="mt-1 block text-xs text-red-600" role="alert">Max {fmtQty(l.returnable)}</span>}
-                </label>
-                <label className="block sm:col-span-2">
-                  <span className="mb-1 block text-xs font-medium text-ink-soft">Rate (₹)</span>
-                  <input className={inputClass} type="number" inputMode="decimal" step="any" min={0} disabled={none}
+                  <span className="block text-caption text-ink-soft">{l.info}</span>
+                  <span className="block text-caption font-medium text-ink-soft">{none ? "Nothing left to return" : `Can return up to ${fmtQty(l.returnable)} ${l.uom}`}</span>
+                </td>
+                <td className="w-28">
+                  <div className="flex items-center gap-1">
+                    <input className={cx(li.numInput, tooMuch && "border-danger")} type="number" inputMode="decimal" step="any" min={0} max={l.returnable} disabled={none}
+                      value={Number.isFinite(l.qty) ? l.qty : ""} aria-invalid={tooMuch || undefined} aria-describedby={tooMuch ? errId : undefined}
+                      aria-label={`Line ${idx + 1} quantity in ${l.uom}`}
+                      onChange={(e) => set(idx, { qty: e.target.value === "" ? 0 : Number(e.target.value) })} />
+                    <span className="text-caption text-ink-soft">{l.uom}</span>
+                  </div>
+                  {tooMuch && <span id={errId} className="block px-2 text-caption text-danger" role="alert">Max {fmtQty(l.returnable)}</span>}
+                </td>
+                <td className="w-32">
+                  <input className={li.numInput} type="number" inputMode="decimal" step="any" min={0} disabled={none} aria-label={`Line ${idx + 1} rate`}
                     value={Number.isFinite(l.rate) ? l.rate : ""} onChange={(e) => set(idx, { rate: Number(e.target.value) })} />
-                </label>
-                <label className="block sm:col-span-1">
-                  <span className="mb-1 block text-xs font-medium text-ink-soft">GST %</span>
-                  <select className={inputClass} value={l.gstRate} disabled={none} onChange={(e) => set(idx, { gstRate: Number(e.target.value) })}>
+                </td>
+                <td className="w-20">
+                  <select className={li.numInput} value={l.gstRate} disabled={none} aria-label={`Line ${idx + 1} GST rate`} onChange={(e) => set(idx, { gstRate: Number(e.target.value) })}>
                     {[...new Set([...GST_RATES, l.gstRate])].sort((a, b) => a - b).map((g) => <option key={g} value={g}>{g}</option>)}
                   </select>
-                </label>
-                {showRestock ? (
-                  <label className="flex items-center gap-2 text-sm sm:col-span-2 sm:flex-col sm:items-start sm:gap-1">
-                    <span className="text-xs font-medium text-ink-soft">Back to stock?</span>
-                    <select className={inputClass} value={l.stockable && l.restock ? "yes" : "no"} disabled={none || !l.stockable}
+                </td>
+                {showRestock && (
+                  <td className="w-52">
+                    <select className={li.input} value={l.stockable && l.restock ? "yes" : "no"} disabled={none || !l.stockable} aria-label={`Line ${idx + 1} back to stock`}
                       onChange={(e) => set(idx, { restock: e.target.value === "yes" })} title={l.stockable ? undefined : "Not linked to an item, so it cannot go into stock"}>
                       <option value="yes">Yes, restock</option>
                       <option value="no">No (scrap or send to vendor)</option>
                     </select>
-                  </label>
-                ) : <div className="sm:col-span-2" />}
-                <div className="flex items-end justify-end sm:col-span-1">
-                  <span className="text-sm tabular-nums text-ink">{money(amt)}</span>
-                </div>
-              </div>
-            </li>
-          );
-        })}
-      </ol>
-      <div className="mt-3 flex justify-end">
-        <dl className="min-w-56 space-y-1 text-sm" aria-live="polite">
-          <div className="flex justify-between gap-6"><dt className="text-ink-soft">Taxable value</dt><dd className="tabular-nums">{money(subtotal)}</dd></div>
-          <div className="flex justify-between gap-6"><dt className="text-ink-soft">GST</dt><dd className="tabular-nums">{money(tax)}</dd></div>
-          <div className="flex justify-between gap-6 border-t border-line pt-1 text-base font-semibold"><dt>{totalLabel}</dt><dd className="tabular-nums">{money(round2(subtotal + tax))}</dd></div>
-        </dl>
+                  </td>
+                )}
+                <td className={cx(li.num, "w-32 whitespace-nowrap pt-2.5 text-ink")}>{money(amt)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </LineItemsTable>
+      {over && <Callout tone="danger" title="Some quantities are too high">They are more than what can be returned. Lower them to the limit shown under each item.</Callout>}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <p className="max-w-md text-caption text-ink-faint">Lines left at 0 are not included. Set the rate to 0 if you are replacing the goods free of charge and not giving credit.</p>
+        <div className="sm:w-72" aria-live="polite">
+          <MoneySummary taxable={subtotal} tax={tax} total={round2(subtotal + tax)} totalLabel={totalLabel} />
+        </div>
       </div>
-      {over && <p className="mt-2 text-sm text-red-600" role="alert">Some quantities are more than what can be returned.</p>}
-      <p className="mt-2 text-xs text-ink-faint">Lines left at 0 are not included. Set the rate to 0 if you are replacing the goods free of charge and not giving credit.</p>
     </div>
   );
 }

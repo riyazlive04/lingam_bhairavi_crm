@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { Pencil, Warehouse } from "lucide-react";
+import { History, LineChart, Pencil, Tag, Users, Warehouse } from "lucide-react";
 import { getDb } from "@/db";
 import { customers, items, priceHistory, purchaseInvoices, quotationLines, quotations, vendorItems, vendors } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
@@ -13,12 +13,20 @@ import {
   suggestedSupplyRate, vendorComparison, yearSummary,
 } from "@/lib/items";
 import { stockPositions } from "@/lib/stock";
-import { Badge, Card, DL, EmptyState, Field, Flash, Input, LinkButton, PageHeader, StatusBadge, Stat, Table, Td, Th, cx } from "@/components/ui";
+import { Field, Flash, Input, LinkButton, cx } from "@/components/ui";
+import {
+  DetailPage, KeyValueGrid, MetaChip, Metric, MetricStrip, ResponsiveTable, SectionCard, StatusPill, SummaryRows, Tabs, activeTab,
+  type Column, type TabItem,
+} from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { PriceChart } from "../_components/price-chart";
 import { updateListPrice } from "../actions";
 
-export default async function ItemDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
+export const metadata = { title: "Item" };
+
+const linkCls = "text-brand-700 hover:underline dark:text-brand-300";
+
+export default async function ItemDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string; tab?: string }> }) {
   const user = await requireUser("items");
   const { id } = await params;
   const sp = await searchParams;
@@ -87,196 +95,246 @@ export default async function ItemDetailPage({ params, searchParams }: { params:
     byCustomer.set(k, e);
   }
 
+  // ------------------------------------------------------------------ tabs (?tab=)
+  const tabIds = ["overview", ...(seeCost ? ["purchases" as const] : []), "sales"] as const;
+  const tab = activeTab(sp.tab, tabIds);
+  const tabItems: TabItem[] = [
+    { id: "overview", label: "Overview" },
+    ...(seeCost ? [{ id: "purchases", label: "Purchase prices", count: purchases.length, alert: stale }] : []),
+    { id: "sales", label: "Selling prices", count: salesPoints.length },
+  ];
+  const base = `/items/${it.id}`;
+  const systemLabel = SYSTEMS[it.system as keyof typeof SYSTEMS] ?? it.system;
+  const lowStock = it.reorderLevel > 0 && stock.available <= it.reorderLevel;
+  const vendorLink = (vid: number | null | undefined, name: string | null | undefined) =>
+    vid && can.vendors ? <Link href={`/vendors/${vid}`} className="hover:underline">{name}</Link> : (name ?? "-");
+  const customerLink = (cid: number | null | undefined, name: string | null | undefined) =>
+    cid && can.customers ? <Link href={`/customers/${cid}`} className="hover:underline">{name}</Link> : (name ?? "-");
+
+  // ------------------------------------------------------------------ columns
+  type Year = (typeof years)[number];
+  const yearCols: Column<Year>[] = [
+    { key: "year", header: "Year", card: "title", className: "font-medium", cell: (y) => y.year },
+    { key: "min", header: "Min", align: "right", cell: (y) => money(y.min) },
+    { key: "avg", header: "Avg", align: "right", cell: (y) => money(y.avg) },
+    { key: "max", header: "Max", align: "right", cell: (y) => money(y.max) },
+    { key: "last", header: "Last", align: "right", card: "amount", cell: (y) => money(y.last) },
+    { key: "count", header: "Buys", align: "right", cell: (y) => y.count },
+  ];
+  type Mom = (typeof mom)[number];
+  const momCols: Column<Mom>[] = [
+    { key: "month", header: "Month", card: "title", nowrap: true,
+      cell: (m) => new Date(m.month + "-01T00:00:00").toLocaleDateString("en-IN", { month: "short", year: "numeric" }) },
+    { key: "avg", header: "Avg rate", align: "right", card: "amount", cell: (m) => money(m.avg) },
+    { key: "change", header: "Change", align: "right",
+      cell: (m) => m.changePct == null ? "-" : (
+        <span className={cx(m.changePct > 0 && "text-danger", m.changePct < 0 && "text-success")}>
+          {m.changePct > 0 ? "+" : m.changePct < 0 ? "-" : ""}{pct(Math.abs(m.changePct))}
+          <span className="sr-only">{m.changePct > 0 ? " up" : m.changePct < 0 ? " down" : ""}</span>
+        </span>
+      ) },
+  ];
+  type VRow = {
+    key: string; vendorId: number | null; name: string | null; lastRate: number | null; lastDate: string | null; count: number;
+    avg: number | null; diff: string; cheapest: boolean; linked: boolean;
+  };
+  const vendorRows: VRow[] = [
+    ...vendorsCmp.map((v, i) => {
+      const cheapest = vendorsCmp[0].lastRate;
+      const diff = cheapest ? ((v.lastRate - cheapest) / cheapest) * 100 : 0;
+      return {
+        key: String(v.vendorId), vendorId: v.vendorId, name: v.vendorName, lastRate: v.lastRate, lastDate: v.lastDate, count: v.count, avg: v.avg,
+        diff: i === 0 ? "-" : `+${pct(diff)}`, cheapest: i === 0 && vendorsCmp.length > 1, linked: false,
+      };
+    }),
+    ...linkedOnly.map((v) => ({
+      key: `l${v.vendorId}`, vendorId: v.vendorId, name: v.name, lastRate: v.lastRate, lastDate: v.lastDate, count: 0, avg: null, diff: "-", cheapest: false, linked: true,
+    })),
+  ];
+  const vendorCols: Column<VRow>[] = [
+    { key: "vendor", header: "Vendor", card: "title",
+      cell: (v) => (
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          {vendorLink(v.vendorId, v.name)}
+          {v.cheapest && <StatusPill semantic="success" label="Cheapest" noDot />}
+          {v.linked && <StatusPill semantic="neutral" label="Linked" noDot />}
+        </span>
+      ) },
+    { key: "last", header: "Last rate", align: "right", card: "amount", cell: (v) => money(v.lastRate) },
+    { key: "date", header: "Last bought", nowrap: true, cell: (v) => fmtDate(v.lastDate) },
+    { key: "count", header: "Buys", align: "right", cell: (v) => v.count },
+    { key: "avg", header: "Avg rate", align: "right", cell: (v) => (v.avg == null ? "-" : money(v.avg)) },
+    { key: "diff", header: "Above cheapest", align: "right", cell: (v) => v.diff },
+  ];
+  const purchaseRows = [...purchases].reverse().map((p, i, arr) => {
+    const prev = arr[i + 1];
+    return { p, ch: prev && prev.rate ? ((p.rate - prev.rate) / prev.rate) * 100 : null };
+  });
+  type PRow = (typeof purchaseRows)[number];
+  const purchaseCols: Column<PRow>[] = [
+    { key: "date", header: "Date", card: "subtitle", nowrap: true, cell: ({ p }) => fmtDate(p.date) },
+    { key: "vendor", header: "Vendor", card: "title", cell: ({ p }) => (p.vendorId ? vendorLink(p.vendorId, p.vendorName) : "-") },
+    { key: "invoice", header: "Invoice", nowrap: true,
+      cell: ({ p }) => p.refType === "purchase_invoice" && p.refId
+        ? (can.purchases ? <Link href={`/purchases/${p.refId}`} className={linkCls}>{invNos.get(p.refId) ?? `#${p.refId}`}</Link> : (invNos.get(p.refId) ?? `#${p.refId}`))
+        : "-" },
+    { key: "qty", header: "Qty", align: "right", cell: ({ p }) => qty(p.qty) },
+    { key: "rate", header: "Rate", align: "right", card: "amount", cell: ({ p }) => money(p.rate) },
+    { key: "change", header: "Change", align: "right",
+      cell: ({ ch }) => ch == null ? "-" : (
+        <span className={cx("text-caption", Math.abs(ch) >= 5 && (ch > 0 ? "font-semibold text-danger" : "font-semibold text-success"))}>{`${ch > 0 ? "+" : ""}${pct(ch)}`}</span>
+      ) },
+  ];
+  const customerRows = [...byCustomer.values()];
+  type CRow = (typeof customerRows)[number];
+  const customerCols: Column<CRow>[] = [
+    { key: "customer", header: "Customer", card: "title", cell: (c) => customerLink(c.customerId, c.name) },
+    { key: "quoted", header: "Last quoted", align: "right",
+      cell: (c) => c.lastQuote ? <>{money(c.lastQuote.rate)}<div className="text-caption text-ink-faint">{fmtDate(c.lastQuote.date)}</div></> : "-" },
+    { key: "sold", header: "Last sold", align: "right", card: "amount",
+      cell: (c) => c.lastSale ? <>{money(c.lastSale.rate)}<div className="text-caption text-ink-faint">{fmtDate(c.lastSale.date)}</div></> : "-" },
+    ...(seeCost ? [{ key: "margin", header: "Margin (sold)", align: "right" as const,
+      cell: (c: CRow) => (c.lastSale && cost.rate ? pct(marginPct(c.lastSale.rate, cost.rate)) : "-") }] : []),
+  ];
+  type SRow = (typeof salesPoints)[number];
+  const salesCols: Column<SRow>[] = [
+    { key: "date", header: "Date", card: "subtitle", nowrap: true, cell: (p) => fmtDate(p.date) },
+    { key: "type", header: "Type", card: "badge",
+      cell: (p) => (
+        <span className="inline-flex flex-wrap items-center gap-1">
+          <StatusPill semantic={p.kind === "sale" ? "success" : "info"} label={p.kind === "sale" ? "Sale" : "Quote"} noDot />
+          {p.status && <StatusPill status={p.status} />}
+        </span>
+      ) },
+    { key: "customer", header: "Customer", card: "title", cell: (p) => customerLink(p.customerId, p.customerName) },
+    { key: "doc", header: "Document", nowrap: true, cell: (p) => (p.href ? <Link href={p.href} className={linkCls}>{p.doc}</Link> : p.doc) },
+    { key: "qty", header: "Qty", align: "right", cell: (p) => qty(p.qty) },
+    { key: "rate", header: "Rate", align: "right", card: "amount", cell: (p) => money(p.rate) },
+    ...(seeCost ? [{ key: "margin", header: "Margin vs latest cost", align: "right" as const,
+      cell: (p: SRow) => { const m = cost.rate ? marginPct(p.rate, cost.rate) : null; return <span className={cx(m != null && m < 10 && "text-danger")}>{m == null ? "-" : pct(m)}</span>; } }] : []),
+  ];
+
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title={it.name}
-        subtitle={<>
-          <span className="font-mono">{it.code}</span> · {SYSTEMS[it.system as keyof typeof SYSTEMS] ?? it.system} · {it.groupName}
-          {!it.active && <> · <Badge tone="gray">inactive</Badge></>}
-        </>}
-        back={{ href: "/items", label: "Item & Price Master" }}
-        actions={<>
-          {can.stock && <LinkButton href={`/stock/${it.id}`} variant="secondary"><Warehouse size={16} aria-hidden /> Stock ledger</LinkButton>}
-          {write && <LinkButton href={`/items/${it.id}/edit`}><Pencil size={16} aria-hidden /> Edit</LinkButton>}
-        </>}
-      />
-      <Flash ok={sp.ok} err={sp.err} />
-
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {seeCost && (
-          <Stat label="Latest cost" value={money(cost.rate)} tone={cost.source !== "purchase" || stale ? "warn" : "default"}
-            hint={cost.source === "purchase"
-              ? <>{fmtDate(cost.date)} · {row.vendorName ?? "-"} · {age}d old{stale && ` (stale > ${it.volatilePrice ? STALE_DAYS_VOLATILE : STALE_DAYS_DEFAULT}d)`}</>
-              : cost.source === "list" ? "From list price (no purchase yet)" : "No price available"} />
-        )}
-        <Stat label="Suggested sell" value={money(sell)} hint={seeCost ? `Cost + ${pct(it.markupPct, 0)} markup` : `Per ${it.uom}`} />
-        <Stat label="Last sale rate" value={money(it.lastSaleRate)}
-          hint={it.lastSaleRate != null ? <>{fmtDate(it.lastSaleDate)}{seeCost && cost.rate ? ` · margin ${pct(marginPct(it.lastSaleRate, cost.rate))}` : ""}</> : "Not sold yet"} />
-        <Stat label="Stock available" value={`${qty(stock.available)} ${it.uom}`} href={can.stock ? `/stock/${it.id}` : undefined}
-          tone={it.reorderLevel > 0 && stock.available <= it.reorderLevel ? "bad" : "default"}
-          hint={`On hand ${qty(stock.onHand)} · reserved ${qty(stock.reserved)}${it.reorderLevel > 0 ? ` · reorder at ${qty(it.reorderLevel)}` : ""}`} />
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card title="Details" className="lg:col-span-2">
-          <DL items={[
-            ["Size", it.size], ["Make", it.make], ["UOM", it.uom], ["HSN", it.hsn], ["GST", pct(it.gstRate, 0)],
-            ["Erection rate", seeCost || it.erectionRate ? money(it.erectionRate) : null],
-            ...(seeCost ? [["List price", money(it.listPrice)] as [string, string], ["Default markup", pct(it.markupPct, 0)] as [string, string]] : []),
-            ["Volatile price", it.volatilePrice ? `Yes, stale after ${STALE_DAYS_VOLATILE} days` : `No, stale after ${STALE_DAYS_DEFAULT} days`],
-            ["Description", it.description],
-          ]} />
-        </Card>
-        {seeCost && (
-          <Card title="List price">
-            <p className="mb-3 text-sm text-ink-soft">The list price is only used until a purchase invoice sets the latest cost. Updating it records a <Badge>list</Badge> price point.</p>
-            {write ? (
-              <form action={updateListPrice.bind(null, it.id)} className="space-y-3">
-                <Field label="New list price (₹)" required>
-                  <Input name="listPrice" type="number" step="0.01" min={0.01} required defaultValue={it.listPrice ?? ""} />
-                </Field>
-                <Field label="Effective date">
-                  <Input name="date" type="date" defaultValue={today} max={today} />
-                </Field>
-                <SubmitButton size="sm">Update list price</SubmitButton>
-              </form>
-            ) : <p className="text-lg font-semibold">{money(it.listPrice)}</p>}
-            {listHist.length > 0 && (
-              <ul className="mt-4 space-y-1 border-t border-line pt-3 text-sm">
-                {[...listHist].reverse().slice(0, 5).map((p) => (
-                  <li key={p.id} className="flex justify-between"><span className="text-ink-soft">{fmtDate(p.date)}</span><span className="tabular-nums">{money(p.rate)}</span></li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        )}
-      </div>
-
-      {seeCost && (
-        <section aria-labelledby="ph" className="space-y-4">
-          <h2 id="ph" className="text-lg font-semibold text-ink">Purchase price history</h2>
-          <Card title="Purchase rate over time"><PriceChart points={purchases.map((p) => ({ date: p.date, rate: p.rate, label: p.vendorName ?? undefined }))} /></Card>
-          {purchases.length > 0 && (
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Card title="Year-wise summary" bodyClassName="p-0">
-                <Table className="rounded-none border-0 shadow-none">
-                  <thead><tr><Th>Year</Th><Th className="text-right">Min</Th><Th className="text-right">Avg</Th><Th className="text-right">Max</Th><Th className="text-right">Last</Th><Th className="text-right">Buys</Th></tr></thead>
-                  <tbody>{years.map((y) => (
-                    <tr key={y.year}><Td className="font-medium">{y.year}</Td><Td className="text-right tabular-nums">{money(y.min)}</Td><Td className="text-right tabular-nums">{money(y.avg)}</Td>
-                      <Td className="text-right tabular-nums">{money(y.max)}</Td><Td className="text-right tabular-nums">{money(y.last)}</Td><Td className="text-right">{y.count}</Td></tr>
-                  ))}</tbody>
-                </Table>
-              </Card>
-              <Card title="Month-over-month (last 12 months with purchases)" bodyClassName="p-0">
-                <Table className="rounded-none border-0 shadow-none">
-                  <thead><tr><Th>Month</Th><Th className="text-right">Avg rate</Th><Th className="text-right">Change</Th></tr></thead>
-                  <tbody>{mom.map((m) => (
-                    <tr key={m.month}><Td>{new Date(m.month + "-01T00:00:00").toLocaleDateString("en-IN", { month: "short", year: "numeric" })}</Td>
-                      <Td className="text-right tabular-nums">{money(m.avg)}</Td>
-                      <Td className={cx("text-right tabular-nums", m.changePct != null && m.changePct > 0 && "text-red-600", m.changePct != null && m.changePct < 0 && "text-emerald-600")}>
-                        {m.changePct == null ? "-" : `${m.changePct > 0 ? "▲" : m.changePct < 0 ? "▼" : ""} ${pct(Math.abs(m.changePct))}`}</Td></tr>
-                  ))}</tbody>
-                </Table>
-              </Card>
-            </div>
+    <DetailPage
+      back={{ href: "/items", label: "Item and price master" }}
+      eyebrow="Item"
+      title={it.name}
+      status={!it.active ? <StatusPill status="inactive" /> : undefined}
+      meta={
+        <>
+          <MetaChip label="Code"><span className="font-mono">{it.code}</span></MetaChip>
+          <MetaChip label="System">{systemLabel}</MetaChip>
+          <MetaChip label="Group">{it.groupName}</MetaChip>
+          {it.size && <MetaChip label="Size">{it.size}</MetaChip>}
+          <MetaChip label="UOM">{it.uom}</MetaChip>
+        </>
+      }
+      primaryAction={write && <LinkButton href={`/items/${it.id}/edit`}><Pencil className="icon-sm" aria-hidden /> Edit item</LinkButton>}
+      secondaryActions={can.stock ? <LinkButton href={`/stock/${it.id}`} variant="secondary"><Warehouse className="icon-sm" aria-hidden /> Stock ledger</LinkButton> : undefined}
+      notices={<Flash ok={sp.ok} err={sp.err} />}
+      tabs={<Tabs label="Item sections" basePath={base} params={{ tab: sp.tab }} active={tab} items={tabItems} />}
+      aside={
+        <>
+          <SectionCard title="Price summary" icon={Tag}>
+            <SummaryRows rows={[
+              ...(seeCost ? [["Latest cost", money(cost.rate)] as [string, string]] : []),
+              ["Suggested sell", money(sell)],
+              ["Last sale rate", money(it.lastSaleRate)],
+              ["Stock available", <span key="a" className={cx(lowStock && "text-danger")}>{qty(stock.available)} {it.uom}</span>],
+            ]} />
+            {!seeCost && <p className="mt-3 text-caption text-ink-soft">Buying prices and margins are hidden for your role. Suggested selling rate: {money0(sell)}.</p>}
+          </SectionCard>
+          {seeCost && (
+            <SectionCard title="List price" description="Only used until a purchase invoice sets the latest cost. Updating it records a list price point.">
+              {write ? (
+                <form action={updateListPrice.bind(null, it.id)} className="space-y-3">
+                  <Field label="New list price (₹)" required>
+                    <Input name="listPrice" type="number" inputMode="decimal" step="0.01" min={0.01} required defaultValue={it.listPrice ?? ""} className="text-right" />
+                  </Field>
+                  <Field label="Effective date">
+                    <Input name="date" type="date" defaultValue={today} max={today} />
+                  </Field>
+                  <SubmitButton size="sm" pendingText="Saving…">Update list price</SubmitButton>
+                </form>
+              ) : <p className="text-heading text-ink">{money(it.listPrice)}</p>}
+              {listHist.length > 0 && (
+                <SummaryRows className="mt-4 border-t border-line pt-3" rows={[...listHist].reverse().slice(0, 5).map((p) => [fmtDate(p.date), money(p.rate)] as [string, string])} />
+              )}
+            </SectionCard>
           )}
-          <Card title="Vendor comparison" bodyClassName="p-0">
-            {vendorsCmp.length + linkedOnly.length === 0 ? <div className="p-4"><EmptyState title="No suppliers yet">Vendors appear here automatically when a purchase invoice for this item is posted.</EmptyState></div> : (
-              <Table className="rounded-none border-0 shadow-none">
-                <thead><tr><Th>Vendor</Th><Th className="text-right">Last rate</Th><Th>Last bought</Th><Th className="text-right">Buys</Th><Th className="text-right">Avg rate</Th><Th className="text-right">vs cheapest</Th></tr></thead>
-                <tbody>
-                  {vendorsCmp.map((v, i) => {
-                    const cheapest = vendorsCmp[0].lastRate;
-                    const diff = cheapest ? ((v.lastRate - cheapest) / cheapest) * 100 : 0;
-                    return (
-                      <tr key={String(v.vendorId)}>
-                        <Td>{v.vendorId && can.vendors ? <Link href={`/vendors/${v.vendorId}`} className="hover:underline">{v.vendorName}</Link> : v.vendorName}{i === 0 && vendorsCmp.length > 1 && <> <Badge tone="green">cheapest</Badge></>}</Td>
-                        <Td className="text-right tabular-nums">{money(v.lastRate)}</Td><Td>{fmtDate(v.lastDate)}</Td><Td className="text-right">{v.count}</Td>
-                        <Td className="text-right tabular-nums">{money(v.avg)}</Td><Td className="text-right tabular-nums">{i === 0 ? "-" : `+${pct(diff)}`}</Td>
-                      </tr>
-                    );
-                  })}
-                  {linkedOnly.map((v) => (
-                    <tr key={`l${v.vendorId}`}>
-                      <Td>{can.vendors ? <Link href={`/vendors/${v.vendorId}`} className="hover:underline">{v.name}</Link> : v.name} <Badge>linked</Badge></Td>
-                      <Td className="text-right tabular-nums">{money(v.lastRate)}</Td><Td>{fmtDate(v.lastDate)}</Td><Td className="text-right">0</Td><Td className="text-right">-</Td><Td className="text-right">-</Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
+        </>
+      }
+    >
+      {tab === "overview" && (
+        <>
+          <MetricStrip>
+            {seeCost && (
+              <Metric label="Latest cost" value={money(cost.rate)} tone={cost.source !== "purchase" || stale ? "warn" : "default"}
+                hint={cost.source === "purchase"
+                  ? <>{fmtDate(cost.date)} · {row.vendorName ?? "-"} · {age}d old{stale && ` (stale after ${it.volatilePrice ? STALE_DAYS_VOLATILE : STALE_DAYS_DEFAULT}d)`}</>
+                  : cost.source === "list" ? "From list price (no purchase yet)" : "No price available"} />
             )}
-          </Card>
-          <Card title={`Purchase history (${purchases.length})`} bodyClassName="p-0">
-            {purchases.length === 0 ? <div className="p-4 text-sm text-ink-soft">No purchases recorded.</div> : (
-              <Table className="rounded-none border-0 shadow-none">
-                <thead><tr><Th>Date</Th><Th>Vendor</Th><Th>Invoice</Th><Th className="text-right">Qty</Th><Th className="text-right">Rate</Th><Th className="text-right">Change</Th></tr></thead>
-                <tbody>
-                  {[...purchases].reverse().map((p, i, arr) => {
-                    const prev = arr[i + 1];
-                    const ch = prev && prev.rate ? ((p.rate - prev.rate) / prev.rate) * 100 : null;
-                    return (
-                      <tr key={p.id}>
-                        <Td>{fmtDate(p.date)}</Td>
-                        <Td>{p.vendorId ? (can.vendors ? <Link href={`/vendors/${p.vendorId}`} className="hover:underline">{p.vendorName}</Link> : p.vendorName) : "-"}</Td>
-                        <Td>{p.refType === "purchase_invoice" && p.refId ? (can.purchases ? <Link href={`/purchases/${p.refId}`} className="text-brand-700 hover:underline dark:text-brand-300">{invNos.get(p.refId) ?? `#${p.refId}`}</Link> : (invNos.get(p.refId) ?? `#${p.refId}`)) : "-"}</Td>
-                        <Td className="text-right tabular-nums">{qty(p.qty)}</Td>
-                        <Td className="text-right tabular-nums">{money(p.rate)}</Td>
-                        <Td className={cx("text-right tabular-nums text-xs", ch != null && Math.abs(ch) >= 5 && (ch > 0 ? "font-semibold text-red-600" : "font-semibold text-emerald-600"))}>
-                          {ch == null ? "-" : `${ch > 0 ? "+" : ""}${pct(ch)}`}</Td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </Table>
-            )}
-          </Card>
-        </section>
+            <Metric label="Suggested sell" value={money(sell)} hint={seeCost ? `Cost plus ${pct(it.markupPct, 0)} markup` : `Per ${it.uom}`} />
+            <Metric label="Last sale rate" value={money(it.lastSaleRate)}
+              hint={it.lastSaleRate != null ? <>{fmtDate(it.lastSaleDate)}{seeCost && cost.rate ? ` · margin ${pct(marginPct(it.lastSaleRate, cost.rate))}` : ""}</> : "Not sold yet"} />
+            <Metric label="Stock available" value={`${qty(stock.available)} ${it.uom}`} href={can.stock ? `/stock/${it.id}` : undefined}
+              tone={lowStock ? "bad" : "default"}
+              hint={`On hand ${qty(stock.onHand)} · reserved ${qty(stock.reserved)}${it.reorderLevel > 0 ? ` · reorder at ${qty(it.reorderLevel)}` : ""}`} />
+          </MetricStrip>
+          <SectionCard title="Item details">
+            <KeyValueGrid columns={3} items={[
+              ["Size", it.size], ["Make", it.make], ["UOM", it.uom], ["HSN", it.hsn], ["GST", pct(it.gstRate, 0)],
+              ["Erection rate", seeCost || it.erectionRate ? money(it.erectionRate) : null],
+              ...(seeCost ? [["List price", money(it.listPrice)] as [string, string], ["Default markup", pct(it.markupPct, 0)] as [string, string]] : []),
+              ["Volatile price", it.volatilePrice ? `Yes, stale after ${STALE_DAYS_VOLATILE} days` : `No, stale after ${STALE_DAYS_DEFAULT} days`],
+              { label: "Description", value: it.description, wide: true },
+            ]} />
+          </SectionCard>
+        </>
       )}
 
-      <section aria-labelledby="sh" className="space-y-4">
-        <div>
-          <h2 id="sh" className="text-lg font-semibold text-ink">Sales price history</h2>
-          <p className="text-sm text-ink-soft">Quoted and invoiced selling rates to customers, kept separate from purchase prices.{seeCost && " Margin is against today's latest cost."}</p>
-        </div>
-        {salesPoints.length === 0 ? <EmptyState title="Not quoted or sold yet">Selling rates appear here once this item is used in a quotation or sales invoice.</EmptyState> : (
-          <>
-            <Card title="Last price by customer" bodyClassName="p-0">
-              <Table className="rounded-none border-0 shadow-none">
-                <thead><tr><Th>Customer</Th><Th className="text-right">Last quoted</Th><Th className="text-right">Last sold</Th>{seeCost && <Th className="text-right">Margin (sold)</Th>}</tr></thead>
-                <tbody>{[...byCustomer.values()].map((c) => (
-                  <tr key={String(c.customerId)}>
-                    <Td>{c.customerId && can.customers ? <Link href={`/customers/${c.customerId}`} className="hover:underline">{c.name}</Link> : c.name}</Td>
-                    <Td className="text-right tabular-nums">{c.lastQuote ? <>{money(c.lastQuote.rate)}<div className="text-xs text-ink-faint">{fmtDate(c.lastQuote.date)}</div></> : "-"}</Td>
-                    <Td className="text-right tabular-nums">{c.lastSale ? <>{money(c.lastSale.rate)}<div className="text-xs text-ink-faint">{fmtDate(c.lastSale.date)}</div></> : "-"}</Td>
-                    {seeCost && <Td className="text-right tabular-nums">{c.lastSale && cost.rate ? pct(marginPct(c.lastSale.rate, cost.rate)) : "-"}</Td>}
-                  </tr>
-                ))}</tbody>
-              </Table>
-            </Card>
-            <Card title={`All selling price points (${salesPoints.length})`} bodyClassName="p-0">
-              <Table className="rounded-none border-0 shadow-none">
-                <thead><tr><Th>Date</Th><Th>Type</Th><Th>Customer</Th><Th>Document</Th><Th className="text-right">Qty</Th><Th className="text-right">Rate</Th>{seeCost && <Th className="text-right">Margin vs latest cost</Th>}</tr></thead>
-                <tbody>{salesPoints.map((p) => {
-                  const m = cost.rate ? marginPct(p.rate, cost.rate) : null;
-                  return (
-                    <tr key={p.key}>
-                      <Td>{fmtDate(p.date)}</Td>
-                      <Td><Badge tone={p.kind === "sale" ? "green" : "blue"}>{p.kind}</Badge>{p.status && <> <StatusBadge status={p.status} /></>}</Td>
-                      <Td>{p.customerId && can.customers ? <Link href={`/customers/${p.customerId}`} className="hover:underline">{p.customerName}</Link> : (p.customerName ?? "-")}</Td>
-                      <Td>{p.href ? <Link href={p.href} className="text-brand-700 hover:underline dark:text-brand-300">{p.doc}</Link> : p.doc}</Td>
-                      <Td className="text-right tabular-nums">{qty(p.qty)}</Td>
-                      <Td className="text-right tabular-nums">{money(p.rate)}</Td>
-                      {seeCost && <Td className={cx("text-right tabular-nums", m != null && m < 10 && "text-red-600")}>{m == null ? "-" : pct(m)}</Td>}
-                    </tr>
-                  );
-                })}</tbody>
-              </Table>
-            </Card>
-          </>
-        )}
-      </section>
-      {!seeCost && <p className="text-xs text-ink-faint">Buying prices and margins are hidden for your role. Suggested selling rate: {money0(sell)}.</p>}
-    </div>
+      {tab === "purchases" && seeCost && (
+        <>
+          <SectionCard title="Purchase rate over time" icon={LineChart}
+            description="Each point is a posted purchase invoice. The purchase history table below lists the same numbers."
+            empty={purchases.length === 0 && "No purchase prices yet. Post a purchase invoice to start the history."}>
+            <PriceChart points={purchases.map((p) => ({ date: p.date, rate: p.rate, label: p.vendorName ?? undefined }))} />
+          </SectionCard>
+          {purchases.length > 0 && (
+            <div className="grid gap-4 xl:grid-cols-2">
+              <SectionCard title="Year-wise summary" flush>
+                <ResponsiveTable flush rows={years} columns={yearCols} rowKey={(y) => y.year} caption="Year-wise purchase summary" />
+              </SectionCard>
+              <SectionCard title="Month on month" description="Last 12 months with purchases" flush>
+                <ResponsiveTable flush rows={mom} columns={momCols} rowKey={(m) => m.month} caption="Month on month purchase rate" />
+              </SectionCard>
+            </div>
+          )}
+          <SectionCard title="Vendor comparison" icon={Users} count={vendorRows.length} flush
+            empty={vendorRows.length === 0 && "No suppliers yet. Vendors appear here when a purchase invoice for this item is posted."}>
+            <ResponsiveTable flush rows={vendorRows} columns={vendorCols} rowKey={(v) => v.key} caption="Vendor comparison" />
+          </SectionCard>
+          <SectionCard title="Purchase history" icon={History} count={purchases.length} flush
+            empty={purchases.length === 0 && "No purchases yet. Purchases appear here once an invoice for this item is posted."}>
+            <ResponsiveTable flush rows={purchaseRows} columns={purchaseCols} rowKey={(r) => r.p.id} caption="Purchase history" />
+          </SectionCard>
+        </>
+      )}
+
+      {tab === "sales" && (
+        <>
+          <SectionCard title="Last price by customer" icon={Users} count={customerRows.length} flush
+            description={`Quoted and invoiced selling rates, kept separate from purchase prices.${seeCost ? " Margin is against today's latest cost." : ""}`}
+            empty={salesPoints.length === 0 && "Not quoted or sold yet. Selling rates appear here once this item is used in a quotation or sales invoice."}>
+            <ResponsiveTable flush rows={customerRows} columns={customerCols} rowKey={(c) => String(c.customerId)} caption="Last price by customer" />
+          </SectionCard>
+          {salesPoints.length > 0 && (
+            <SectionCard title="All selling price points" count={salesPoints.length} flush>
+              <ResponsiveTable flush rows={salesPoints} columns={salesCols} rowKey={(p) => p.key} caption="Selling price points" />
+            </SectionCard>
+          )}
+        </>
+      )}
+    </DetailPage>
   );
 }

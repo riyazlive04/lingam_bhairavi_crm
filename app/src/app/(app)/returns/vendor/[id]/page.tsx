@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, asc, desc, eq } from "drizzle-orm";
-import { Pencil, Printer } from "lucide-react";
+import { Pencil, Printer, Scale, Trash2 } from "lucide-react";
 import { getDb } from "@/db";
 import { auditLog, items, purchaseInvoices, purchaseReturnLines, purchaseReturns, users, vendors } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
@@ -9,7 +9,10 @@ import { canRead, canWrite } from "@/lib/rbac";
 import { fmtDate, fmtDateTime, money, qty } from "@/lib/format";
 import { openPurchaseInvoices } from "@/lib/billing";
 import { maxAdjustable, noteBalance } from "@/lib/returns";
-import { Card, DL, EmptyState, Field, Flash, Input, LinkButton, PageHeader, Select, StatusBadge, Table, Td, Th } from "@/components/ui";
+import { Field, Flash, Input, LinkButton, Select, Td } from "@/components/ui";
+import {
+  Callout, ConfirmButton, DetailPage, KeyValueGrid, MetaChip, ResponsiveTable, SectionCard, StatusPill, SummaryRows, type Column,
+} from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { adjustDebitNoteAction, deleteVendorReturnDraft, postVendorReturnAction } from "../../actions";
 
@@ -46,54 +49,82 @@ export default async function DebitNotePage({ params, searchParams }: { params: 
   const billLink = r.purchaseInvoiceId && row.billNo
     ? (canRead(user.role, "purchases") ? <Link className={link} href={`/purchases/${r.purchaseInvoiceId}`}>{row.billNo}</Link> : row.billNo) : null;
 
+  type Line = (typeof lines)[number];
+  const lineCols: Column<Line>[] = [
+    { key: "n", header: "#", card: "hidden", className: "text-ink-soft", cell: (_x, i) => i + 1 },
+    { key: "item", header: "Item", card: "title", className: "max-w-80 whitespace-normal",
+      cell: ({ name, code }) => <>{name}<div className="text-caption font-normal text-ink-faint">{code}</div></> },
+    { key: "qty", header: "Qty", align: "right", card: "subtitle", nowrap: true, cell: ({ l, uom }) => <>{qty(l.qty)} <span className="text-caption text-ink-soft">{uom}</span></> },
+    { key: "rate", header: "Rate", align: "right", nowrap: true, cell: ({ l }) => money(l.rate) },
+    { key: "amount", header: "Taxable", align: "right", card: "amount", nowrap: true, cell: ({ l }) => money(l.amount) },
+    { key: "gst", header: "GST", align: "right", nowrap: true,
+      cell: ({ l }) => <>{money((Number(l.amount) * Number(l.gstRate)) / 100)} <span className="text-caption text-ink-soft">at {l.gstRate}%</span></> },
+  ];
+  type Hist = (typeof history)[number];
+  const histCols: Column<Hist>[] = [
+    { key: "bill", header: "Bill", card: "title", cell: (h) => ((h.details ?? {}) as { invoiceNo?: string }).invoiceNo ?? "-" },
+    { key: "when", header: "When", card: "subtitle", nowrap: true, cell: (h) => fmtDateTime(h.at) },
+    { key: "by", header: "By", cell: (h) => h.userName ?? "-" },
+    { key: "amount", header: "Amount", align: "right", card: "amount", nowrap: true,
+      cell: (h) => money(Number(((h.details ?? {}) as { amount?: number }).amount ?? 0)) },
+  ];
+
+  const primary = isDraft && write
+    ? (
+      <form action={postVendorReturnAction}>
+        <input type="hidden" name="returnId" value={r.id} />
+        <SubmitButton pendingText="Posting…" confirm="Post this debit note? Stock will be reduced and the number is final.">Post debit note</SubmitButton>
+      </form>
+    )
+    : isPosted
+      ? <LinkButton href={`/returns/vendor/${r.id}/print`}><Printer className="icon-sm" aria-hidden /> Print debit note</LinkButton>
+      : null;
+
   return (
-    <>
-      <PageHeader
-        eyebrow="Return to vendor"
-        title={<span className="flex flex-wrap items-center gap-2">{isDraft ? "Draft debit note" : r.number} <StatusBadge status={r.status} /></span>}
-        subtitle={<>{row.vendorName}{row.billNo ? ` · bill ${row.billNo}` : ""}</>}
-        back={{ href: "/returns?tab=vendor", label: "Returns" }}
-        actions={<>
-          {isPosted && <LinkButton href={`/returns/vendor/${r.id}/print`} variant="secondary"><Printer className="h-4 w-4" aria-hidden /> Debit note</LinkButton>}
-          {isDraft && write && <LinkButton href={`/returns/vendor/${r.id}/edit`} variant="secondary"><Pencil className="h-4 w-4" aria-hidden /> Edit</LinkButton>}
-          {isDraft && write && (
-            <form action={deleteVendorReturnDraft}>
-              <input type="hidden" name="returnId" value={r.id} />
-              <SubmitButton variant="ghost" pendingText="Deleting…" confirm="Delete this draft? Nothing has been posted yet.">Delete draft</SubmitButton>
-            </form>
-          )}
-          {isDraft && write && (
-            <form action={postVendorReturnAction}>
-              <input type="hidden" name="returnId" value={r.id} />
-              <SubmitButton pendingText="Posting…" confirm="Post this debit note? Stock will be reduced and the number is final.">Post debit note</SubmitButton>
-            </form>
-          )}
-        </>}
-      />
-      <Flash ok={sp.ok} err={sp.err} />
-      {isDraft && <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">This is a draft. Stock and the vendor balance change only when you post it.</p>}
-
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <div className="rounded-xl border border-line bg-surface p-4"><div className="text-xs uppercase tracking-wide text-ink-soft">Debit total</div><div className="mt-1 text-xl font-semibold tabular-nums">{money(r.total)}</div></div>
-        <div className="rounded-xl border border-line bg-surface p-4"><div className="text-xs uppercase tracking-wide text-ink-soft">GST</div><div className="mt-1 text-xl font-semibold tabular-nums">{money(r.taxAmount)}</div></div>
-        <div className="rounded-xl border border-line bg-surface p-4"><div className="text-xs uppercase tracking-wide text-ink-soft">Adjusted</div><div className="mt-1 text-xl font-semibold tabular-nums text-emerald-600">{money(r.adjustedAmount)}</div></div>
-        <div className="rounded-xl border border-line bg-surface p-4"><div className="text-xs uppercase tracking-wide text-ink-soft">Balance</div><div className="mt-1 text-xl font-semibold tabular-nums">{isPosted ? money(balance) : "-"}</div></div>
-      </div>
-
-      <div className="mb-4 grid gap-4 lg:grid-cols-3">
-        <Card title="Details" className="lg:col-span-2">
-          <DL items={[
-            ["Vendor", row.vendorName],
-            ["Return date", fmtDate(r.date)],
-            ["Vendor bill", billLink ? <>{billLink} dated {fmtDate(row.billDate)}</> : "-"],
-            ["Reason", r.reason || "-"],
-          ]} />
-        </Card>
-        {isPosted && balance > 0 && canAdjust ? (
-          <Card title="Adjust against vendor bill">
-            {open.length === 0 ? (
-              <p className="text-sm text-ink-soft">No unpaid bills from this vendor right now. The debit stays on their account and reduces what you owe them.</p>
-            ) : (
+    <DetailPage
+      back={{ href: "/returns?tab=vendor", label: "Returns" }}
+      eyebrow="Return to vendor"
+      title={isDraft ? "Draft debit note" : r.number}
+      status={<StatusPill status={r.status} />}
+      meta={
+        <>
+          <MetaChip label="Vendor">{row.vendorName}</MetaChip>
+          {row.billNo && <MetaChip label="Bill">{row.billNo}</MetaChip>}
+          <MetaChip label="Date">{fmtDate(r.date)}</MetaChip>
+          <MetaChip label="Total">{money(r.total)}</MetaChip>
+        </>
+      }
+      primaryAction={primary}
+      secondaryActions={isDraft && write ? <LinkButton href={`/returns/vendor/${r.id}/edit`} variant="secondary"><Pencil className="icon-sm" aria-hidden /> Edit draft</LinkButton> : undefined}
+      moreActions={isDraft && write ? (
+        <form action={deleteVendorReturnDraft}>
+          <input type="hidden" name="returnId" value={r.id} />
+          <ConfirmButton variant="ghost" className="text-danger" confirmVariant="danger" stacked pendingText="Deleting…" confirmLabel="Yes, delete draft"
+            confirm="Delete this draft? Nothing has been posted yet.">
+            <Trash2 className="icon-sm" aria-hidden /> Delete draft
+          </ConfirmButton>
+        </form>
+      ) : undefined}
+      notices={
+        <>
+          <Flash ok={sp.ok} err={sp.err} />
+          {isDraft && <Callout tone="warning" title="This is a draft">Stock and the vendor balance change only when you post it.</Callout>}
+        </>
+      }
+      aside={
+        <>
+          <SectionCard title="Summary">
+            <SummaryRows rows={[
+              ["Taxable value", money(r.subtotal)],
+              ["GST", money(r.taxAmount)],
+              ["Debit total", money(r.total)],
+              ["Adjusted", <span key="a" className="text-success">{money(r.adjustedAmount)}</span>],
+              ["Balance", isPosted ? money(balance) : "-"],
+            ]} />
+          </SectionCard>
+          {isPosted && balance > 0 && canAdjust ? (
+            <SectionCard title="Adjust against vendor bill" icon={Scale}
+              empty={open.length === 0 && "No unpaid bills from this vendor right now. The debit stays on their account and reduces what you owe them."}>
               <form action={adjustDebitNoteAction} className="grid gap-3">
                 <input type="hidden" name="returnId" value={r.id} />
                 <Field label="Vendor bill" required>
@@ -102,58 +133,46 @@ export default async function DebitNotePage({ params, searchParams }: { params: 
                   </Select>
                 </Field>
                 <Field label="Amount (₹)" required hint={`Up to the debit balance ${money(balance)} or the bill balance, whichever is lower`}>
-                  <Input name="amount" type="number" inputMode="decimal" step="0.01" min="0.01" max={balance} defaultValue={preferred ? maxAdjustable(balance, preferred.outstanding) : balance} required />
+                  <Input name="amount" type="number" inputMode="decimal" step="0.01" min="0.01" max={balance} defaultValue={preferred ? maxAdjustable(balance, preferred.outstanding) : balance} required className="text-right" />
                 </Field>
-                <SubmitButton variant="success" pendingText="Adjusting…">Adjust against vendor bill</SubmitButton>
+                <SubmitButton pendingText="Adjusting…">Adjust against vendor bill</SubmitButton>
               </form>
-            )}
-          </Card>
-        ) : (
-          <Card title="Settlement">
-            <p className="text-sm text-ink-soft">
-              {isDraft ? "Post the debit note first. Then it can be adjusted against the vendor's bills."
-                : balance <= 0 ? "This debit note is fully adjusted." : "Accounts or Purchase can adjust the balance against one of the vendor's bills."}
-            </p>
-          </Card>
-        )}
-      </div>
+            </SectionCard>
+          ) : (
+            <SectionCard title="Settlement">
+              <p className="text-sm text-ink-soft">
+                {isDraft ? "Post the debit note first. Then it can be adjusted against the vendor's bills."
+                  : balance <= 0 ? "This debit note is fully adjusted." : "Accounts or Purchase can adjust the balance against one of the vendor's bills."}
+              </p>
+            </SectionCard>
+          )}
+        </>
+      }
+    >
+      <SectionCard title="Details">
+        <KeyValueGrid columns={2} items={[
+          { label: "Vendor", value: row.vendorName },
+          { label: "Return date", value: fmtDate(r.date) },
+          { label: "Vendor bill", value: billLink ? <>{billLink} dated {fmtDate(row.billDate)}</> : null },
+          { label: "Reason", value: r.reason },
+        ]} />
+      </SectionCard>
 
-      <Card title={`Lines (${lines.length})`} className="mb-4" bodyClassName="p-0">
-        <Table className="rounded-none border-0 shadow-none">
-          <thead><tr><Th>#</Th><Th>Item</Th><Th className="text-right">Qty</Th><Th className="text-right">Rate</Th><Th className="text-right">Taxable</Th><Th className="text-right">GST</Th></tr></thead>
-          <tbody>
-            {lines.map(({ l, name, code, uom }, i) => (
-              <tr key={l.id}>
-                <Td className="text-ink-soft">{i + 1}</Td>
-                <Td className="max-w-80 whitespace-normal">{name}<div className="text-xs text-ink-faint">{code}</div></Td>
-                <Td className="text-right tabular-nums">{qty(l.qty)} <span className="text-xs text-ink-soft">{uom}</span></Td>
-                <Td className="text-right tabular-nums">{money(l.rate)}</Td>
-                <Td className="text-right tabular-nums">{money(l.amount)}</Td>
-                <Td className="text-right tabular-nums">{money((Number(l.amount) * Number(l.gstRate)) / 100)} <span className="text-xs text-ink-soft">@{l.gstRate}%</span></Td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr><Td colSpan={4} className="text-right font-medium">Totals</Td><Td className="text-right tabular-nums">{money(r.subtotal)}</Td><Td className="whitespace-nowrap text-right font-semibold tabular-nums">{money(r.taxAmount)} · Total {money(r.total)}</Td></tr>
-          </tfoot>
-        </Table>
-      </Card>
+      <SectionCard title="Lines" count={lines.length} flush empty={lines.length === 0 && "No lines on this debit note yet. Edit the draft to add the items going back."}>
+        <ResponsiveTable flush rows={lines} columns={lineCols} rowKey={({ l }) => l.id} caption="Debit note lines"
+          footer={
+            <tr>
+              <Td colSpan={4} className="text-right font-medium max-sm:hidden">Totals</Td>
+              <Td className="text-right font-semibold tabular-nums">{money(r.subtotal)}<span className="font-normal text-ink-soft sm:hidden"> taxable</span></Td>
+              <Td className="text-right tabular-nums">{money(r.taxAmount)}<span className="text-ink-soft sm:hidden"> GST</span><div className="text-caption font-semibold text-ink">Total {money(r.total)}</div></Td>
+            </tr>
+          } />
+      </SectionCard>
 
-      <Card title={`Adjustments (${history.length})`} bodyClassName={history.length ? "p-0" : undefined}>
-        {history.length === 0 ? <EmptyState title="Not adjusted yet">Adjustments against vendor bills appear here.</EmptyState> : (
-          <Table className="rounded-none border-0 shadow-none">
-            <thead><tr><Th>When</Th><Th>Bill</Th><Th>By</Th><Th className="text-right">Amount</Th></tr></thead>
-            <tbody>
-              {history.map((h, i) => {
-                const d = (h.details ?? {}) as { invoiceNo?: string; amount?: number };
-                return (
-                  <tr key={i}><Td className="whitespace-nowrap">{fmtDateTime(h.at)}</Td><Td>{d.invoiceNo ?? "-"}</Td><Td>{h.userName ?? "-"}</Td><Td className="text-right tabular-nums">{money(Number(d.amount ?? 0))}</Td></tr>
-                );
-              })}
-            </tbody>
-          </Table>
-        )}
-      </Card>
-    </>
+      <SectionCard title="Adjustments" count={history.length} flush
+        empty={history.length === 0 && "Not adjusted yet. Adjustments against vendor bills appear here."}>
+        <ResponsiveTable flush rows={history} columns={histCols} rowKey={(_h, i) => i} caption="Adjustments" />
+      </SectionCard>
+    </DetailPage>
   );
 }

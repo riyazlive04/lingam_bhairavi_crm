@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
@@ -7,15 +8,20 @@ import { customers } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { canRead, canWrite } from "@/lib/rbac";
 import { fmtDate, money, todayIST } from "@/lib/format";
-import { customerAdvances, customerLedger, getCompany, openSalesInvoices, receiptNumber } from "@/lib/billing";
+import { amountInWords, customerAdvances, customerLedger, getCompany, openSalesInvoices, receiptNumber } from "@/lib/billing";
 import { openCreditNotes } from "@/lib/returns";
-import { Badge, Button, Card, EmptyState, Field, Flash, Input, LinkButton, PageHeader, Table, Td, Th, cx } from "@/components/ui";
-import { SubmitButton } from "@/components/submit-button";
+import { Flash, Input } from "@/components/ui";
+import { Callout, ConfirmButton, DocNotes, DocSignature, DocTable, DocTotals, DocumentSheet, ListFilters } from "@/components/patterns";
 import { emailStatement } from "../../actions";
-import { PrintButton } from "../../../orders/_components/print-button";
 
-export const metadata = { title: "Customer ledger" };
+/**
+ * Customer statement of account on DocumentSheet. The period filter and email action are screen only;
+ * the sheet prints as the statement. Statements carry no GST split (ledger amounts are invoice totals),
+ * so there is no GstSummaryTable here.
+ */
+export const metadata = { title: "Customer statement" };
 const isDate = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+const link = "text-brand-700 hover:underline dark:text-brand-300 print:text-inherit print:no-underline";
 
 export default async function CustomerLedgerPage({ params, searchParams }: {
   params: Promise<{ customerId: string }>;
@@ -40,129 +46,161 @@ export default async function CustomerLedgerPage({ params, searchParams }: {
   const creditTotal = cns.reduce((s, c) => s + c.balance, 0) + advs.reduce((s, a) => s + a.balance, 0);
   const write = canWrite(user.role, "billing");
   const overdue = open.filter((o) => o.daysOverdue > 0).reduce((s, o) => s + o.outstanding, 0);
+  const base = `/billing/receivables/${c.id}`;
+
+  const period = from || to ? `${fmtDate(from) } to ${fmtDate(to ?? today)}` : "All time";
+  const facts: [ReactNode, ReactNode][] = [
+    ["Period", period],
+    ["Credit terms", `${c.paymentTermsDays} days`],
+    ["Overdue", money(overdue)],
+  ];
+  if (creditTotal > 0.005) facts.push(["Unused credits", money(creditTotal)]);
+  const dueText = (d: number) => (d > 0 ? `${d} days overdue` : d === 0 ? "Due today" : `Due in ${-d} days`);
 
   return (
     <>
-      <div className="no-print">
-        <PageHeader
-          title={c.name}
-          subtitle={<>Statement of account{c.email ? ` · ${c.email}` : " · no e-mail on file"}{c.phone ? ` · ${c.phone}` : ""} · {c.paymentTermsDays} days credit{!c.autoReminders && " · automatic reminders off"}</>}
-          back={{ href: "/billing/receivables", label: "Receivables" }}
-          actions={<>
-            <PrintButton label="Print statement" />
-            {write && (
-              <form action={emailStatement}>
-                <input type="hidden" name="customerId" value={c.id} />
-                <SubmitButton variant="secondary" disabled={!c.email} pendingText="Sending…" confirm={`E-mail the full statement to ${c.email ?? "the customer"}?`}>
-                  <Mail className="h-4 w-4" aria-hidden /> Email statement
-                </SubmitButton>
-              </form>
-            )}
-          </>}
-        />
-        <Flash ok={sp.ok} err={sp.err} />
+      <Flash ok={sp.ok} err={sp.err} />
+      <div className="no-print mx-auto mb-4 max-w-[210mm] space-y-3">
+        {!c.email && <Callout tone="warning" title="No email on file">Add an email address on the customer to send this statement.</Callout>}
+        {!c.autoReminders && <Callout tone="info">Automatic payment reminders are off for this customer.</Callout>}
+        <ListFilters searchName={false} clearHref={base} activeCount={from || to ? 1 : 0}>
+          <Input type="date" name="from" defaultValue={from} aria-label="From date" title="From date" />
+          <Input type="date" name="to" defaultValue={to} aria-label="To date" title="To date" />
+        </ListFilters>
       </div>
 
-      <div className="print-area">
-        <div className="mb-4 hidden print:block">
-          <h1 className="text-lg font-bold">{company.name}: Statement of account</h1>
-          <p>{c.name} · as on {fmtDate(today)}{from || to ? ` · period ${fmtDate(from) } to ${fmtDate(to ?? today)}` : ""}</p>
-        </div>
-
-        <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <div className="rounded-xl border border-line bg-surface p-4"><div className="text-xs uppercase tracking-wide text-ink-soft">Balance</div><div className="mt-1 text-xl font-semibold tabular-nums">{money(ledger.closing)}</div>{creditTotal > 0.005 && <div className="text-xs text-ink-soft">after {money(creditTotal)} unused credits</div>}</div>
-          <div className="rounded-xl border border-line bg-surface p-4"><div className="text-xs uppercase tracking-wide text-ink-soft">Overdue</div><div className={cx("mt-1 text-xl font-semibold tabular-nums", overdue > 0 && "text-red-600")}>{money(overdue)}</div></div>
-          <div className="rounded-xl border border-line bg-surface p-4"><div className="text-xs uppercase tracking-wide text-ink-soft">Invoiced (period)</div><div className="mt-1 text-xl font-semibold tabular-nums">{money(ledger.debit)}</div></div>
-          <div className="rounded-xl border border-line bg-surface p-4"><div className="text-xs uppercase tracking-wide text-ink-soft">Received (period)</div><div className="mt-1 text-xl font-semibold tabular-nums text-emerald-600">{money(ledger.credit)}</div></div>
-        </div>
-
-        {open.length > 0 && (
-          <Card title={`Open invoices (${open.length})`} className="mb-4" bodyClassName="p-0">
-            <Table className="rounded-none border-0 shadow-none">
-              <thead><tr><Th>Invoice</Th><Th>Date</Th><Th>Due</Th><Th className="text-right">Total</Th><Th className="text-right">Outstanding</Th><Th>Status</Th><Th className="text-right">Reminders</Th></tr></thead>
+      <DocumentSheet
+        company={company}
+        title="Statement of account"
+        numberLabel="As on"
+        number={fmtDate(today)}
+        party={{ label: "Statement for", name: c.name, address: c.address, city: c.city, state: c.state, gstin: c.gstin,
+          extra: [[c.phone, c.email].filter(Boolean).join(" · ")].filter(Boolean) }}
+        facts={facts}
+        toolbar={{
+          backHref: "/billing/receivables",
+          backLabel: "Back to receivables",
+          printLabel: "Print statement",
+          actions: write && (
+            <form action={emailStatement}>
+              <input type="hidden" name="customerId" value={c.id} />
+              <ConfirmButton variant="secondary" disabled={!c.email} pendingText="Sending…" confirmLabel="Yes, email statement"
+                confirm={`Email the full statement to ${c.email ?? "the customer"}?`}>
+                <Mail className="icon-sm" aria-hidden /> Email statement
+              </ConfirmButton>
+            </form>
+          ),
+        }}
+      >
+        <section className="space-y-2">
+          <h2 className="text-[0.8125rem] font-semibold uppercase tracking-wider">Ledger</h2>
+          {ledger.entries.length === 0 && !ledger.opening ? (
+            <p className="text-[var(--doc-soft)]">No invoices, payments or credit notes for this customer{from || to ? " in this period" : ""}.</p>
+          ) : (
+            <DocTable>
+              <thead>
+                <tr><th>Date</th><th>Ref</th><th>Particulars</th><th className="num">Debit</th><th className="num">Credit</th><th className="num">Balance</th></tr>
+              </thead>
               <tbody>
-                {open.map((o) => (
-                  <tr key={o.id}>
-                    <Td><Link href={`/billing/invoices/${o.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{o.number}</Link></Td>
-                    <Td className="whitespace-nowrap">{fmtDate(o.invoiceDate)}</Td>
-                    <Td className="whitespace-nowrap">{fmtDate(o.dueDate)}</Td>
-                    <Td className="text-right tabular-nums">{money(o.total)}</Td>
-                    <Td className="text-right font-medium tabular-nums">{money(o.outstanding)}</Td>
-                    <Td>{o.daysOverdue > 0 ? <Badge tone="red">{o.daysOverdue}d overdue</Badge> : o.daysOverdue === 0 ? <Badge tone="amber">due today</Badge> : <Badge tone="blue">due in {-o.daysOverdue}d</Badge>}</Td>
-                    <Td className="text-right tabular-nums">{o.reminderCount || "-"}</Td>
+                {from && (
+                  <tr><td>{fmtDate(from)}</td><td>-</td><td>Opening balance</td><td className="num" /><td className="num" /><td className="num">{money(ledger.opening)}</td></tr>
+                )}
+                {ledger.entries.map((e) => (
+                  <tr key={`${e.kind}-${e.refId}`}>
+                    <td className="whitespace-nowrap">{fmtDate(e.date)}</td>
+                    <td className="whitespace-nowrap">
+                      {e.kind === "invoice" ? <Link href={`/billing/invoices/${e.refId}`} className={link}>{e.ref}</Link>
+                        : e.kind === "credit_note" ? (returnsLink ? <Link href={`/returns/${e.refId}`} className={link}>{e.ref}</Link> : e.ref)
+                          : <Link href={`/billing/receipts/${e.refId}`} className={link}>{e.ref}</Link>}
+                    </td>
+                    <td className="whitespace-normal">{e.description}</td>
+                    <td className="num">{e.debit ? money(e.debit) : ""}</td>
+                    <td className="num">{e.credit ? money(e.credit) : ""}</td>
+                    <td className="num">{money(e.balance)}</td>
                   </tr>
                 ))}
               </tbody>
-            </Table>
-          </Card>
+            </DocTable>
+          )}
+        </section>
+
+        <section className="grid gap-4 sm:grid-cols-2">
+          <div />
+          <DocTotals
+            rows={[
+              ...(from ? [["Opening balance", ledger.opening] as [ReactNode, number]] : []),
+              ["Invoiced in period", ledger.debit],
+              ["Less received and credited", ledger.credit],
+            ]}
+            total={ledger.closing}
+            totalLabel="Closing balance"
+            note={creditTotal > 0.005 ? `Closing balance is after ${money(creditTotal)} of credits not yet used against invoices.` : undefined}
+            words={ledger.closing > 0.005 ? amountInWords(ledger.closing) : undefined}
+          />
+        </section>
+
+        {open.length > 0 && (
+          <section className="space-y-2">
+            <h2 className="text-[0.8125rem] font-semibold uppercase tracking-wider">Open invoices ({open.length})</h2>
+            <DocTable>
+              <thead>
+                <tr><th>Invoice</th><th>Date</th><th>Due</th><th className="num">Total</th><th className="num">Outstanding</th><th>Status</th><th className="num">Reminders</th></tr>
+              </thead>
+              <tbody>
+                {open.map((o) => (
+                  <tr key={o.id}>
+                    <td className="whitespace-nowrap"><Link href={`/billing/invoices/${o.id}`} className={link}>{o.number}</Link></td>
+                    <td className="whitespace-nowrap">{fmtDate(o.invoiceDate)}</td>
+                    <td className="whitespace-nowrap">{fmtDate(o.dueDate)}</td>
+                    <td className="num">{money(o.total)}</td>
+                    <td className="num font-semibold">{money(o.outstanding)}</td>
+                    <td className="whitespace-nowrap">{dueText(o.daysOverdue)}</td>
+                    <td className="num">{o.reminderCount || "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </DocTable>
+          </section>
         )}
 
         {(cns.length > 0 || advs.length > 0) && (
-          <Card title={`Credits not yet used (${cns.length + advs.length})`} subtitle="Adjust these against open invoices" className="mb-4" bodyClassName="p-0">
-            <Table className="rounded-none border-0 shadow-none">
-              <thead><tr><Th>Type</Th><Th>Ref</Th><Th>Date</Th><Th className="text-right">Amount</Th><Th className="text-right">Used</Th><Th className="text-right">Balance</Th></tr></thead>
+          <section className="space-y-2">
+            <h2 className="text-[0.8125rem] font-semibold uppercase tracking-wider">Credits not yet used ({cns.length + advs.length})</h2>
+            <DocTable>
+              <thead>
+                <tr><th>Type</th><th>Ref</th><th>Date</th><th className="num">Amount</th><th className="num">Used</th><th className="num">Balance</th></tr>
+              </thead>
               <tbody>
-                {cns.map((c) => (
-                  <tr key={`cn-${c.id}`}>
-                    <Td><Badge tone="violet">Credit note</Badge></Td>
-                    <Td>{returnsLink ? <Link href={`/returns/${c.id}`} className="text-brand-700 hover:underline dark:text-brand-300">{c.number}</Link> : c.number}</Td>
-                    <Td className="whitespace-nowrap">{fmtDate(c.date)}</Td>
-                    <Td className="text-right tabular-nums">{money(c.total)}</Td><Td className="text-right tabular-nums">{money(c.adjustedAmount)}</Td>
-                    <Td className="text-right font-medium tabular-nums">{money(c.balance)}</Td>
+                {cns.map((n) => (
+                  <tr key={`cn-${n.id}`}>
+                    <td>Credit note</td>
+                    <td className="whitespace-nowrap">{returnsLink ? <Link href={`/returns/${n.id}`} className={link}>{n.number}</Link> : n.number}</td>
+                    <td className="whitespace-nowrap">{fmtDate(n.date)}</td>
+                    <td className="num">{money(n.total)}</td><td className="num">{money(n.adjustedAmount)}</td>
+                    <td className="num font-semibold">{money(n.balance)}</td>
                   </tr>
                 ))}
                 {advs.map((a) => (
                   <tr key={`adv-${a.id}`}>
-                    <Td><Badge tone="blue">Advance</Badge></Td>
-                    <Td><Link href={`/billing/receipts/${a.id}`} className="text-brand-700 hover:underline dark:text-brand-300">{a.reference || receiptNumber(a)}</Link>{a.orderNumber && <div className="text-xs text-ink-soft">{a.orderNumber}</div>}</Td>
-                    <Td className="whitespace-nowrap">{fmtDate(a.date)}</Td>
-                    <Td className="text-right tabular-nums">{money(a.amount)}</Td><Td className="text-right tabular-nums">{money(a.allocatedAmount)}</Td>
-                    <Td className="text-right font-medium tabular-nums">{money(a.balance)}</Td>
+                    <td>Advance</td>
+                    <td className="whitespace-nowrap"><Link href={`/billing/receipts/${a.id}`} className={link}>{a.reference || receiptNumber(a)}</Link>{a.orderNumber && <div className="text-[var(--doc-soft)]">{a.orderNumber}</div>}</td>
+                    <td className="whitespace-nowrap">{fmtDate(a.date)}</td>
+                    <td className="num">{money(a.amount)}</td><td className="num">{money(a.allocatedAmount)}</td>
+                    <td className="num font-semibold">{money(a.balance)}</td>
                   </tr>
                 ))}
               </tbody>
-            </Table>
-          </Card>
+            </DocTable>
+          </section>
         )}
 
-        <Card title="Ledger" bodyClassName="p-0">
-          <form method="get" className="no-print flex flex-col gap-2 border-b border-line p-3 sm:flex-row sm:items-end">
-            <Field label="From"><Input type="date" name="from" defaultValue={from} /></Field>
-            <Field label="To"><Input type="date" name="to" defaultValue={to} /></Field>
-            <div className="flex gap-2">
-              <Button type="submit" variant="secondary">Apply</Button>
-              {(from || to) && <LinkButton href={`/billing/receivables/${c.id}`} variant="ghost">All time</LinkButton>}
-            </div>
-          </form>
-          {ledger.entries.length === 0 && !ledger.opening ? (
-            <div className="p-4"><EmptyState title="No transactions">No invoices, payments or credit notes for this customer{from || to ? " in this period" : ""}.</EmptyState></div>
-          ) : (
-            <Table className="rounded-none border-0 shadow-none">
-              <thead><tr><Th>Date</Th><Th>Ref</Th><Th>Particulars</Th><Th className="text-right">Debit</Th><Th className="text-right">Credit</Th><Th className="text-right">Balance</Th></tr></thead>
-              <tbody>
-                {from && (
-                  <tr><Td className="whitespace-nowrap">{fmtDate(from)}</Td><Td>-</Td><Td>Opening balance</Td><Td /><Td /><Td className="text-right tabular-nums">{money(ledger.opening)}</Td></tr>
-                )}
-                {ledger.entries.map((e) => (
-                  <tr key={`${e.kind}-${e.refId}`}>
-                    <Td className="whitespace-nowrap">{fmtDate(e.date)}</Td>
-                    <Td>{e.kind === "invoice" ? <Link href={`/billing/invoices/${e.refId}`} className="text-brand-700 hover:underline dark:text-brand-300">{e.ref}</Link>
-                      : e.kind === "credit_note" ? (returnsLink ? <Link href={`/returns/${e.refId}`} className="text-brand-700 hover:underline dark:text-brand-300">{e.ref}</Link> : e.ref)
-                        : <Link href={`/billing/receipts/${e.refId}`} className="text-brand-700 hover:underline dark:text-brand-300">{e.ref}</Link>}</Td>
-                    <Td className="max-w-80 whitespace-normal">{e.description}</Td>
-                    <Td className="text-right tabular-nums">{e.debit ? money(e.debit) : ""}</Td>
-                    <Td className="text-right tabular-nums text-emerald-700 dark:text-emerald-400">{e.credit ? money(e.credit) : ""}</Td>
-                    <Td className="text-right tabular-nums">{money(e.balance)}</Td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="bg-muted font-semibold"><Td colSpan={3} className="text-right">Closing balance</Td><Td className="text-right tabular-nums">{money(ledger.debit)}</Td><Td className="text-right tabular-nums">{money(ledger.credit)}</Td><Td className="text-right tabular-nums">{money(ledger.closing)}</Td></tr>
-              </tfoot>
-            </Table>
-          )}
-        </Card>
-      </div>
+        <DocNotes>
+          <p>Credits not yet used will be adjusted against open invoices. E. &amp; O.E.</p>
+          {company.bank && <p className="whitespace-pre-line"><strong>Bank details:</strong> {company.bank}</p>}
+        </DocNotes>
+
+        <DocSignature company={company.name} />
+      </DocumentSheet>
     </>
   );
 }

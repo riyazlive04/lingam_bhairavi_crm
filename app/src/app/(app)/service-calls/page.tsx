@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { and, asc, desc, eq, gte, ilike, inArray, or, type SQL } from "drizzle-orm";
-import { AlertTriangle, CheckCircle2, Plus, Wrench } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleDot, Hammer, Play, Plus, UserCheck, Wrench } from "lucide-react";
 import { getDb } from "@/db";
 import { amcContracts, customers, serviceCalls, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { fmtDateTime, money0 } from "@/lib/format";
-import { CALL_PRIORITIES, PRIORITY_TONE, slaState, systemLabel, type CallPriority } from "@/lib/amc";
-import { Badge, Card, EmptyState, FilterBar, Flash, LinkButton, PageHeader, Select, Stat, cx } from "@/components/ui";
+import { CALL_PRIORITIES, slaState, systemLabel, type CallPriority } from "@/lib/amc";
+import { Badge, Flash, LinkButton, Select, cx } from "@/components/ui";
+import { ListEmpty, ListFilters, ListPage, Metric, MetricStrip, SectionCard, StatusPill } from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { amcAccess } from "../amc/_lib/access";
 import { SlaChip } from "./_components/sla-chip";
@@ -16,10 +17,10 @@ export const metadata = { title: "Service calls" };
 
 type SP = { q?: string; customerId?: string; engineerId?: string; priority?: string; mine?: string; ok?: string; err?: string };
 const COLUMNS = [
-  { key: "open", title: "Open", statuses: ["open"] },
-  { key: "assigned", title: "Assigned", statuses: ["assigned"] },
-  { key: "in_progress", title: "In progress", statuses: ["in_progress"] },
-  { key: "resolved", title: "Resolved (30 days)", statuses: ["resolved", "closed"] },
+  { key: "open", title: "Open", statuses: ["open"], icon: CircleDot, empty: "No open calls. New calls land here until someone takes them." },
+  { key: "assigned", title: "Assigned", statuses: ["assigned"], icon: UserCheck, empty: "No calls waiting to start." },
+  { key: "in_progress", title: "In progress", statuses: ["in_progress"], icon: Hammer, empty: "Nobody is working on a call right now." },
+  { key: "resolved", title: "Resolved (30 days)", statuses: ["resolved", "closed"], icon: CheckCircle2, empty: "No calls resolved in the last 30 days." },
 ] as const;
 const truncateText = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 const PRIORITY_RANK: Record<string, number> = { critical: 0, high: 1, normal: 2, low: 3 };
@@ -82,100 +83,104 @@ export default async function ServiceCallsPage({ searchParams }: { searchParams:
   const filtered = !!(q || customerId || engineerId || sp.priority);
   const nowMs = now.getTime();
 
+  const activeFilters = [q, sp.customerId, sp.engineerId, sp.priority, sp.mine].filter(Boolean).length;
+
   return (
-    <div>
-      <PageHeader
-        title="Service Calls"
-        subtitle={mineFirst ? "Your calls are shown first in every column. Red means the response deadline has passed." : "Breakdown and complaint calls. The response deadline comes from the customer's AMC, or 48 hours without one."}
-        actions={<>
-          <LinkButton variant="secondary" href="/amc">AMC contracts</LinkButton>
-          {acc.write && <LinkButton href="/service-calls/new"><Plus className="h-4 w-4" aria-hidden /> Log call</LinkButton>}
-        </>}
-      />
-      <Flash ok={sp.ok} err={sp.err} />
-
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Open calls" value={open.length} icon={Wrench} hint={mineFirst ? `${mine} assigned to you` : undefined} />
-        <Stat label="Past SLA" value={breached} icon={AlertTriangle} tone={breached ? "bad" : "good"} hint={breached ? "needs attention now" : "all within time"} />
-        <Stat label="Resolved in 30 days" value={resolved30.length} icon={CheckCircle2} hint={resolved30.length ? `${metSla} within SLA` : undefined} />
-        {acc.money
-          ? <Stat label="Chargeable (30 days)" value={money0(resolved30.filter((r) => r.chargeable).reduce((s, r) => s + Number(r.chargeAmount), 0))} hint="to invoice" />
-          : <Stat label="Unassigned" value={open.filter((r) => !r.engineerId).length} tone={open.some((r) => !r.engineerId) ? "warn" : "default"} />}
-      </div>
-
-      <FilterBar q={sp.q} placeholder="Call no, customer, problem">
-        <Select name="customerId" defaultValue={sp.customerId ?? ""} aria-label="Customer" className="sm:max-w-52">
-          <option value="">All customers</option>
-          {customerList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </Select>
-        <Select name="engineerId" defaultValue={sp.engineerId ?? ""} aria-label="Engineer" className="sm:max-w-44">
-          <option value="">All engineers</option>
-          {engineerList.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-        </Select>
-        <Select name="priority" defaultValue={sp.priority ?? ""} aria-label="Priority" className="sm:max-w-36">
-          <option value="">Any priority</option>
-          {Object.entries(CALL_PRIORITIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </Select>
-        {mineFirst && (
-          <label className="inline-flex items-center gap-2 text-sm text-ink">
-            <input type="checkbox" name="mine" value="1" defaultChecked={sp.mine === "1"} className="h-4 w-4 accent-brand-600" /> Only mine
-          </label>
-        )}
-      </FilterBar>
-      {filtered && <p className="-mt-2 mb-3 text-sm"><Link href="/service-calls" className="text-ink-soft hover:text-brand-700">Clear filters</Link></p>}
-
-      {rows.length === 0 ? (
-        <EmptyState icon={Wrench} title={filtered ? "No calls match these filters" : "No service calls right now"}
-          action={acc.write && !filtered ? <LinkButton href="/service-calls/new">Log a call</LinkButton> : undefined}>
-          {filtered ? "Try clearing a filter." : "When a customer reports a breakdown, log it here so the response deadline is tracked."}
-        </EmptyState>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {COLUMNS.map((col) => {
-            const list = sorted(rows.filter((r) => (col.statuses as readonly string[]).includes(r.status)), col.key === "resolved");
-            return (
-              <Card key={col.key} title={`${col.title} (${list.length})`} bodyClassName="space-y-3 bg-muted/40 p-3">
-                {list.length === 0 && <p className="py-4 text-center text-sm text-ink-faint">Nothing here</p>}
+    <ListPage
+      title="Service calls"
+      subtitle={mineFirst ? "Your calls are shown first in every column. Red means the response deadline has passed." : "Breakdown and complaint calls. The response deadline comes from the customer's AMC, or 48 hours without one."}
+      secondaryActions={<LinkButton variant="secondary" href="/amc">AMC contracts</LinkButton>}
+      primaryAction={acc.write && <LinkButton href="/service-calls/new"><Plus className="icon-sm" aria-hidden /> Log a call</LinkButton>}
+      notices={<Flash ok={sp.ok} err={sp.err} />}
+      stats={
+        <MetricStrip>
+          <Metric label="Open calls" value={open.length} icon={Wrench} hint={mineFirst ? `${mine} assigned to you` : undefined} />
+          <Metric label="Past SLA" value={breached} icon={AlertTriangle} tone={breached ? "bad" : "good"} hint={breached ? "Needs attention now" : "All within time"} />
+          <Metric label="Resolved in 30 days" value={resolved30.length} icon={CheckCircle2} hint={resolved30.length ? `${metSla} within SLA` : undefined} />
+          {acc.money
+            ? <Metric label="Chargeable (30 days)" value={money0(resolved30.filter((r) => r.chargeable).reduce((s, r) => s + Number(r.chargeAmount), 0))} hint="To invoice" />
+            : <Metric label="Unassigned" value={open.filter((r) => !r.engineerId).length} tone={open.some((r) => !r.engineerId) ? "warn" : "default"} />}
+        </MetricStrip>
+      }
+      filters={
+        <ListFilters q={sp.q} placeholder="Call no, customer, problem" clearHref="/service-calls" activeCount={activeFilters}>
+          <Select name="customerId" defaultValue={sp.customerId ?? ""} aria-label="Customer">
+            <option value="">All customers</option>
+            {customerList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+          <Select name="engineerId" defaultValue={sp.engineerId ?? ""} aria-label="Engineer">
+            <option value="">All engineers</option>
+            {engineerList.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+          </Select>
+          <Select name="priority" defaultValue={sp.priority ?? ""} aria-label="Priority">
+            <option value="">Any priority</option>
+            {Object.entries(CALL_PRIORITIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </Select>
+          {mineFirst && (
+            <label className="inline-flex min-h-9.5 items-center gap-2 text-sm text-ink">
+              <input type="checkbox" name="mine" value="1" defaultChecked={sp.mine === "1"} className="icon-sm accent-brand-600" /> Only mine
+            </label>
+          )}
+        </ListFilters>
+      }
+      density={false}
+      isEmpty={rows.length === 0}
+      empty={
+        <ListEmpty filtered={filtered} noun="calls" clearHref="/service-calls" title={filtered ? undefined : "No service calls right now"}
+          action={acc.write && <LinkButton href="/service-calls/new"><Plus className="icon-sm" aria-hidden /> Log a call</LinkButton>}>
+          When a customer reports a breakdown, log it here so the response deadline is tracked.
+        </ListEmpty>
+      }
+    >
+      <div className="-mx-4 grid auto-cols-[85%] grid-flow-col gap-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid-flow-row sm:grid-cols-2 sm:overflow-visible sm:px-0 xl:grid-cols-4">
+        {COLUMNS.map((col) => {
+          const list = sorted(rows.filter((r) => (col.statuses as readonly string[]).includes(r.status)), col.key === "resolved");
+          return (
+            <SectionCard key={col.key} title={col.title} count={list.length} icon={col.icon} flush className="self-start" empty={list.length === 0 && col.empty}>
+              <ul className="space-y-3 bg-muted/40 p-3">
                 {list.map((r) => {
                   const isMine = r.engineerId === user.id;
                   const sla = slaState(r, now);
                   const canWork = acc.write && (acc.manage || !r.engineerId || isMine);
+                  const late = sla.state === "breached" && col.key !== "resolved";
                   return (
-                    <article key={r.id} className={cx("rounded-xl border bg-surface p-3 shadow-xs",
-                      sla.state === "breached" && col.key !== "resolved" ? "border-red-400 dark:border-red-800" : "border-line", isMine && "ring-1 ring-brand-500/40")}>
+                    <li key={r.id} className={cx("relative rounded-xl border bg-surface p-3 shadow-xs transition hover:border-line-strong hover:shadow-sm",
+                      late ? "border-danger-line" : "border-line", isMine && "ring-1 ring-brand-500/40")}>
                       <div className="flex items-start justify-between gap-2">
-                        <Link href={`/service-calls/${r.id}`} className="min-w-0 text-sm font-semibold text-brand-700 hover:underline dark:text-brand-300">{r.number}</Link>
-                        <Badge tone={PRIORITY_TONE[r.priority as CallPriority] ?? "gray"}>{CALL_PRIORITIES[r.priority as CallPriority] ?? r.priority}</Badge>
+                        <Link href={`/service-calls/${r.id}`} className="min-w-0 text-sm font-semibold text-brand-700 after:absolute after:inset-0 after:rounded-xl hover:underline dark:text-brand-300">{r.number}</Link>
+                        <StatusPill status={r.priority} label={CALL_PRIORITIES[r.priority as CallPriority] ?? r.priority} />
                       </div>
                       <div className="mt-1 truncate text-sm font-medium text-ink">{r.customerName}</div>
                       <p className="mt-0.5 text-sm text-ink-soft">{truncateText(r.description, 110)}</p>
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-ink-soft">
-                        {r.system && <Badge tone="violet">{systemLabel(r.system)}</Badge>}
-                        {r.contractNumber ? <Badge tone="blue">AMC</Badge> : <Badge tone="amber">Chargeable</Badge>}
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-caption text-ink-soft">
+                        {r.system && <Badge tone="gray">{systemLabel(r.system)}</Badge>}
+                        {r.contractNumber ? <StatusPill semantic="info" label="AMC" noDot /> : <StatusPill semantic="warning" label="Chargeable" noDot />}
                         <span>{r.engineerName ? (isMine ? "You" : r.engineerName) : "Unassigned"}</span>
                       </div>
-                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
                         {col.key === "resolved"
-                          ? <span className={cx("text-xs", sla.state === "breached" ? "text-red-600" : "text-emerald-700 dark:text-emerald-400")}>{sla.label} · {fmtDateTime(r.resolvedAt)}</span>
+                          ? <span className={cx("text-caption", sla.state === "breached" ? "text-danger" : "text-success")}>{sla.label} · {fmtDateTime(r.resolvedAt)}</span>
                           : <SlaChip dueBy={r.dueBy ? new Date(r.dueBy).toISOString() : null} nowMs={nowMs} />}
                         {canWork && (col.key === "assigned" || (col.key === "open" && user.role === "engineer")) && (
-                          <form action={updateCallStatus}>
+                          <form action={updateCallStatus} className="relative z-[1]">
                             <input type="hidden" name="id" value={r.id} />
                             <input type="hidden" name="status" value="in_progress" />
                             <input type="hidden" name="back" value="board" />
-                            <SubmitButton size="sm" variant="secondary" pendingText="...">{col.key === "open" ? "Take and start" : "Start"}</SubmitButton>
+                            <SubmitButton variant="secondary" pendingText="Starting…"><Play className="icon-sm" aria-hidden /> {col.key === "open" ? "Take and start" : "Start work"}</SubmitButton>
                           </form>
                         )}
-                        {canWork && col.key === "in_progress" && <LinkButton size="sm" variant="secondary" href={`/service-calls/${r.id}#resolve`}>Resolve</LinkButton>}
+                        {canWork && col.key === "in_progress" && (
+                          <LinkButton variant="secondary" href={`/service-calls/${r.id}#resolve`} className="relative z-[1]"><CheckCircle2 className="icon-sm" aria-hidden /> Mark resolved</LinkButton>
+                        )}
                       </div>
-                    </article>
+                    </li>
                   );
                 })}
-              </Card>
-            );
-          })}
-        </div>
-      )}
-    </div>
+              </ul>
+            </SectionCard>
+          );
+        })}
+      </div>
+    </ListPage>
   );
 }

@@ -1,16 +1,20 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { asc, desc, eq, inArray, sql } from "drizzle-orm";
-import { AlertTriangle, FileText, Truck, Undo2, Wallet } from "lucide-react";
+import { Ban, FileText, Lock, RotateCcw, Truck, Undo2, Wallet } from "lucide-react";
 import { getDb } from "@/db";
 import { customers, deliveries, deliveryLines, items, projects, quotations, salesInvoices, salesOrderLines, salesOrders } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { canRead, canWrite } from "@/lib/rbac";
+import { canRead, canSeeCost, canWrite } from "@/lib/rbac";
 import { fmtDate, money, money0, qty, todayIST } from "@/lib/format";
 import { LINE_STATUS_LABEL, MANUAL_LINE_STATUSES, OPEN_ORDER_STATUSES, netDeliveredQty, pendingQtyOf } from "@/lib/orders";
 import { noteBalance, reasonLabel, returnsForOrder } from "@/lib/returns";
 import { customerAdvances, receiptNumber } from "@/lib/billing";
-import { Badge, Card, DL, EmptyState, Field, Flash, Input, LinkButton, PageHeader, Select, StatusBadge, Table, Td, Th, Textarea, cx } from "@/components/ui";
+import { Field, Flash, Input, LinkButton, Select, Textarea, cx } from "@/components/ui";
+import {
+  Callout, ConfirmButton, DetailPage, KeyValueGrid, MetaChip, ResponsiveTable, SectionCard, StatusPill, SummaryRows, Tabs, activeTab, tabHref,
+  type Column, type TabItem,
+} from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { changeOrderStatus, recordDelivery, updateOrderLine } from "../actions";
 import { LineProgress } from "../_components/progress";
@@ -18,6 +22,11 @@ import { CreateVendorPoButton } from "../../purchase-orders/_components/create-p
 import { LinkedPosCard } from "../../purchase-orders/_components/linked-pos-card";
 import { OrderPnlCard } from "../../reports/_components/order-pnl-card";
 
+/**
+ * REFERENCE DETAIL PAGE (design system v2). Module teams copy this structure:
+ * DetailPage > meta chips, primary / secondary / more actions (ConfirmButton for destructive ones),
+ * Callout notices, Tabs (?tab=), SectionCard + ResponsiveTable per tab, summary aside.
+ */
 export const metadata = { title: "Customer order" };
 
 type Line = typeof salesOrderLines.$inferSelect & { itemCode: string | null };
@@ -52,7 +61,7 @@ function LineUpdateForm({ orderId, line }: { orderId: number; line: Line }) {
   );
 }
 
-export default async function OrderPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
+export default async function OrderPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string; tab?: string }> }) {
   const user = await requireUser("orders");
   const { id } = await params;
   const sp = await searchParams;
@@ -106,257 +115,297 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
   ]);
   const canReturn = o.status !== "cancelled" && lines.some((l) => netDeliveredQty(l.deliveredQty, l.returnedQty) > 1e-6);
   const anyReturned = lines.some((l) => Number(l.returnedQty) > 1e-6);
+  const poWrite = canWrite(user.role, "purchaseOrders");
+  const showPurchasing = canRead(user.role, "purchaseOrders") || canSeeCost(user.role);
+  const canDeliver = write && isOpen && pendingLines.length > 0;
+  const canInvoice = billingWrite && o.status !== "cancelled";
 
-  return (
+  // ------------------------------------------------------------------ tabs (?tab=)
+  const tabIds = ["lines", "deliveries", ...(billingRead ? ["billing" as const] : []), ...(returnsRead ? ["returns" as const] : []),
+    ...(showPurchasing ? ["purchasing" as const] : [])] as const;
+  const tab = activeTab(sp.tab, tabIds);
+  const tabItems: TabItem[] = [
+    { id: "lines", label: "Lines", count: lines.length, alert: isOpen && overdue.length > 0 },
+    { id: "deliveries", label: "Deliveries", count: dels.length },
+    ...(billingRead ? [{ id: "billing", label: "Invoices & advances", count: invs.length + advances.length }] : []),
+    ...(returnsRead ? [{ id: "returns", label: "Returns", count: creditNotes.length }] : []),
+    ...(showPurchasing ? [{ id: "purchasing", label: "Vendor POs & profit" }] : []),
+  ];
+  const base = `/orders/${o.id}`;
+  const tabParams = { tab: sp.tab };
+
+  // ------------------------------------------------------------------ table columns
+  const lineCols: Column<Line>[] = [
+    { key: "n", header: "#", card: "hidden", className: "text-ink-soft", cell: (_l, i) => i + 1 },
+    { key: "item", header: "Item", card: "title", className: "max-w-72 whitespace-normal",
+      cell: (l) => <>{l.description}{l.itemCode && <div className="text-caption font-normal text-ink-faint">{l.itemCode}</div>}</> },
+    { key: "ordered", header: "Ordered", align: "right", nowrap: true, cell: (l) => <>{qty(l.qty)} <span className="text-caption text-ink-soft">{l.uom}</span></> },
+    { key: "delivered", header: "Delivered", align: "right", cell: (l) => qty(l.deliveredQty) },
+    ...(anyReturned ? [{ key: "returned", header: "Returned", align: "right" as const,
+      cell: (l: Line) => Number(l.returnedQty) > 0 ? <span className="text-danger">{qty(l.returnedQty)}</span> : "-" }] : []),
+    { key: "invoiced", header: "Invoiced", align: "right", priority: 3, cell: (l) => qty(l.invoicedQty) },
+    { key: "pending", header: "Pending", align: "right", card: "amount",
+      cell: (l) => {
+        if (l.deliveryStatus === "cancelled") return "-";
+        const pend = pendingQtyOf(l);
+        return <span className={cx("font-medium", pend > 0 && "text-warning")}>{qty(pend)}<span className="sm:hidden"> pending</span></span>;
+      } },
+    { key: "rate", header: "Rate", align: "right", priority: 3, nowrap: true, cell: (l) => money(l.rate) },
+    { key: "status", header: "Status", card: "badge", cell: (l) => <StatusPill status={l.deliveryStatus} label={LINE_STATUS_LABEL[l.deliveryStatus]} /> },
+    { key: "expected", header: "Expected", nowrap: true,
+      cell: (l) => {
+        const exp = effectiveExpected(l, o.expectedDelivery);
+        const late = isOpen && l.deliveryStatus !== "delivered" && l.deliveryStatus !== "cancelled" && exp && exp < today;
+        return (
+          <span className="inline-flex flex-col items-end sm:items-start">
+            <span>{fmtDate(exp)}</span>
+            {late && <StatusPill status="late" label="Late" />}
+            {!l.expectedDate && exp && <span className="text-caption text-ink-faint">Order default</span>}
+          </span>
+        );
+      } },
+    { key: "remarks", header: "Remarks", priority: 3, className: "max-w-56 whitespace-normal text-ink-soft", cell: (l) => l.remarks || "-" },
+    ...(write && isOpen ? [{ key: "actions", header: <span className="sr-only">Actions</span>, label: "Actions", card: "actions" as const,
+      cell: (l: Line) => l.deliveryStatus !== "delivered" ? <LineUpdateForm orderId={o.id} line={l} /> : null }] : []),
+  ];
+  type Del = (typeof dels)[number];
+  const delCols: Column<Del>[] = [
+    { key: "no", header: "Challan", card: "title", nowrap: true,
+      cell: (d) => <Link href={`/orders/${o.id}/challan/${d.id}`} className="rt-stretch font-medium text-brand-700 hover:underline dark:text-brand-300">{d.number}</Link> },
+    { key: "date", header: "Date", card: "subtitle", nowrap: true, cell: (d) => fmtDate(d.date) },
+    { key: "vehicle", header: "Vehicle", cell: (d) => d.vehicleNo || "-" },
+    { key: "by", header: "Received by", cell: (d) => d.receivedBy || "-" },
+    { key: "lines", header: "Lines", align: "right", card: "amount", cell: (d) => delivTotalQty.get(d.id)?.n ?? 0 },
+  ];
+  type Inv = (typeof invs)[number];
+  const invCols: Column<Inv>[] = [
+    { key: "no", header: "Invoice", card: "title", nowrap: true,
+      cell: (v) => billingRead ? <Link href={`/billing/invoices/${v.id}`} className="rt-stretch font-medium text-brand-700 hover:underline dark:text-brand-300">{v.number}</Link> : v.number },
+    { key: "date", header: "Date", card: "subtitle", nowrap: true, cell: (v) => fmtDate(v.invoiceDate) },
+    { key: "total", header: "Total", align: "right", card: "amount", nowrap: true, cell: (v) => money0(v.total) },
+    { key: "status", header: "Status", card: "badge", cell: (v) => <StatusPill status={v.status} /> },
+  ];
+  type Cn = (typeof creditNotes)[number];
+  const cnCols: Column<Cn>[] = [
+    { key: "no", header: "Credit note", card: "title", nowrap: true,
+      cell: (r) => <Link href={`/returns/${r.id}`} className="rt-stretch font-medium text-brand-700 hover:underline dark:text-brand-300">{r.status === "draft" ? "Draft" : r.number}</Link> },
+    { key: "date", header: "Date", card: "subtitle", nowrap: true, cell: (r) => fmtDate(r.date) },
+    { key: "reason", header: "Reason", cell: (r) => reasonLabel(r.reason) },
+    { key: "total", header: "Total", align: "right", card: "amount", nowrap: true,
+      cell: (r) => <>{money0(r.total)}{r.status === "posted" && noteBalance(r.total, r.adjustedAmount) > 0.005 && <div className="text-caption font-normal text-ink-soft">{money0(noteBalance(r.total, r.adjustedAmount))} unadjusted</div>}</> },
+    { key: "status", header: "Status", card: "badge", cell: (r) => <StatusPill status={r.status} /> },
+  ];
+  type Adv = (typeof advances)[number];
+  const advCols: Column<Adv>[] = [
+    { key: "no", header: "Receipt", card: "title", nowrap: true,
+      cell: (a) => <Link href={`/billing/receipts/${a.id}`} className="rt-stretch font-medium text-brand-700 hover:underline dark:text-brand-300">{receiptNumber(a)}</Link> },
+    { key: "date", header: "Date", card: "subtitle", nowrap: true, cell: (a) => fmtDate(a.date) },
+    { key: "amount", header: "Amount", align: "right", card: "amount", nowrap: true, cell: (a) => money0(a.amount) },
+    { key: "open", header: "Not yet applied", align: "right", nowrap: true, cell: (a) => a.balance > 0.005 ? money0(a.balance) : "-" },
+  ];
+
+  // ------------------------------------------------------------------ actions
+  const invoiceBtn = (variant: "primary" | "secondary") => (
+    <LinkButton href={`/billing/invoices/new?orderId=${o.id}`} variant={variant}>
+      <FileText className="icon-sm" aria-hidden /> Create invoice
+    </LinkButton>
+  );
+  // The most likely next step: bill what was delivered, otherwise deliver what is pending.
+  const primary = canInvoice && uninvoiced
+    ? invoiceBtn("primary")
+    : canDeliver
+      ? <LinkButton href={`${base}#record-delivery`}><Truck className="icon-sm" aria-hidden /> Record delivery</LinkButton>
+      : null;
+  const secondary = (
     <>
-      <PageHeader
-        title={<span className="flex flex-wrap items-center gap-2">{o.number} <StatusBadge status={o.status} /></span>}
-        subtitle={<>{order.customerName ?? "-"}{o.customerPoNumber ? ` · PO ${o.customerPoNumber}` : ""}{order.projectName ? ` · ${order.projectName}` : ""}</>}
-        back={{ href: "/orders", label: "Orders" }}
-        actions={
-          <>
-            {billingWrite && o.status !== "cancelled" && (
-              <LinkButton href={`/billing/invoices/new?orderId=${o.id}`} variant={uninvoiced ? "primary" : "secondary"}>
-                <FileText className="h-4 w-4" aria-hidden /> Create invoice
-              </LinkButton>
-            )}
-            {billingWrite && o.status !== "cancelled" && o.status !== "closed" && (
-              <LinkButton href={`/billing/advances?orderId=${o.id}&from=order`} variant="secondary">
-                <Wallet className="h-4 w-4" aria-hidden /> Record advance
-              </LinkButton>
-            )}
-            {canWrite(user.role, "purchaseOrders") && isOpen && pendingLines.length > 0 && <CreateVendorPoButton salesOrderId={o.id} />}
-            {returnsWrite && canReturn && (
-              <LinkButton href={`/returns/new?orderId=${o.id}`} variant="secondary">
-                <Undo2 className="h-4 w-4" aria-hidden /> Record return
-              </LinkButton>
-            )}
-            {write && isOpen && (
-              <form action={changeOrderStatus}>
-                <input type="hidden" name="orderId" value={o.id} />
-                <input type="hidden" name="op" value="close" />
-                <SubmitButton variant="secondary" pendingText="Closing…"
-                  confirm={pendingLines.length ? `${pendingLines.length} line(s) are still pending. Close the order anyway? Pending lines will no longer be tracked.` : "Close this order?"}>
-                  Close order
-                </SubmitButton>
-              </form>
-            )}
-            {write && isOpen && dels.length === 0 && (
-              <form action={changeOrderStatus}>
-                <input type="hidden" name="orderId" value={o.id} />
-                <input type="hidden" name="op" value="cancel" />
-                <SubmitButton variant="danger" pendingText="Cancelling…" confirm="Cancel this order? This cannot be used for deliveries afterwards.">Cancel</SubmitButton>
-              </form>
-            )}
-            {write && (o.status === "closed" || o.status === "cancelled") && (
-              <form action={changeOrderStatus}>
-                <input type="hidden" name="orderId" value={o.id} />
-                <input type="hidden" name="op" value="reopen" />
-                <SubmitButton variant="secondary" pendingText="Reopening…">Reopen</SubmitButton>
-              </form>
-            )}
-          </>
-        }
-      />
-      <Flash ok={sp.ok} err={sp.err} />
-
-      {isOpen && overdue.length > 0 && (
-        <div role="alert" className="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-          <span><strong>{overdue.length} line{overdue.length === 1 ? " is" : "s are"} overdue</strong>: the expected date has passed and the item has not been delivered yet. Update the status / expected date or record the delivery.</span>
-        </div>
+      {canInvoice && !uninvoiced && invoiceBtn("secondary")}
+      {billingWrite && o.status !== "cancelled" && o.status !== "closed" && (
+        <LinkButton href={`/billing/advances?orderId=${o.id}&from=order`} variant="secondary">
+          <Wallet className="icon-sm" aria-hidden /> Record advance
+        </LinkButton>
       )}
-
-      <div className="mb-4 grid gap-4 lg:grid-cols-3">
-        <Card title="Order details" className="lg:col-span-2">
-          <DL items={[
-            ["Customer", order.customerName ?? "-"],
-            ["Customer PO", o.customerPoNumber ? `${o.customerPoNumber}${o.customerPoDate ? ` dated ${fmtDate(o.customerPoDate)}` : ""}` : "-"],
-            ["Order date", fmtDate(o.orderDate)],
-            ["Expected delivery", fmtDate(o.expectedDelivery)],
-            ["Project", order.projectName ? `${order.projectCode} · ${order.projectName}` : "-"],
-            ["Quotation", order.quotationNumber && o.quotationId ? (canRead(user.role, "quotations") ? <Link className="text-brand-700 hover:underline dark:text-brand-300" href={`/quotations/${o.quotationId}`}>{order.quotationNumber}</Link> : order.quotationNumber) : "-"],
-            ["Order value (ex-GST)", money(o.total)],
-            ["Notes", o.notes || "-"],
-          ]} />
-        </Card>
-        <Card title="Delivery progress">
-          <LineProgress done={deliveredLines} total={active.length} />
-          <ul className="mt-3 space-y-1 text-sm">
-            <li className="flex justify-between"><span className="text-ink-soft">Pending lines</span><span className="font-medium tabular-nums">{pendingLines.length}</span></li>
-            <li className="flex justify-between"><span className="text-ink-soft">Overdue lines</span><span className={cx("font-medium tabular-nums", overdue.length && "text-red-600")}>{overdue.length}</span></li>
-            <li className="flex justify-between"><span className="text-ink-soft">Challans</span><span className="font-medium tabular-nums">{dels.length}</span></li>
-            <li className="flex justify-between"><span className="text-ink-soft">Invoices</span><span className="font-medium tabular-nums">{invs.filter((i) => i.status !== "cancelled").length}</span></li>
-          </ul>
-        </Card>
-      </div>
-
-      <Card title={`Order lines (${lines.length})`} className="mb-4" bodyClassName="p-0">
-        <Table className="rounded-none border-0 shadow-none">
-          <thead>
-            <tr>
-              <Th>#</Th><Th>Item</Th><Th className="text-right">Ordered</Th><Th className="text-right">Delivered</Th>{anyReturned && <Th className="text-right">Returned</Th>}<Th className="text-right">Invoiced</Th>
-              <Th className="text-right">Pending</Th><Th className="text-right">Rate</Th><Th>Status</Th><Th>Expected</Th><Th>Remarks</Th>{write && isOpen && <Th><span className="sr-only">Actions</span></Th>}
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((l, i) => {
-              const pend = pendingQtyOf(l);
-              const exp = effectiveExpected(l, o.expectedDelivery);
-              const late = isOpen && l.deliveryStatus !== "delivered" && l.deliveryStatus !== "cancelled" && exp && exp < today;
-              return (
-                <tr key={l.id} id={`line-${l.id}`} className={cx("scroll-mt-20 target:bg-amber-50 dark:target:bg-amber-950/40", late && "bg-red-50/60 dark:bg-red-950/30", l.deliveryStatus === "cancelled" && "opacity-60")}>
-                  <Td className="text-ink-soft">{i + 1}</Td>
-                  <Td className="max-w-72 whitespace-normal">{l.description}{l.itemCode && <div className="text-xs text-ink-faint">{l.itemCode}</div>}</Td>
-                  <Td className="text-right tabular-nums">{qty(l.qty)} <span className="text-xs text-ink-soft">{l.uom}</span></Td>
-                  <Td className="text-right tabular-nums">{qty(l.deliveredQty)}</Td>
-                  {anyReturned && <Td className={cx("text-right tabular-nums", Number(l.returnedQty) > 0 && "text-red-600 dark:text-red-400")}>{Number(l.returnedQty) > 0 ? qty(l.returnedQty) : "-"}</Td>}
-                  <Td className="text-right tabular-nums">{qty(l.invoicedQty)}</Td>
-                  <Td className={cx("text-right font-medium tabular-nums", pend > 0 && l.deliveryStatus !== "cancelled" && "text-amber-700 dark:text-amber-300")}>{l.deliveryStatus === "cancelled" ? "-" : qty(pend)}</Td>
-                  <Td className="text-right tabular-nums">{money(l.rate)}</Td>
-                  <Td><StatusBadge status={l.deliveryStatus} label={LINE_STATUS_LABEL[l.deliveryStatus]} /></Td>
-                  <Td className="whitespace-nowrap">{fmtDate(exp)}{late && <div><Badge tone="red">late</Badge></div>}{!l.expectedDate && exp && <div className="text-xs text-ink-faint">order default</div>}</Td>
-                  <Td className="max-w-56 whitespace-normal text-ink-soft">{l.remarks || "-"}</Td>
-                  {write && isOpen && <Td>{l.deliveryStatus !== "delivered" && <LineUpdateForm orderId={o.id} line={l} />}</Td>}
-                </tr>
-              );
-            })}
-          </tbody>
-        </Table>
-      </Card>
-
-      <div className="mb-4 grid gap-4 empty:hidden lg:grid-cols-2">
-        <OrderPnlCard orderId={o.id} />
-        <LinkedPosCard role={user.role} salesOrderId={o.id} hideWhenEmpty={!(canWrite(user.role, "purchaseOrders") && isOpen && pendingLines.length > 0)} />
-      </div>
-
-      {write && isOpen && pendingLines.length > 0 && (
-        <Card title={<span className="inline-flex items-center gap-2"><Truck className="h-4 w-4" aria-hidden /> Record delivery (challan)</span>} className="mb-4">
-          <form action={recordDelivery} className="space-y-4">
-            <input type="hidden" name="orderId" value={o.id} />
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Field label="Challan date" required><Input type="date" name="date" required defaultValue={today} max={today} /></Field>
-              <Field label="Vehicle no."><Input name="vehicleNo" maxLength={30} placeholder="TN 70 AB 1234" autoCapitalize="characters" /></Field>
-              <Field label="Received by"><Input name="receivedBy" maxLength={120} placeholder="Name at site" /></Field>
-              <Field label="Notes"><Input name="notes" maxLength={2000} /></Field>
-            </div>
-            <fieldset>
-              <legend className="mb-2 text-sm font-medium text-ink">Quantity delivered now <span className="font-normal text-ink-soft">(defaults to the full pending qty; set 0 to skip a line)</span></legend>
-              <ul className="divide-y divide-line rounded-lg border border-line">
-                {pendingLines.map((l) => {
-                  const pend = pendingQtyOf(l);
-                  return (
-                    <li key={l.id} className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
-                      <label htmlFor={`qty_${l.id}`} className="min-w-0 text-sm">
-                        <span className="block font-medium text-ink">{l.description}</span>
-                        <span className="text-xs text-ink-soft">Pending {qty(pend)} {l.uom} of {qty(l.qty)} · {LINE_STATUS_LABEL[l.deliveryStatus]}{Number(l.returnedQty) > 0 ? ` · ${qty(l.returnedQty)} returned, replacement due` : ""}</span>
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <Input id={`qty_${l.id}`} name={`qty_${l.id}`} type="number" inputMode="decimal" step="any" min={0} max={pend} defaultValue={pend} className="w-28 text-right" />
-                        <span className="w-10 text-xs text-ink-soft">{l.uom}</span>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </fieldset>
-            <div className="flex justify-end">
-              <SubmitButton pendingText="Recording…">Record delivery</SubmitButton>
-            </div>
-          </form>
-        </Card>
-      )}
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card title={`Deliveries (${dels.length})`} bodyClassName={dels.length ? "p-0" : undefined}>
-          {dels.length === 0 ? (
-            <EmptyState title="No deliveries yet">Record a delivery challan when material leaves for the site.</EmptyState>
-          ) : (
-            <Table className="rounded-none border-0 shadow-none">
-              <thead><tr><Th>Challan</Th><Th>Date</Th><Th>Vehicle</Th><Th>Received by</Th><Th className="text-right">Lines</Th></tr></thead>
-              <tbody>
-                {dels.map((d) => (
-                  <tr key={d.id}>
-                    <Td><Link href={`/orders/${o.id}/challan/${d.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{d.number}</Link></Td>
-                    <Td className="whitespace-nowrap">{fmtDate(d.date)}</Td>
-                    <Td>{d.vehicleNo || "-"}</Td>
-                    <Td>{d.receivedBy || "-"}</Td>
-                    <Td className="text-right tabular-nums">{delivTotalQty.get(d.id)?.n ?? 0}</Td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          )}
-        </Card>
-        <Card title={`Invoices (${invs.length})`} bodyClassName={invs.length ? "p-0" : undefined}>
-          {invs.length === 0 ? (
-            <EmptyState title="Not invoiced yet">{billingWrite && o.status !== "cancelled" ? "Use “Create invoice” to bill delivered quantities." : "Accounts will raise the invoice."}</EmptyState>
-          ) : (
-            <Table className="rounded-none border-0 shadow-none">
-              <thead><tr><Th>Invoice</Th><Th>Date</Th><Th className="text-right">Total</Th><Th>Status</Th></tr></thead>
-              <tbody>
-                {invs.map((v) => (
-                  <tr key={v.id}>
-                    <Td>{canRead(user.role, "billing")
-                      ? <Link href={`/billing/invoices/${v.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{v.number}</Link> : v.number}</Td>
-                    <Td className="whitespace-nowrap">{fmtDate(v.invoiceDate)}</Td>
-                    <Td className="text-right tabular-nums">{money0(v.total)}</Td>
-                    <Td><StatusBadge status={v.status} /></Td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          )}
-        </Card>
-      </div>
-
-      {(returnsRead || billingRead) && (
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          {returnsRead && (
-            <Card title={`Credit notes (${creditNotes.length})`} icon={Undo2} bodyClassName={creditNotes.length ? "p-0" : undefined}>
-              {creditNotes.length === 0 ? (
-                <EmptyState title="No returns on this order">{returnsWrite && canReturn ? "If the customer sends material back, use \u201cRecord return\u201d." : "Customer returns against this order appear here."}</EmptyState>
-              ) : (
-                <Table className="rounded-none border-0 shadow-none">
-                  <thead><tr><Th>Credit note</Th><Th>Date</Th><Th>Reason</Th><Th className="text-right">Total</Th><Th>Status</Th></tr></thead>
-                  <tbody>
-                    {creditNotes.map((r) => (
-                      <tr key={r.id}>
-                        <Td><Link href={`/returns/${r.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{r.status === "draft" ? "Draft" : r.number}</Link></Td>
-                        <Td className="whitespace-nowrap">{fmtDate(r.date)}</Td>
-                        <Td>{reasonLabel(r.reason)}</Td>
-                        <Td className="text-right tabular-nums">{money0(r.total)}{r.status === "posted" && noteBalance(r.total, r.adjustedAmount) > 0.005 && <div className="text-xs text-ink-soft">{money0(noteBalance(r.total, r.adjustedAmount))} unadjusted</div>}</Td>
-                        <Td><StatusBadge status={r.status} /></Td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </Table>
-              )}
-            </Card>
-          )}
-          {billingRead && (
-            <Card title={`Advances received (${advances.length})`} icon={Wallet} bodyClassName={advances.length ? "p-0" : undefined}>
-              {advances.length === 0 ? (
-                <EmptyState title="No advance recorded">{billingWrite && o.status !== "cancelled" ? "If the customer paid an advance against this PO, use \u201cRecord advance\u201d." : "Advances against this order appear here."}</EmptyState>
-              ) : (
-                <Table className="rounded-none border-0 shadow-none">
-                  <thead><tr><Th>Receipt</Th><Th>Date</Th><Th className="text-right">Amount</Th><Th className="text-right">Not yet applied</Th></tr></thead>
-                  <tbody>
-                    {advances.map((a) => (
-                      <tr key={a.id}>
-                        <Td><Link href={`/billing/receipts/${a.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">{receiptNumber(a)}</Link></Td>
-                        <Td className="whitespace-nowrap">{fmtDate(a.date)}</Td>
-                        <Td className="text-right tabular-nums">{money0(a.amount)}</Td>
-                        <Td className="text-right tabular-nums">{a.balance > 0.005 ? money0(a.balance) : "-"}</Td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </Table>
-              )}
-            </Card>
-          )}
-        </div>
+      {poWrite && isOpen && pendingLines.length > 0 && <CreateVendorPoButton salesOrderId={o.id} />}
+      {returnsWrite && canReturn && (
+        <LinkButton href={`/returns/new?orderId=${o.id}`} variant="secondary">
+          <Undo2 className="icon-sm" aria-hidden /> Record return
+        </LinkButton>
       )}
     </>
+  );
+  const hasSecondary = (canInvoice && !uninvoiced) || (billingWrite && o.status !== "cancelled" && o.status !== "closed")
+    || (poWrite && isOpen && pendingLines.length > 0) || (returnsWrite && canReturn);
+  const more = write && (
+    <>
+      {isOpen && (
+        <form action={changeOrderStatus}>
+          <input type="hidden" name="orderId" value={o.id} />
+          <input type="hidden" name="op" value="close" />
+          <ConfirmButton variant="ghost" stacked pendingText="Closing…" confirmLabel="Yes, close order"
+            confirm={pendingLines.length ? `${pendingLines.length} line(s) are still pending. Close anyway? Pending lines will no longer be tracked.` : "Close this order?"}>
+            <Lock className="icon-sm" aria-hidden /> Close order
+          </ConfirmButton>
+        </form>
+      )}
+      {isOpen && dels.length === 0 && (
+        <form action={changeOrderStatus}>
+          <input type="hidden" name="orderId" value={o.id} />
+          <input type="hidden" name="op" value="cancel" />
+          <ConfirmButton variant="ghost" className="text-danger" confirmVariant="danger" stacked pendingText="Cancelling…" confirmLabel="Yes, cancel order"
+            confirm="Cancel this order? It cannot be used for deliveries afterwards.">
+            <Ban className="icon-sm" aria-hidden /> Cancel order
+          </ConfirmButton>
+        </form>
+      )}
+      {(o.status === "closed" || o.status === "cancelled") && (
+        <form action={changeOrderStatus}>
+          <input type="hidden" name="orderId" value={o.id} />
+          <input type="hidden" name="op" value="reopen" />
+          <SubmitButton variant="ghost" pendingText="Reopening…"><RotateCcw className="icon-sm" aria-hidden /> Reopen order</SubmitButton>
+        </form>
+      )}
+    </>
+  );
+  const hasMore = write && (isOpen || o.status === "closed" || o.status === "cancelled");
+
+  return (
+    <DetailPage
+      back={{ href: "/orders", label: "Orders" }}
+      eyebrow="Customer order"
+      title={o.number}
+      status={<StatusPill status={o.status} />}
+      meta={
+        <>
+          <MetaChip label="Customer">{order.customerName ?? "-"}</MetaChip>
+          {o.customerPoNumber && <MetaChip label="PO">{o.customerPoNumber}</MetaChip>}
+          {order.projectName && <MetaChip label="Project">{order.projectName}</MetaChip>}
+          <MetaChip label="Expected">{fmtDate(o.expectedDelivery)}</MetaChip>
+          <MetaChip label="Value">{money0(o.total)}</MetaChip>
+        </>
+      }
+      primaryAction={primary}
+      secondaryActions={hasSecondary ? secondary : undefined}
+      moreActions={hasMore ? more : undefined}
+      notices={
+        <>
+          <Flash ok={sp.ok} err={sp.err} />
+          {isOpen && overdue.length > 0 && (
+            <Callout tone="danger" title={`${overdue.length} line${overdue.length === 1 ? " is" : "s are"} overdue`}
+              action={tab !== "lines" && <LinkButton href={tabHref(base, tabParams, "lines", "lines")} variant="secondary" size="sm">Show lines</LinkButton>}>
+              The expected date has passed and the item has not been delivered yet. Update the status or expected date, or record the delivery.
+            </Callout>
+          )}
+        </>
+      }
+      tabs={<Tabs label="Order sections" basePath={base} params={tabParams} active={tab} items={tabItems} />}
+      aside={
+        <>
+          <SectionCard title="Delivery progress" icon={Truck}>
+            <LineProgress done={deliveredLines} total={active.length} />
+            <SummaryRows className="mt-4" rows={[
+              ["Pending lines", pendingLines.length],
+              ["Overdue lines", <span key="o" className={cx(overdue.length > 0 && "text-danger")}>{overdue.length}</span>],
+              ["Challans", dels.length],
+              ["Invoices", invs.filter((i) => i.status !== "cancelled").length],
+            ]} />
+          </SectionCard>
+          <SectionCard title="Order details">
+            <KeyValueGrid columns={1} items={[
+              { label: "Customer", value: order.customerName },
+              { label: "Customer PO", value: o.customerPoNumber ? `${o.customerPoNumber}${o.customerPoDate ? ` dated ${fmtDate(o.customerPoDate)}` : ""}` : null },
+              { label: "Order date", value: fmtDate(o.orderDate) },
+              { label: "Expected delivery", value: fmtDate(o.expectedDelivery) },
+              { label: "Project", value: order.projectName ? `${order.projectCode} · ${order.projectName}` : null },
+              { label: "Quotation", value: order.quotationNumber && o.quotationId ? (canRead(user.role, "quotations") ? <Link className="text-brand-700 hover:underline dark:text-brand-300" href={`/quotations/${o.quotationId}`}>{order.quotationNumber}</Link> : order.quotationNumber) : null },
+              { label: "Order value (ex-GST)", value: money(o.total) },
+              { label: "Notes", value: o.notes },
+            ]} />
+          </SectionCard>
+        </>
+      }
+    >
+      {tab === "lines" && (
+        <>
+          <SectionCard title="Order lines" count={lines.length} flush>
+            <ResponsiveTable flush rows={lines} columns={lineCols} rowKey={(l) => l.id} rowId={(l) => `line-${l.id}`} caption="Order lines"
+              rowClassName={(l) => {
+                const exp = effectiveExpected(l, o.expectedDelivery);
+                const late = isOpen && l.deliveryStatus !== "delivered" && l.deliveryStatus !== "cancelled" && exp && exp < today;
+                return cx("scroll-mt-36 target:bg-warning-soft", late && "bg-danger-soft", l.deliveryStatus === "cancelled" && "opacity-60");
+              }} />
+          </SectionCard>
+
+          {canDeliver && (
+            <SectionCard id="record-delivery" title="Record delivery (challan)" icon={Truck} description="Defaults to the full pending quantity. Set 0 to skip a line.">
+              <form action={recordDelivery} className="space-y-4">
+                <input type="hidden" name="orderId" value={o.id} />
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <Field label="Challan date" required><Input type="date" name="date" required defaultValue={today} max={today} /></Field>
+                  <Field label="Vehicle no."><Input name="vehicleNo" maxLength={30} placeholder="TN 70 AB 1234" autoCapitalize="characters" /></Field>
+                  <Field label="Received by"><Input name="receivedBy" maxLength={120} placeholder="Name at site" /></Field>
+                  <Field label="Notes"><Input name="notes" maxLength={2000} /></Field>
+                </div>
+                <fieldset>
+                  <legend className="mb-2 text-sm font-medium text-ink">Quantity delivered now</legend>
+                  <ul className="divide-y divide-line rounded-xl border border-line">
+                    {pendingLines.map((l) => {
+                      const pend = pendingQtyOf(l);
+                      return (
+                        <li key={l.id} className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
+                          <label htmlFor={`qty_${l.id}`} className="min-w-0 text-sm">
+                            <span className="block font-medium text-ink">{l.description}</span>
+                            <span className="text-caption text-ink-soft">Pending {qty(pend)} {l.uom} of {qty(l.qty)} · {LINE_STATUS_LABEL[l.deliveryStatus]}{Number(l.returnedQty) > 0 ? ` · ${qty(l.returnedQty)} returned, replacement due` : ""}</span>
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <Input id={`qty_${l.id}`} name={`qty_${l.id}`} type="number" inputMode="decimal" step="any" min={0} max={pend} defaultValue={pend} className="w-28 text-right" />
+                            <span className="w-10 text-caption text-ink-soft">{l.uom}</span>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </fieldset>
+                <div className="flex justify-end">
+                  <SubmitButton pendingText="Recording…" className="max-sm:w-full">Record delivery</SubmitButton>
+                </div>
+              </form>
+            </SectionCard>
+          )}
+        </>
+      )}
+
+      {tab === "deliveries" && (
+        <SectionCard title="Deliveries" count={dels.length} icon={Truck} flush
+          empty={dels.length === 0 && (canDeliver ? "No deliveries yet. Record a challan from the Lines tab when material leaves for the site." : "No deliveries yet.")}>
+          <ResponsiveTable flush rows={dels} columns={delCols} rowKey={(d) => d.id} caption="Deliveries" />
+        </SectionCard>
+      )}
+
+      {tab === "billing" && billingRead && (
+        <>
+          <SectionCard title="Invoices" count={invs.length} icon={FileText} flush
+            empty={invs.length === 0 && (canInvoice ? "Not invoiced yet. Use “Create invoice” to bill delivered quantities." : "Not invoiced yet. Accounts will raise the invoice.")}>
+            <ResponsiveTable flush rows={invs} columns={invCols} rowKey={(v) => v.id} caption="Invoices" />
+          </SectionCard>
+          <SectionCard title="Advances received" count={advances.length} icon={Wallet} flush
+            empty={advances.length === 0 && (billingWrite && o.status !== "cancelled" ? "No advance recorded. If the customer paid an advance against this PO, use “Record advance”." : "Advances against this order appear here.")}>
+            <ResponsiveTable flush rows={advances} columns={advCols} rowKey={(a) => a.id} caption="Advances" />
+          </SectionCard>
+        </>
+      )}
+
+      {tab === "returns" && returnsRead && (
+        <SectionCard title="Credit notes" count={creditNotes.length} icon={Undo2} flush
+          empty={creditNotes.length === 0 && (returnsWrite && canReturn ? "No returns on this order. If the customer sends material back, use “Record return”." : "Customer returns against this order appear here.")}>
+          <ResponsiveTable flush rows={creditNotes} columns={cnCols} rowKey={(r) => r.id} caption="Credit notes" />
+        </SectionCard>
+      )}
+
+      {tab === "purchasing" && showPurchasing && (
+        <div className="grid gap-4 empty:hidden xl:grid-cols-2">
+          <OrderPnlCard orderId={o.id} />
+          <LinkedPosCard role={user.role} salesOrderId={o.id} />
+        </div>
+      )}
+    </DetailPage>
   );
 }

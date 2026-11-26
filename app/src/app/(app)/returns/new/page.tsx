@@ -6,7 +6,8 @@ import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/rbac";
 import { fmtDate } from "@/lib/format";
 import { returnableInvoiceLines, returnableOrderLines } from "@/lib/returns";
-import { Button, Card, EmptyState, Field, Flash, PageHeader, Select } from "@/components/ui";
+import { Button, EmptyState, Field, Flash, Select } from "@/components/ui";
+import { FormPage, SectionCard } from "@/components/patterns";
 import { SalesReturnForm } from "../_components/sales-return-form";
 import { toEditorLines } from "../_components/lines";
 
@@ -32,13 +33,13 @@ export default async function NewCustomerReturnPage({ searchParams }: { searchPa
           .orderBy(desc(salesInvoices.invoiceDate)),
       ]);
       return (
-        <>
-          <PageHeader title="New customer return" subtitle={`Against order ${row.o.number}`} back={{ href: `/orders/${orderId}`, label: row.o.number }} />
-          <Flash err={sp.err} />
+        <FormPage eyebrow="Step 2 of 2" title="New customer return" subtitle={`Against order ${row.o.number}`} back={{ href: `/orders/${orderId}`, label: row.o.number }}
+          width="wide" notices={<Flash err={sp.err} />}>
           {lines.length === 0 ? (
             <EmptyState title="Nothing delivered on this order yet">Only delivered material can be returned. Record the delivery first.</EmptyState>
           ) : (
             <SalesReturnForm
+              cancelHref={`/orders/${orderId}`}
               orderId={orderId}
               invoiceChoices={invs}
               details={[
@@ -50,7 +51,7 @@ export default async function NewCustomerReturnPage({ searchParams }: { searchPa
               lines={toEditorLines(lines)}
             />
           )}
-        </>
+        </FormPage>
       );
     }
   }
@@ -62,10 +63,10 @@ export default async function NewCustomerReturnPage({ searchParams }: { searchPa
     if (row && row.inv.status !== "cancelled" && row.inv.status !== "draft") {
       const lines = await returnableInvoiceLines(db, invoiceId);
       return (
-        <>
-          <PageHeader title="New customer return" subtitle={`Against invoice ${row.inv.number}`} back={{ href: "/returns", label: "Returns" }} />
-          <Flash err={sp.err} />
+        <FormPage eyebrow="Step 2 of 2" title="New customer return" subtitle={`Against invoice ${row.inv.number}`} back={{ href: "/returns/new", label: "Choose another order or invoice" }}
+          width="wide" notices={<Flash err={sp.err} />}>
           <SalesReturnForm
+            cancelHref="/returns"
             invoiceId={invoiceId}
             details={[
               ["Customer", row.customerName],
@@ -74,7 +75,7 @@ export default async function NewCustomerReturnPage({ searchParams }: { searchPa
             ]}
             lines={toEditorLines(lines)}
           />
-        </>
+        </FormPage>
       );
     }
   }
@@ -93,37 +94,34 @@ export default async function NewCustomerReturnPage({ searchParams }: { searchPa
   ]);
   const notFoundMsg = orderId || invoiceId ? "We couldn't find that order or invoice. Pick one below." : undefined;
   return (
-    <>
-      <PageHeader title="New customer return" subtitle="Start from the order or the invoice the goods were supplied on" back={{ href: "/returns", label: "Returns" }} />
-      <Flash err={sp.err ?? notFoundMsg} />
+    <FormPage eyebrow="Step 1 of 2" title="New customer return" subtitle="Start from the order or the invoice the goods were supplied on." back={{ href: "/returns", label: "Returns" }}
+      notices={<Flash err={sp.err ?? notFoundMsg} />}>
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="From an order">
-          {orders.length === 0 ? <p className="text-sm text-ink-soft">No orders with delivered material yet.</p> : (
-            <form method="get" className="grid gap-3">
-              <Field label="Order" required>
-                <Select name="orderId" required defaultValue="">
-                  <option value="" disabled>Select order</option>
-                  {orders.map((o) => <option key={o.id} value={o.id}>{o.number} · {o.customerName} · {fmtDate(o.orderDate)}</option>)}
-                </Select>
-              </Field>
-              <div><Button type="submit">Continue</Button></div>
-            </form>
-          )}
-        </Card>
-        <Card title="From an invoice">
-          {invoices.length === 0 ? <p className="text-sm text-ink-soft">No invoices issued yet.</p> : (
-            <form method="get" className="grid gap-3">
-              <Field label="Invoice" required>
-                <Select name="invoiceId" required defaultValue="">
-                  <option value="" disabled>Select invoice</option>
-                  {invoices.map((i) => <option key={i.id} value={i.id}>{i.number} · {i.customerName} · {fmtDate(i.invoiceDate)}</option>)}
-                </Select>
-              </Field>
-              <div><Button type="submit">Continue</Button></div>
-            </form>
-          )}
-        </Card>
+        <SectionCard title="From an order" description="Best when the goods were delivered but not yet billed."
+          empty={orders.length === 0 && "No orders with delivered material yet."}>
+          <form method="get" className="grid gap-3">
+            <Field label="Order" required>
+              <Select name="orderId" required defaultValue="">
+                <option value="" disabled>Select order</option>
+                {orders.map((o) => <option key={o.id} value={o.id}>{o.number} · {o.customerName} · {fmtDate(o.orderDate)}</option>)}
+              </Select>
+            </Field>
+            <div><Button type="submit" className="max-sm:w-full">Next: choose items</Button></div>
+          </form>
+        </SectionCard>
+        <SectionCard title="From an invoice" description="Use this when the goods were already billed."
+          empty={invoices.length === 0 && "No invoices issued yet."}>
+          <form method="get" className="grid gap-3">
+            <Field label="Invoice" required>
+              <Select name="invoiceId" required defaultValue="">
+                <option value="" disabled>Select invoice</option>
+                {invoices.map((i) => <option key={i.id} value={i.id}>{i.number} · {i.customerName} · {fmtDate(i.invoiceDate)}</option>)}
+              </Select>
+            </Field>
+            <div><Button type="submit" className="max-sm:w-full">Next: choose items</Button></div>
+          </form>
+        </SectionCard>
       </div>
-    </>
+    </FormPage>
   );
 }

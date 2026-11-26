@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { asc, count, eq, inArray } from "drizzle-orm";
-import { Copy, FileText, Pencil } from "lucide-react";
+import { Copy, Eye, EyeOff, FileText, Pencil, Trash2 } from "lucide-react";
 import { getDb } from "@/db";
 import { boqTemplateLines, boqTemplates, items, quotations } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
@@ -9,7 +9,8 @@ import { SYSTEMS, type SystemKey } from "@/lib/constants";
 import { money, qty } from "@/lib/format";
 import { getPricingSettings, suggestRates } from "@/lib/pricing";
 import { groupBySection } from "@/lib/quotations";
-import { Badge, Card, DL, EmptyState, Flash, LinkButton, PageHeader, Table, Td, Th } from "@/components/ui";
+import { Flash, LinkButton } from "@/components/ui";
+import { Callout, ConfirmButton, DetailPage, KeyValueGrid, MetaChip, ResponsiveTable, SectionCard, StatusPill, type Column } from "@/components/patterns";
 import { SubmitButton } from "@/components/submit-button";
 import { deleteTemplate, duplicateTemplate, toggleTemplateActive } from "../actions";
 
@@ -34,103 +35,94 @@ export default async function TemplateDetailPage({ params, searchParams }: { par
   const showCost = canSeeCost(user.role);
   const unlinked = lines.filter((l) => l.itemId == null).length;
 
-  return (
-    <div>
-      <PageHeader
-        title={t.name}
-        subtitle={SYSTEMS[t.system as SystemKey] ?? t.system}
-        back={{ href: "/boq-templates", label: "BOQ templates" }}
-        actions={<>
-          {canWrite(user.role, "quotations") && <LinkButton href={`/quotations/new?templateId=${t.id}`}><FileText className="h-4 w-4" aria-hidden /> New quotation</LinkButton>}
-          {writable && <LinkButton href={`/boq-templates/${t.id}/edit`} variant="secondary"><Pencil className="h-4 w-4" aria-hidden /> Edit</LinkButton>}
-          {writable && (
-            <form action={duplicateTemplate}>
-              <input type="hidden" name="id" value={t.id} />
-              <SubmitButton variant="secondary" pendingText="Duplicating…"><Copy className="h-4 w-4" aria-hidden /> Duplicate</SubmitButton>
-            </form>
-          )}
-        </>}
-      />
-      <Flash ok={sp.ok} err={sp.err} />
+  type L = (typeof lines)[number];
+  const rateOf = (l: L) => {
+    const it = l.itemId != null ? itemMap.get(l.itemId) : undefined;
+    return { it, r: it ? suggestRates(it, pricing.defaultMarkupPct) : null };
+  };
+  const columns: Column<L>[] = [
+    { key: "ref", header: "BOQ ref", nowrap: true, card: "hidden", className: "font-mono text-caption", cell: (l) => l.boqRef ?? "" },
+    { key: "desc", header: "Description", card: "title", className: "min-w-[18rem] max-w-xl whitespace-pre-line",
+      cell: (l) => <>{l.boqRef && <span className="mr-1 font-mono text-caption text-ink-faint sm:hidden">{l.boqRef}</span>}{l.description}</> },
+    { key: "item", header: "Linked item", card: "subtitle", className: "text-caption",
+      cell: (l) => {
+        const { it } = rateOf(l);
+        return it ? <><span className="font-mono">{it.code}</span><span className="block text-ink-soft">{it.name}</span></> : <StatusPill semantic="warning" label="Free text" noDot />;
+      } },
+    { key: "uom", header: "UOM", cell: (l) => l.uom },
+    { key: "qty", header: "Default qty", align: "right", card: "amount", cell: (l) => qty(l.defaultQty) },
+    ...(showCost ? [{ key: "cost", header: "Latest cost", align: "right" as const, nowrap: true, priority: 3 as const, cell: (l: L) => { const { r } = rateOf(l); return r ? money(r.costRate) : "-"; } }] : []),
+    { key: "supply", header: "Supply rate", align: "right", nowrap: true, cell: (l) => { const { r } = rateOf(l); return r ? money(r.supplyRate) : "-"; } },
+    { key: "erection", header: "Erection rate", align: "right", nowrap: true, priority: 3, cell: (l) => { const { r } = rateOf(l); return r ? money(r.erectionRate) : "-"; } },
+  ];
+  const groups = groupBySection(lines);
+  const systemLabel = SYSTEMS[t.system as SystemKey] ?? t.system;
+  const rateNote = `Supply rate is shown at the default markup of ${pricing.defaultMarkupPct}% over the latest purchase cost. Each quotation can set its own markup.`;
 
-      <div className="mb-6 grid gap-4 lg:grid-cols-3">
-        <Card title="Details" className="lg:col-span-2">
-          <DL items={[
-            ["System", SYSTEMS[t.system as SystemKey] ?? t.system],
-            ["Status", t.active ? <Badge tone="green">Active</Badge> : <Badge>Inactive</Badge>],
-            ["Lines", `${lines.length} (${unlinked} free-text)`],
-            ["Used in quotations", String(Number(used))],
-            ["Description", t.description || "-"],
-          ]} />
-        </Card>
-        {writable && (
-          <Card title="Manage">
-            <div className="flex flex-col gap-2">
-              <form action={toggleTemplateActive}>
-                <input type="hidden" name="id" value={t.id} />
-                <SubmitButton variant="secondary" className="w-full">{t.active ? "Deactivate" : "Activate"}</SubmitButton>
-              </form>
-              <form action={deleteTemplate}>
-                <input type="hidden" name="id" value={t.id} />
-                <SubmitButton variant="danger" className="w-full" pendingText="Deleting…"
-                  confirm={Number(used) > 0 ? "Quotations use this template, so it will be deactivated instead. Continue?" : "Delete this template permanently?"}>
-                  Delete template
-                </SubmitButton>
-              </form>
-            </div>
-          </Card>
+  return (
+    <DetailPage
+      back={{ href: "/boq-templates", label: "BOQ templates" }}
+      eyebrow="BOQ template"
+      title={t.name}
+      status={<StatusPill semantic={t.active ? "success" : "neutral"} label={t.active ? "Active" : "Inactive"} />}
+      meta={<>
+        <MetaChip label="System">{systemLabel}</MetaChip>
+        <MetaChip label="Lines">{lines.length}</MetaChip>
+        <MetaChip label="Used in">{Number(used)} quotation{Number(used) === 1 ? "" : "s"}</MetaChip>
+      </>}
+      primaryAction={canWrite(user.role, "quotations") && <LinkButton href={`/quotations/new?templateId=${t.id}`}><FileText className="icon-sm" aria-hidden /> New quotation</LinkButton>}
+      secondaryActions={writable && <>
+        <LinkButton href={`/boq-templates/${t.id}/edit`} variant="secondary"><Pencil className="icon-sm" aria-hidden /> Edit template</LinkButton>
+        <form action={duplicateTemplate}>
+          <input type="hidden" name="id" value={t.id} />
+          <SubmitButton variant="secondary" pendingText="Duplicating…"><Copy className="icon-sm" aria-hidden /> Duplicate</SubmitButton>
+        </form>
+      </>}
+      moreActions={writable && <>
+        <form action={toggleTemplateActive}>
+          <input type="hidden" name="id" value={t.id} />
+          <SubmitButton variant="ghost" pendingText="Saving…">
+            {t.active ? <><EyeOff className="icon-sm" aria-hidden /> Deactivate template</> : <><Eye className="icon-sm" aria-hidden /> Activate template</>}
+          </SubmitButton>
+        </form>
+        <form action={deleteTemplate}>
+          <input type="hidden" name="id" value={t.id} />
+          <ConfirmButton variant="ghost" className="text-danger" confirmVariant="danger" stacked pendingText="Deleting…"
+            confirmLabel={Number(used) > 0 ? "Yes, deactivate it" : "Yes, delete template"}
+            confirm={Number(used) > 0 ? "Quotations use this template, so it will be deactivated instead of deleted. Continue?" : "Delete this template permanently? This cannot be undone."}>
+            <Trash2 className="icon-sm" aria-hidden /> Delete template
+          </ConfirmButton>
+        </form>
+      </>}
+      notices={<>
+        <Flash ok={sp.ok} err={sp.err} />
+        {unlinked > 0 && (
+          <Callout tone="info" title={`${unlinked} free text line${unlinked === 1 ? "" : "s"}`}>
+            These lines are not linked to the item master, so they are priced by hand in each quotation.
+          </Callout>
         )}
-      </div>
-
+      </>}
+      aside={
+        <SectionCard title="Details">
+          <KeyValueGrid columns={1} items={[
+            { label: "System", value: systemLabel },
+            { label: "Status", value: t.active ? "Active, shown when creating quotations" : "Inactive, hidden from new quotations" },
+            { label: "Lines", value: `${lines.length} (${unlinked} free text)` },
+            { label: "Used in quotations", value: String(Number(used)) },
+            { label: "Description", value: t.description },
+          ]} />
+        </SectionCard>
+      }
+    >
       {lines.length === 0 ? (
-        <EmptyState title="This template has no lines" action={writable && <LinkButton href={`/boq-templates/${t.id}/edit`}>Add lines</LinkButton>} />
-      ) : (
-        <Table>
-          <thead>
-            <tr>
-              <Th>BOQ Ref</Th><Th>Description</Th><Th>Linked item</Th><Th>UOM</Th><Th className="text-right">Default qty</Th>
-              {showCost && <Th className="text-right">Latest cost</Th>}
-              <Th className="text-right">Supply rate*</Th><Th className="text-right">Erection rate</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {groupBySection(lines).map((g) => (
-              <SectionRows key={g.section || "_"} section={g.section} colSpan={showCost ? 8 : 7}>
-                {g.lines.map((l) => {
-                  const it = l.itemId != null ? itemMap.get(l.itemId) : undefined;
-                  const r = it ? suggestRates(it, pricing.defaultMarkupPct) : null;
-                  return (
-                    <tr key={l.id}>
-                      <Td className="whitespace-nowrap font-mono text-xs">{l.boqRef ?? ""}</Td>
-                      <Td className="min-w-[18rem] max-w-xl whitespace-pre-line">{l.description}</Td>
-                      <Td className="text-xs">{it ? <><span className="font-mono">{it.code}</span><br /><span className="text-ink-soft">{it.name}</span></> : <Badge tone="amber">Free text</Badge>}</Td>
-                      <Td>{l.uom}</Td>
-                      <Td className="text-right tabular-nums">{qty(l.defaultQty)}</Td>
-                      {showCost && <Td className="text-right tabular-nums">{r ? money(r.costRate) : "-"}</Td>}
-                      <Td className="text-right tabular-nums">{r ? money(r.supplyRate) : "-"}</Td>
-                      <Td className="text-right tabular-nums">{r ? money(r.erectionRate) : "-"}</Td>
-                    </tr>
-                  );
-                })}
-              </SectionRows>
-            ))}
-          </tbody>
-        </Table>
-      )}
-      <p className="mt-2 text-xs text-ink-soft">* Supply rate shown at the default markup of {pricing.defaultMarkupPct}% over the latest purchase cost; each quotation can set its own markup.</p>
-    </div>
-  );
-}
-
-function SectionRows({ section, colSpan, children }: { section: string; colSpan: number; children: React.ReactNode }) {
-  return (
-    <>
-      {section && (
-        <tr>
-          <td colSpan={colSpan} className="border-b border-line bg-muted/60 px-3 py-2 text-sm font-semibold text-ink">{section}</td>
-        </tr>
-      )}
-      {children}
-    </>
+        <SectionCard title="Bill of quantities" count={0}
+          actions={writable && <LinkButton href={`/boq-templates/${t.id}/edit`} size="sm">Add lines</LinkButton>}
+          empty="This template has no lines yet. Edit it to add items from the item master." />
+      ) : groups.map((g) => (
+        <SectionCard key={g.section || "_"} title={g.section || "Bill of quantities"} count={g.lines.length} flush description={groups.length === 1 || g === groups[0] ? rateNote : undefined}>
+          <ResponsiveTable flush rows={g.lines} columns={columns} rowKey={(l) => l.id} caption={g.section || "Template lines"} />
+        </SectionCard>
+      ))}
+    </DetailPage>
   );
 }

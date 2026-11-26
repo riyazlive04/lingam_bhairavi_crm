@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import { getDb } from "@/db";
 import { requireUser } from "@/lib/auth";
 import { canSeeCost, canWrite } from "@/lib/rbac";
-import { Flash, PageHeader } from "@/components/ui";
+import { Flash } from "@/components/ui";
+import { FormPage } from "@/components/patterns";
 import { ProjectForm } from "../_components/project-form";
 
 export default async function NewProjectPage({ searchParams }: { searchParams: Promise<{ customerId?: string; quotationId?: string; err?: string }> }) {
@@ -11,9 +12,8 @@ export default async function NewProjectPage({ searchParams }: { searchParams: P
   const sp = await searchParams;
   const db = await getDb();
   return (
-    <div className="max-w-3xl">
-      <PageHeader title="New project" subtitle="A project is the cost centre for materials, purchases and site expenses." back={{ href: "/projects", label: "Projects" }} />
-      <Flash err={sp.err} />
+    <FormPage title="New project" subtitle="A project is the cost centre for materials, purchases and site expenses." back={{ href: "/projects", label: "Projects" }}
+      notices={<Flash err={sp.err} />}>
       <ProjectForm
         db={db}
         showFinancials={canSeeCost(user.role)}
@@ -25,6 +25,6 @@ export default async function NewProjectPage({ searchParams }: { searchParams: P
           engineerId: user.role === "engineer" ? user.id : undefined,
         }}
       />
-    </div>
+    </FormPage>
   );
 }

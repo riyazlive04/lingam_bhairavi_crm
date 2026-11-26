@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { and, asc, count, desc, eq, gte, ilike, inArray, lte, or, sql, type SQL } from "drizzle-orm";
-import { FileSpreadsheet, Plus } from "lucide-react";
+import { AlertTriangle, FileSpreadsheet, Plus } from "lucide-react";
 import { getDb } from "@/db";
 import { customers, quotations, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
@@ -8,8 +8,16 @@ import { canWrite } from "@/lib/rbac";
 import { QUOTE_STATUSES, SYSTEMS, type SystemKey } from "@/lib/constants";
 import { daysBetween, fmtDate, money, moneyShort, pct, todayIST } from "@/lib/format";
 import { EDITABLE_QUOTE_STATUSES, istDate } from "@/lib/quotations";
-import { Badge, Button, EmptyState, Flash, Input, LinkButton, PageHeader, Select, Stat, StatusBadge, Table, Td, Th, cx } from "@/components/ui";
+import { EmptyState, Flash, Input, LinkButton, Select } from "@/components/ui";
+import {
+  FilterPills, ListEmpty, ListFilters, ListPage, Metric, MetricStrip, Pagination, ResponsiveTable, StatusPill, statusLabel,
+  type Column, type FilterPillItem,
+} from "@/components/patterns";
 
+/**
+ * REFERENCE LIST PAGE (design system v2). Module teams copy this structure:
+ * ListPage > notices, MetricStrip, FilterPills + ListFilters, ResponsiveTable, Pagination, ListEmpty.
+ */
 export const metadata = { title: "Quotations" };
 
 type SP = {
@@ -87,145 +95,120 @@ export default async function QuotationsPage({ searchParams }: { searchParams: P
     const s = p.toString();
     return s ? `/quotations?${s}` : "/quotations";
   };
+  // Search and select filters only (status pills are counted separately).
+  const activeFilters = [sp.q?.trim(), sp.system, sp.customer, sp.sp, sp.from, sp.to].filter(Boolean).length;
+  const editable = (s: string) => (EDITABLE_QUOTE_STATUSES as readonly string[]).includes(s);
 
-  return (
-    <div>
-      <PageHeader
-        title="Quotations"
-        subtitle="Standard BOQ-based quotations, priced from the latest purchase cost."
-        actions={writable && <>
-          <LinkButton href="/boq-import" variant="secondary"><FileSpreadsheet className="h-4 w-4" aria-hidden /> Import consultant BOQ</LinkButton>
-          <LinkButton href="/quotations/new"><Plus className="h-4 w-4" aria-hidden /> New quotation</LinkButton>
-        </>}
-      />
-      <Flash ok={sp.ok} err={sp.err} />
-
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Open pipeline" value={moneyShort(openV)} hint={`${openN} sent / in negotiation`} href={qs({ status: "sent", page: undefined })} />
-        <Stat label="Won" value={moneyShort(stat("won").value)} hint={`${won} quotation${won === 1 ? "" : "s"}`} tone="good" href={qs({ status: "won", page: undefined })} />
-        <Stat label="Conversion" value={conversion == null ? "-" : pct(conversion, 0)} hint={`won ÷ (won + lost) · ${lost} lost`} tone={conversion != null && conversion < 25 ? "warn" : "default"} />
-        <Stat label="Avg. days to close" value={avgClose == null ? "-" : Math.round(avgClose)} hint="quote date → won" />
-      </div>
-
-      <nav aria-label="Filter by status" className="mb-4 flex gap-2 overflow-x-auto pb-1">
-        <StatusPill href={qs({ status: undefined, approval: undefined, page: undefined })} active={!status && !awaiting} label="All" n={byStatus.reduce((s, b) => s + Number(b.n), 0)} />
-        <Link
-          href={qs({ status: undefined, approval: awaiting ? undefined : "pending", page: undefined })}
-          aria-current={awaiting ? "page" : undefined}
-          className={cx(
-            "shrink-0 rounded-lg border px-3 py-1.5 text-sm transition-colors",
-            awaiting ? "border-amber-500 bg-amber-50 font-medium text-amber-800 dark:bg-amber-950/60 dark:text-amber-200"
-              : Number(awaitingN) > 0 ? "border-amber-300 bg-surface text-amber-800 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/40" : "border-line bg-surface text-ink-soft hover:bg-muted",
-          )}
-        >
-          Awaiting approval <span className="tabular-nums">({Number(awaitingN)})</span>
-        </Link>
-        {QUOTE_STATUSES.map((s) => (
-          <StatusPill key={s} href={qs({ status: s, approval: undefined, page: undefined })} active={status === s && !awaiting} label={s} n={Number(stat(s).n)} value={stat(s).value} />
-        ))}
-      </nav>
-
-      <form method="get" className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
-        {status && <input type="hidden" name="status" value={status} />}
-        {awaiting && <input type="hidden" name="approval" value="pending" />}
-        <Input name="q" defaultValue={sp.q} placeholder="Search no., customer, project…" aria-label="Search" className="lg:col-span-2" />
-        <Select name="system" defaultValue={sp.system ?? ""} aria-label="System">
-          <option value="">All systems</option>
-          {Object.entries(SYSTEMS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </Select>
-        <Select name="customer" defaultValue={sp.customer ?? ""} aria-label="Customer">
-          <option value="">All customers</option>
-          {custs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </Select>
-        <Select name="sp" defaultValue={sp.sp ?? ""} aria-label="Salesperson">
-          <option value="">All salespeople</option>
-          {salespeople.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-        </Select>
-        <div className="flex gap-2">
-          <Input type="date" name="from" defaultValue={sp.from} aria-label="From date" />
-          <Input type="date" name="to" defaultValue={sp.to} aria-label="To date" />
-        </div>
-        <div className="flex gap-2 sm:col-span-2 lg:col-span-6 lg:justify-end">
-          <Button type="submit" variant="secondary">Apply filters</Button>
-          <LinkButton href="/quotations" variant="ghost">Reset</LinkButton>
-        </div>
-      </form>
-
-      {rows.length === 0 ? (
-        <EmptyState
-          title={awaiting ? "Nothing is waiting for approval" : base.length || status ? "No quotations match these filters" : "No quotations yet"}
-          action={writable && <LinkButton href="/quotations/new">Create the first quotation</LinkButton>}
-        >
-          Pick a standard BOQ, enter quantities and the latest prices are filled in automatically.
-        </EmptyState>
-      ) : (
+  type Row = (typeof rows)[number];
+  const columns: Column<Row>[] = [
+    {
+      key: "number", header: "Quotation", card: "title", nowrap: true,
+      cell: (r) => (
         <>
-          <Table>
-            <thead>
-              <tr>
-                <Th>Quotation</Th><Th>Customer / project</Th><Th>Date</Th><Th>Status</Th><Th className="text-right">Value (incl. GST)</Th>
-                <Th>Next follow-up</Th><Th>Prepared by</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const open = r.status === "sent" || r.status === "negotiation";
-                const overdue = open && r.nextFollowUpDate && r.nextFollowUpDate < today;
-                return (
-                  <tr key={r.id} className="hover:bg-muted/50">
-                    <Td className="whitespace-nowrap">
-                      <Link href={`/quotations/${r.id}`} className="font-medium text-brand-700 hover:underline">{r.number}</Link>
-                      {r.system && <div className="text-xs text-ink-soft">{SYSTEMS[r.system as SystemKey] ?? r.system}</div>}
-                    </Td>
-                    <Td className="max-w-xs whitespace-normal">
-                      <div className="font-medium">{r.customerName ?? "-"}</div>
-                      {r.projectName && <div className="truncate text-xs text-ink-soft">{r.projectName}</div>}
-                    </Td>
-                    <Td className="whitespace-nowrap">{fmtDate(r.quoteDate)}</Td>
-                    <Td>
-                      <div className="flex flex-col items-start gap-1">
-                        <StatusBadge status={r.status} />
-                        {r.approvalStatus === "pending" && (EDITABLE_QUOTE_STATUSES as readonly string[]).includes(r.status) && <Badge tone="amber">Awaiting approval</Badge>}
-                        {r.approvalStatus === "rejected" && (EDITABLE_QUOTE_STATUSES as readonly string[]).includes(r.status) && <Badge tone="red">Not approved</Badge>}
-                      </div>
-                    </Td>
-                    <Td className="whitespace-nowrap text-right tabular-nums">{money(r.grandTotal)}</Td>
-                    <Td className={cx("whitespace-nowrap", overdue && "font-medium text-red-600")}>
-                      {open ? (r.nextFollowUpDate ? `${fmtDate(r.nextFollowUpDate)}${overdue ? " ⚠" : ""}` : <span className="text-amber-700 dark:text-amber-400">Not set</span>) : "-"}
-                    </Td>
-                    <Td className="whitespace-nowrap text-ink-soft">{r.preparedBy ?? "-"}</Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
-          {pages > 1 && (
-            <nav aria-label="Pagination" className="mt-4 flex items-center justify-between text-sm">
-              <span className="text-ink-soft">Page {page} of {pages} · {totalN} quotations</span>
-              <div className="flex gap-2">
-                {page > 1 && <LinkButton variant="secondary" size="sm" href={qs({ page: String(page - 1) })}>Previous</LinkButton>}
-                {page < pages && <LinkButton variant="secondary" size="sm" href={qs({ page: String(page + 1) })}>Next</LinkButton>}
-              </div>
-            </nav>
-          )}
+          <Link href={`/quotations/${r.id}`} className="rt-stretch font-medium text-brand-700 hover:underline dark:text-brand-300">{r.number}</Link>
+          {r.system && <div className="text-caption font-normal text-ink-soft">{SYSTEMS[r.system as SystemKey] ?? r.system}</div>}
         </>
-      )}
-    </div>
-  );
-}
+      ),
+    },
+    {
+      key: "customer", header: "Customer / project", card: "subtitle", className: "max-w-xs whitespace-normal",
+      cell: (r) => (
+        <>
+          <div className="font-medium text-ink">{r.customerName ?? "-"}</div>
+          {r.projectName && <div className="truncate text-caption text-ink-soft">{r.projectName}</div>}
+        </>
+      ),
+    },
+    { key: "date", header: "Date", nowrap: true, cell: (r) => fmtDate(r.quoteDate) },
+    {
+      key: "status", header: "Status", card: "badge",
+      cell: (r) => (
+        <div className="flex flex-col items-start gap-1 max-sm:items-end">
+          <StatusPill status={r.status} />
+          {r.approvalStatus === "pending" && editable(r.status) && <StatusPill semantic="warning" label="Awaiting approval" noDot />}
+          {r.approvalStatus === "rejected" && editable(r.status) && <StatusPill semantic="danger" label="Not approved" noDot />}
+        </div>
+      ),
+    },
+    { key: "value", header: "Value (incl. GST)", align: "right", card: "amount", nowrap: true, cell: (r) => money(r.grandTotal) },
+    {
+      key: "followup", header: "Next follow-up", nowrap: true,
+      cell: (r) => {
+        const open = r.status === "sent" || r.status === "negotiation";
+        if (!open) return "-";
+        if (!r.nextFollowUpDate) return <span className="text-warning">Not set</span>;
+        const overdue = r.nextFollowUpDate < today;
+        return overdue
+          ? <span className="inline-flex items-center gap-1 font-medium text-danger"><AlertTriangle className="icon-xs" aria-hidden />{fmtDate(r.nextFollowUpDate)}<span className="sr-only"> (overdue)</span></span>
+          : fmtDate(r.nextFollowUpDate);
+      },
+    },
+    { key: "by", header: "Prepared by", priority: 3, nowrap: true, className: "text-ink-soft", cell: (r) => r.preparedBy ?? "-" },
+  ];
 
-function StatusPill({ href, active, label, n, value }: { href: string; active: boolean; label: string; n: number; value?: number }) {
+  const allN = byStatus.reduce((s, b) => s + Number(b.n), 0);
+  const pills: FilterPillItem[] = [
+    { label: "All", href: qs({ status: undefined, approval: undefined, page: undefined }), active: !status && !awaiting, count: allN },
+    {
+      label: "Awaiting approval", href: qs({ status: undefined, approval: awaiting ? undefined : "pending", page: undefined }),
+      active: awaiting, count: Number(awaitingN), attention: Number(awaitingN) > 0,
+    },
+    ...QUOTE_STATUSES.map((s) => ({
+      label: statusLabel(s), href: qs({ status: s, approval: undefined, page: undefined }), active: status === s && !awaiting,
+      count: Number(stat(s).n), hint: stat(s).value > 0 ? moneyShort(stat(s).value) : undefined,
+    })),
+  ];
+
   return (
-    <Link
-      href={href}
-      aria-current={active ? "page" : undefined}
-      className={cx(
-        "shrink-0 rounded-lg border px-3 py-1.5 text-sm capitalize transition-colors",
-        active ? "border-brand-500 bg-brand-50 font-medium text-brand-700 dark:bg-brand-800/30 dark:text-brand-200" : "border-line bg-surface text-ink-soft hover:bg-muted",
-      )}
+    <ListPage
+      title="Quotations"
+      subtitle="Standard BOQ based quotations, priced from the latest purchase cost."
+      secondaryActions={writable && <LinkButton href="/boq-import" variant="secondary"><FileSpreadsheet className="icon-sm" aria-hidden /> Import consultant BOQ</LinkButton>}
+      primaryAction={writable && <LinkButton href="/quotations/new"><Plus className="icon-sm" aria-hidden /> New quotation</LinkButton>}
+      notices={<Flash ok={sp.ok} err={sp.err} />}
+      stats={
+        <MetricStrip>
+          <Metric label="Open pipeline" value={moneyShort(openV)} hint={`${openN} sent or in negotiation`} href={qs({ status: "sent", page: undefined })} />
+          <Metric label="Won" value={moneyShort(stat("won").value)} hint={`${won} quotation${won === 1 ? "" : "s"}`} tone="good" href={qs({ status: "won", page: undefined })} />
+          <Metric label="Conversion" value={conversion == null ? "-" : pct(conversion, 0)} hint={`Won out of won plus lost · ${lost} lost`} tone={conversion != null && conversion < 25 ? "warn" : "default"} />
+          <Metric label="Average days to close" value={avgClose == null ? "-" : Math.round(avgClose)} hint="From quote date to won" />
+        </MetricStrip>
+      }
+      filters={
+        <>
+          <FilterPills label="Filter by status" items={pills} />
+          <ListFilters q={sp.q} placeholder="Search number, customer, project" clearHref={qs({ q: undefined, system: undefined, customer: undefined, sp: undefined, from: undefined, to: undefined, page: undefined })}
+            activeCount={activeFilters} hidden={{ status, approval: awaiting ? "pending" : undefined }}>
+            <Select name="system" defaultValue={sp.system ?? ""} aria-label="System">
+              <option value="">All systems</option>
+              {Object.entries(SYSTEMS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </Select>
+            <Select name="customer" defaultValue={sp.customer ?? ""} aria-label="Customer">
+              <option value="">All customers</option>
+              {custs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+            <Select name="sp" defaultValue={sp.sp ?? ""} aria-label="Salesperson">
+              <option value="">All salespeople</option>
+              {salespeople.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </Select>
+            <Input type="date" name="from" defaultValue={sp.from} aria-label="From date" title="From date" />
+            <Input type="date" name="to" defaultValue={sp.to} aria-label="To date" title="To date" />
+          </ListFilters>
+        </>
+      }
+      isEmpty={rows.length === 0}
+      empty={awaiting
+        ? <EmptyState title="Nothing is waiting for approval">Quotations that need an owner&apos;s approval before sending show up here.</EmptyState>
+        : (
+          <ListEmpty filtered={base.length > 0 || !!status} noun="quotations" clearHref="/quotations"
+            action={writable && <LinkButton href="/quotations/new"><Plus className="icon-sm" aria-hidden /> Create the first quotation</LinkButton>}>
+            Pick a standard BOQ, enter quantities and the latest prices are filled in for you.
+          </ListEmpty>
+        )}
+      resultSummary={`${totalN} quotation${totalN === 1 ? "" : "s"}`}
+      pagination={<Pagination page={page} pages={pages} total={totalN} noun="quotations" href={(p) => qs({ page: String(p) })} />}
     >
-      {label} <span className="tabular-nums">({n})</span>
-      {value != null && value > 0 && <span className="ml-1 hidden text-xs sm:inline">· {moneyShort(value)}</span>}
-    </Link>
+      <ResponsiveTable rows={rows} columns={columns} rowKey={(r) => r.id} caption="Quotations" />
+    </ListPage>
   );
 }

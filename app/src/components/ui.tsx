@@ -8,6 +8,7 @@ import type { ComponentProps, ReactNode } from "react";
 import { ArrowLeft, Inbox, Search, TrendingDown, TrendingUp, type LucideIcon } from "lucide-react";
 import { STATUS_TONE } from "@/lib/constants";
 import { FlashToast } from "./flash-toast";
+import { SEMANTIC_TONE, STATUS_SEMANTIC, statusLabel } from "./patterns/status-tones";
 
 export const cx = clsx;
 
@@ -45,8 +46,8 @@ export function PageHeader({ title, subtitle, actions, back, eyebrow }: { title:
       )}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
-          {eyebrow && <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-brand-700 dark:text-brand-300">{eyebrow}</div>}
-          <h1 className="font-display text-[1.6rem] font-bold leading-tight tracking-tight text-ink sm:text-[1.75rem]">{title}</h1>
+          {eyebrow && <div className="mb-1 text-overline uppercase text-brand-700 dark:text-brand-300">{eyebrow}</div>}
+          <h1 className="font-display text-title text-ink sm:text-[1.75rem] sm:leading-9">{title}</h1>
           {subtitle && <p className="mt-1.5 max-w-3xl text-sm text-ink-soft">{subtitle}</p>}
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -69,7 +70,7 @@ export function Card({ title, actions, children, className, bodyClassName, icon:
               </span>
             )}
             <div className="min-w-0">
-              <h2 className="truncate text-[0.9375rem] font-semibold text-ink">{title}</h2>
+              <h2 className="truncate text-subheading text-ink">{title}</h2>
               {subtitle && <p className="truncate text-xs text-ink-soft">{subtitle}</p>}
             </div>
           </div>
@@ -106,10 +107,15 @@ export function Badge({ tone = "gray", children, className, dot }: { tone?: Tone
   );
 }
 
-/** Badge coloured by a status key (draft, won, overdue…). */
-export function StatusBadge({ status, label }: { status: string; label?: string }) {
-  const text = label ?? status.replace(/_/g, " ");
-  return <Badge tone={STATUS_TONE[status] ?? "gray"} dot className="capitalize">{text}</Badge>;
+/**
+ * Badge coloured by a status key (draft, won, overdue...). Colours come from the shared status
+ * vocabulary in patterns/status-tones.ts so every module agrees; labels are sentence case.
+ */
+export function StatusBadge({ status, label, className }: { status: string; label?: string; className?: string }) {
+  const sem = STATUS_SEMANTIC[status];
+  const tone: Tone = sem ? SEMANTIC_TONE[sem] : STATUS_TONE[status] ?? "gray";
+  const text = label ? label.charAt(0).toUpperCase() + label.slice(1) : statusLabel(status);
+  return <Badge tone={tone} dot className={className}>{text}</Badge>;
 }
 
 type StatTone = "default" | "good" | "warn" | "bad";

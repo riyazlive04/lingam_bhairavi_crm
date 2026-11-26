@@ -6,7 +6,8 @@ import { requireUser } from "@/lib/auth";
 import { todayIST } from "@/lib/format";
 import { getPricingSettings } from "@/lib/pricing";
 import { canSeeCost, canWrite } from "@/lib/rbac";
-import { EmptyState, Flash, LinkButton, PageHeader } from "@/components/ui";
+import { EmptyState, Flash, LinkButton } from "@/components/ui";
+import { FormPage } from "@/components/patterns";
 import { BoqImport } from "./_components/boq-import";
 import { loadImportCatalog } from "./_lib/data";
 
@@ -17,23 +18,16 @@ type SP = { ok?: string; err?: string; customerId?: string };
 export default async function BoqImportPage({ searchParams }: { searchParams: Promise<SP> }) {
   const user = await requireUser("quotations");
   const sp = await searchParams;
-  const header = (
-    <PageHeader
-      eyebrow="Quotations"
-      title="Import consultant BOQ"
-      subtitle="Upload the bill of quantities you received in Excel. We match each row to your items with the latest price and date, you check it, and a draft quotation is ready."
-      back={{ href: "/quotations", label: "Quotations" }}
-    />
-  );
+  const intro = "Upload the bill of quantities you received in Excel. We match each row to your items with the latest price and date, you check it, and a draft quotation is ready.";
+  const back = { href: "/quotations", label: "Quotations" };
 
   if (!canWrite(user.role, "quotations")) {
     return (
-      <div>
-        {header}
+      <FormPage title="Import consultant BOQ" subtitle={intro} back={back}>
         <EmptyState title="Only sales and admin can import a BOQ" icon={FileSpreadsheet} action={<LinkButton href="/quotations" variant="secondary">Back to quotations</LinkButton>}>
           You can view quotations, but creating one from a consultant BOQ needs quotation edit rights.
         </EmptyState>
-      </div>
+      </FormPage>
     );
   }
 
@@ -47,26 +41,28 @@ export default async function BoqImportPage({ searchParams }: { searchParams: Pr
   const wanted = Number(sp.customerId);
   const initialCustomerId = Number.isInteger(wanted) && custs.some((c) => c.id === wanted) ? wanted : null;
 
-  return (
-    <div>
-      {header}
-      <Flash ok={sp.ok} err={sp.err} />
-      {custs.length === 0 ? (
-        <EmptyState title="Add a customer first" icon={FileSpreadsheet} action={<LinkButton href="/customers">Go to customers</LinkButton>}>
+  if (custs.length === 0) {
+    return (
+      <FormPage title="Import consultant BOQ" subtitle={intro} back={back} notices={<Flash ok={sp.ok} err={sp.err} />}>
+        <EmptyState title="Add a customer first" icon={FileSpreadsheet} action={<LinkButton href="/customers">Open customers</LinkButton>}>
           A quotation is always made out to a customer. Add the customer or consultant, then come back to import the BOQ.
         </EmptyState>
-      ) : (
-        <BoqImport
-          customers={custs}
-          catalog={catalog}
-          showCost={showCost}
-          defaultMarkup={pricing.defaultMarkupPct}
-          gstPct={pricing.gstPct}
-          today={todayIST()}
-          canTemplate={canWrite(user.role, "boq")}
-          initialCustomerId={initialCustomerId}
-        />
-      )}
-    </div>
+      </FormPage>
+    );
+  }
+
+  return (
+    <BoqImport
+      intro={intro}
+      notices={<Flash ok={sp.ok} err={sp.err} />}
+      customers={custs}
+      catalog={catalog}
+      showCost={showCost}
+      defaultMarkup={pricing.defaultMarkupPct}
+      gstPct={pricing.gstPct}
+      today={todayIST()}
+      canTemplate={canWrite(user.role, "boq")}
+      initialCustomerId={initialCustomerId}
+    />
   );
 }
